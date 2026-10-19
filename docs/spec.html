@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EPHEMERIS — Technical Specification</title>
+<style>
+  :root{
+    --bg:#0a0c10; --panel:#11141b; --panel2:#151924; --border:#232838;
+    --text:#dde2ec; --dim:#88909f; --accent:#8ab4ff; --accent2:#f2b880;
+    --danger:#ff8080; --mono:'JetBrains Mono','SF Mono',Consolas,monospace; --serif:'Georgia',serif;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--text); font-family:var(--serif); line-height:1.65; margin:0; padding:0 0 120px;}
+  .wrap{max-width:900px; margin:0 auto; padding:64px 32px;}
+  .kicker{font-family:var(--mono); font-size:12px; letter-spacing:.25em; color:var(--accent); text-transform:uppercase; margin-bottom:14px;}
+  h1{font-size:54px; margin:0 0 8px; color:#fff; letter-spacing:-.01em; font-weight:700;}
+  .subtitle{color:var(--dim); font-size:17px; margin-bottom:36px; max-width:680px;}
+  .meta{display:flex; gap:22px; flex-wrap:wrap; font-family:var(--mono); font-size:11px; color:var(--dim);
+    border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:14px 0; margin-bottom:48px; text-transform:uppercase; letter-spacing:.07em;}
+  .meta b{color:var(--text);}
+  h2{font-family:var(--mono); font-size:13px; letter-spacing:.17em; text-transform:uppercase; color:var(--accent2); margin:60px 0 4px; display:flex; align-items:center; gap:12px;}
+  h2 .num{color:var(--dim);}
+  h2::after{content:""; flex:1; height:1px; background:var(--border);}
+  h3{font-size:19px; color:#fff; margin:26px 0 10px; font-weight:600;}
+  p{margin:13px 0;}
+  .lede{font-size:18px; color:#eef0f5;}
+  ul,ol{padding-left:22px;} li{margin:7px 0;}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 22px; margin:16px 0;}
+  .panel-title{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--dim); text-transform:uppercase; margin-bottom:8px;}
+  .math{background:var(--panel2); border-left:3px solid var(--accent); border-radius:4px; padding:15px 19px; margin:15px 0; font-family:var(--mono); font-size:14px; color:#f5f2e8; white-space:pre; overflow-x:auto;}
+  code{font-family:var(--mono); background:var(--panel2); padding:1px 6px; border-radius:4px; font-size:.92em; color:var(--accent);}
+  table{width:100%; border-collapse:collapse; margin:16px 0; font-size:14px;}
+  th,td{border:1px solid var(--border); padding:9px 12px; text-align:left; vertical-align:top;}
+  th{background:var(--panel2); color:var(--accent2); font-family:var(--mono); font-size:11px; text-transform:uppercase;}
+  .callout{border:1px solid var(--accent); background:rgba(138,180,255,.07); border-radius:10px; padding:17px 21px; margin:20px 0;}
+  .callout.warn{border-color:var(--danger); background:rgba(255,128,128,.06);}
+  .callout .label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:7px;}
+  .callout.warn .label{color:var(--danger);}
+  .badge{display:inline-block; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding:2px 9px; border-radius:20px; margin-left:8px;}
+  .badge.core{background:rgba(138,180,255,.15); color:var(--accent); border:1px solid var(--accent);}
+  .badge.emergent{background:rgba(242,184,128,.15); color:var(--accent2); border:1px solid var(--accent2);}
+  .phase{display:grid; grid-template-columns:90px 1fr; gap:18px; padding:16px 0; border-bottom:1px solid var(--border);}
+  .phase:last-child{border-bottom:none;}
+  .phase .tag{font-family:var(--mono); color:var(--accent2); font-size:13px; padding-top:2px;}
+  .flow{font-family:var(--mono); font-size:13px; color:var(--dim); background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:20px; margin:18px 0; line-height:1.9; overflow-x:auto;}
+  .flow .stage{color:var(--text); font-weight:600;}
+  .flow .arrow{color:var(--accent);}
+  .footer{margin-top:80px; padding-top:24px; border-top:1px solid var(--border); font-family:var(--mono); font-size:11px; color:var(--dim); letter-spacing:.05em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Technical Specification — v1.0</div>
+  <h1>EPHEMERIS</h1>
+  <p class="subtitle lede">A personal financial trajectory engine — iOS, Android, Web, and Desktop from one shared core — that doesn't show you where your money has been, but computes, with honest uncertainty, where it's actually headed. Built on the same mathematics used for spacecraft navigation and quant risk pricing, pointed at the one thing everyone instantly understands: their own money.</p>
+
+  <div class="meta">
+    <div>Platforms: <b>iOS · Android · Web · Desktop</b></div>
+    <div>Shared core: <b>Rust</b></div>
+    <div>Domain: <b>FinTech + Real-Time Systems</b></div>
+    <div>Companion: <b>emergent research paper (Phase 6)</b></div>
+  </div>
+
+  <h2><span class="num">00</span> Positioning Statement</h2>
+  <p>An ephemeris is the table astronomers and spacecraft navigators use to predict exactly where a body will be at a future time, computed by fusing noisy observations into a precise trajectory estimate with quantified uncertainty. EPHEMERIS does the same thing for personal finances: your real financial state isn't your raw account balance — it's a hidden quantity corrupted by noisy, delayed signals (pending transactions, subscription timing drift, irregular income) — and the app continuously estimates that true state and projects it forward as a probability cone, not a single number.</p>
+  <div class="callout">
+    <div class="label">Why this is the right "universal" project</div>
+    <p style="margin:0">Nobody needs domain background to get the pitch — "an app that forecasts where your money is actually headed, like a weather forecast, with honest odds instead of a fake-precise number" is instantly graspable to anyone. The sophistication lives entirely in the engine (state estimation, stochastic simulation, real-time sync); the surface is as universal as a bank balance.</p>
+  </div>
+
+  <h2><span class="num">01</span> System Architecture</h2>
+  <div class="flow">
+<span class="stage">Bank/Txn Data (Plaid sandbox)</span>  <span class="arrow">──▶</span>  <span class="stage">On-Device Categorization (CoreML / equiv.)</span>
+                                              <span class="arrow">│</span>
+                                              <span class="arrow">▼</span>
+                          <span class="stage">Kalman Filter — True State Estimation</span>
+                                              <span class="arrow">│</span>
+                                              <span class="arrow">▼</span>
+                      <span class="stage">Monte Carlo Trajectory Simulation</span>  <span class="arrow">──▶</span>  probability cone, N future paths
+                                              <span class="arrow">│</span>
+                                              <span class="arrow">▼</span>
+                      <span class="stage">CRDT Sync Layer</span>  <span class="arrow">──▶</span>  iOS · Android · Web · Desktop, live &amp; offline-consistent
+  </div>
+  <p>The entire estimation/forecasting engine is written once, in Rust, then compiled to native mobile bindings, WASM for the web client, and a native desktop build via Tauri — one engine, three shells, rather than three independent reimplementations. This single decision is the strongest systems-maturity signal in the whole project.</p>
+
+  <h2><span class="num">02</span> Core Engine — Kalman Filter State Estimation <span class="badge core">core</span></h2>
+  <p>Raw transaction data is noisy and delayed — a pending charge, a subscription that renews on a drifting date, a paycheck that lands a day early or late. A Kalman filter treats your "true" financial state as a hidden variable and continuously fuses noisy observations into a best estimate with a quantified confidence interval, exactly the technique used for spacecraft position estimation and sensor fusion in autonomous vehicles.</p>
+  <div class="math">Predict:   x̂ₖ⁻ = A x̂ₖ₋₁ + B uₖ
+           Pₖ⁻ = A Pₖ₋₁ Aᵀ + Q
+
+Update:    Kₖ = Pₖ⁻ Hᵀ (H Pₖ⁻ Hᵀ + R)⁻¹
+           x̂ₖ = x̂ₖ⁻ + Kₖ (zₖ − H x̂ₖ⁻)
+           Pₖ = (I − Kₖ H) Pₖ⁻
+
+  x̂ₖ  = estimated true financial state at time k
+  zₖ  = noisy observation (raw transaction/balance data)
+  Pₖ  = estimate uncertainty (covariance)</div>
+  <p>State variables include: true disposable balance (net of known pending obligations), estimated recurring-expense baseline, and income regularity variance — each with its own uncertainty, not a single blended number.</p>
+
+  <h3>Monte Carlo Trajectory Forecasting <span class="badge core">core</span></h3>
+  <p>From the Kalman-filtered state and its estimated variance in spending behavior, simulate thousands of plausible future paths rather than projecting a single deterministic line — identical in spirit to how quant desks price risk via simulated outcome distributions. The output is a probability cone: "70% of simulated futures show you can afford this by March" rather than a false-precision single number.</p>
+
+  <h2><span class="num">03</span> On-Device ML Categorization <span class="badge core">core</span></h2>
+  <p>A lightweight on-device model (CoreML on iOS, an equivalent lightweight model on Android) categorizes transactions locally — the app functions fully offline, and raw financial data never needs to leave the device unless the user explicitly opts into cloud sync. This is a genuine privacy-engineering decision, not a feature-list bullet point.</p>
+
+  <h2><span class="num">04</span> Offline-First Real-Time Sync via CRDTs <span class="badge core">core</span></h2>
+  <p>Financial state must stay live and consistent across phone, web, and desktop even through offline edits and reconnects — the same class of problem Figma and Linear solve with Conflict-free Replicated Data Types. Each device holds a local CRDT-backed state; merges are mathematically guaranteed to converge without a central lock, so editing a budget offline on the phone and later opening the desktop app never produces a conflict dialog.</p>
+
+  <h2><span class="num">05</span> Interface Direction</h2>
+  <p>The core visual metaphor should be literal, not decorative: your financial future rendered as an actual trajectory cone — mission-control aesthetic, dark-mode-first, precise typography — closer to Linear, Arc, or Raycast than to a typical budgeting app. The goal is that a non-technical person immediately understands the cone ("the shaded area is how sure the app is"), while the visual language itself signals the engineering rigor underneath before a single line of copy is read.</p>
+
+  <h2><span class="num">06</span> Tech Stack</h2>
+  <table>
+    <tr><th>Layer</th><th>Tools</th></tr>
+    <tr><td>Core engine</td><td>Rust (Kalman filter + Monte Carlo simulation), compiled to native + WASM</td></tr>
+    <tr><td>iOS</td><td>Swift shell over the Rust core via UniFFI bindings; CoreML for on-device categorization</td></tr>
+    <tr><td>Android</td><td>Kotlin shell over the same Rust core via UniFFI; on-device TFLite model</td></tr>
+    <tr><td>Web</td><td>Rust core compiled to WASM, React/TypeScript front end</td></tr>
+    <tr><td>Desktop</td><td>Tauri (Rust-native, far lighter than Electron)</td></tr>
+    <tr><td>Sync</td><td>CRDT library (e.g. <code>yrs</code>, the Rust port of Yjs)</td></tr>
+    <tr><td>Data (dev/demo)</td><td>Plaid free developer sandbox — realistic synthetic transaction data, zero cost, no real account required</td></tr>
+  </table>
+
+  <h2><span class="num">07</span> Build Phases</h2>
+  <div class="phase"><div class="tag">Phase 1</div><div><b>Core engine.</b> Kalman filter + Monte Carlo simulation in Rust, validated against Plaid sandbox data, CLI-only to start. Get the math right before touching any UI.</div></div>
+  <div class="phase"><div class="tag">Phase 2</div><div><b>Web shell.</b> Compile the core to WASM, build the React front end with the trajectory-cone visualization. Fastest path to something demoable.</div></div>
+  <div class="phase"><div class="tag">Phase 3</div><div><b>Mobile shells.</b> iOS first (Swift + UniFFI + CoreML categorization), then Android. Reuse the same core — this phase is mostly binding and UI work, not new engine logic.</div></div>
+  <div class="phase"><div class="tag">Phase 4</div><div><b>Desktop + sync.</b> Tauri desktop build, CRDT sync layer wired across all shells so edits propagate live and merge cleanly offline.</div></div>
+  <div class="phase"><div class="tag">Phase 5</div><div><b>Polish pass.</b> Interface refinement toward the mission-control aesthetic — this is the phase that makes the difference between "working app" and "the kind of thing people screenshot."</div></div>
+  <div class="phase"><div class="tag">Phase 6</div><div class="badge emergent" style="margin:0 0 6px 0; display:inline-block;">emergent, not planned upfront</div><div>Once the engine is producing real forecast cones against real/sandbox data, the natural next question appears on its own: does the 70% confidence cone actually contain the real outcome 70% of the time? Most forecasting tools never check their own calibration. That question becomes the paper — see below.</div></div>
+
+  <h2><span class="num">08</span> The Companion Paper — How It Actually Emerges</h2>
+  <p><b>"Does State-Estimation-Based Forecasting Improve Calibration Over Standard Budgeting Heuristics? An Empirical Comparison"</b> — once EPHEMERIS is producing real probability cones, the honest empirical question is whether those cones are actually trustworthy, not just visually compelling. Compare EPHEMERIS's Kalman-filter-plus-Monte-Carlo forecasts against standard baselines (moving average, naive linear projection — the logic most budgeting apps already use) on two axes: raw forecast error, and — the genuinely underexplored part — calibration, whether a stated 70% confidence interval actually contains the true outcome roughly 70% of the time across many forecasts. This reuses data and output you already have from building the app; it isn't a second project, it's the natural question the first one raises.</p>
+  <div class="callout">
+    <div class="label">Why this ordering matters for the story</div>
+    <p style="margin:0">This is deliberately Phase 6, not Phase 0. You can't meaningfully ask "are my uncertainty bounds calibrated" until you have a working engine producing real bounds to test — which means the paper genuinely emerges from the build, not the other way around. That's both the more defensible research posture and the more honest interview story.</p>
+  </div>
+
+  <h2><span class="num">09</span> Defending It In An Interview</h2>
+  <div class="callout warn">
+    <div class="label">The question you will get</div>
+    <p style="margin:0">"Isn't this just a budgeting app with fancy math on top?" Answer with the calibration result, not the feature list: most forecasting tools — including ones built by well-funded companies — never check whether their confidence intervals are honest. You built the engine, then empirically tested whether its uncertainty estimates actually mean what they claim to mean, and have a real answer either way. That's the difference between a feature and a finding.</p>
+  </div>
+
+  <div class="footer">EPHEMERIS — Technical Specification v1.0 · Rust core, native mobile + web + desktop shells, emergent companion paper on forecast calibration</div>
+</div>
+</body>
+</html>

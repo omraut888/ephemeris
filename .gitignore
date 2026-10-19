@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+.DS_Store
+.env
+.env.*
+data/sandbox/*.json
+!data/sandbox/.gitkeep
