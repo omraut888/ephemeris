@@ -388,8 +388,8 @@ crates/ephemeris-core/src/
   tracker.rs    Tracker::ingest(snapshot, ledger_balance, today): checkpoint + provisional
                 tail, gating, adaptive noise; rebuilds from the prior if consumed settled
                 days change; returns DayReport per day
-  schedule.rs   recurring streams -> period, phase, jitter, amount (feeds the MC)
-  forecast.rs   seeded Monte Carlo -> Cone
+  schedule.rs   detect_schedule(snapshot) -> Schedule { income: PayTiming, bills: Vec<BillStream> }
+  forecast.rs   forecast(estimate, schedule, model, cfg) -> Cone (bands, P(b ≥ X))
   synth.rs      seeded generator with ground truth (§5)
   metrics.rs    NEES, NIS, RMSE, interval coverage (shared by tests and CLI)
 ```
@@ -448,6 +448,68 @@ panics on bad input.
   results stay reproducible after parallelization.
 - **Seed:** required. The API has no entropy-based constructor, so the
   reproducibility rule in CLAUDE.md holds by construction.
+
+### Monte Carlo as built
+
+- **RNG: counter-based, not N live generators.** Path `i` on step `h` uses
+  its own ChaCha8 segment (`stream = i`, `word_pos = h·2²⁴`). Memory is O(N)
+  small path states, about 60 bytes each, with no per-path generator kept
+  alive. Path `i` is identical for any N and any loop order, which a test
+  checks.
+- **Variance draws.** dof is floored at 1, and each draw is capped at 100× the
+  estimate so a very thin history cannot produce absurd paths.
+- **Paychecks:** detected nominal dates after `last_paid_nominal`, plus an
+  offset sampled from the fitted distribution, moved to the previous business
+  day. A paycheck whose sampled day has passed unobserved arrives on the next
+  business day. Without a detected schedule, the forecast has no income.
+- **Bills:** each detected stream recurs at `period + drift`, at its latest
+  posted amount.
+- **Lumps:** bootstrap, not a parametric tail. The tracker keeps every lump
+  its gate absorbed on settled days. Each simulated day:
+  - A lump occurs with rate `(n + 0.001·1000)/(days + 1000)`.
+  - Its size is one of the observed lumps with probability `n/(n + 5)`.
+  - Otherwise its size comes from the prior: the Gaussian excess beyond the
+    gate, `±σ̂_s·Exp(3.29)`.
+
+  So with no history the cone gets back exactly what the gate removed under
+  the Gaussian model, and with history the observed lumps take over.
+
+  **Why not a heavy-tailed distribution (Student-t, lognormal, Pareto)?**
+  1. The tail index is the hardest parameter to estimate, and a few lumps a
+     year can't pin it down. A wrong index gives either a cone that is too
+     narrow or one with infinite variance.
+  2. Real lumps are asymmetric: big purchases, refunds, bonuses. The bootstrap
+     keeps their sign mix and sizes without a shape assumption.
+  3. It adds back exactly the part the gate removed, so the core Gaussian
+     plus the lumps reconstructs the observed day distribution.
+
+  The cost: with a short history the bootstrap can't produce a lump bigger
+  than the largest seen, so it understates the extreme tail. The prior
+  component and its weight soften this. A smoothed bootstrap (jittered
+  resamples) is the next step if calibration shows it.
+- **Outputs:** per-day quantiles at configurable levels (default
+  5/25/50/75/95%), `P(b_D ≥ X)` and `P(b ≥ X on some day ≤ D)` for each
+  configured target X.
+
+### Recurrence detection (`schedule.rs`)
+
+**Income.** Every `PaySchedule` candidate is scored against the last 26
+observed paydays (weekly and biweekly at every anchor phase, monthly on every
+day, semi-monthly on every pair of days).
+- Each payday costs the smallest `|k| ≤ 2` with `pay_date(nominal + k) =
+  payday`, or a miss penalty of 10 if no such `k` exists.
+- Each nominal date inside the observed span with no paycheck also costs 10,
+  which keeps weekly from beating biweekly.
+- The cheapest candidate wins. The fitted offsets become an empirical
+  distribution over −2..+2, smoothed toward a prior centred on 0
+  (2 pseudo-observations).
+
+**Bills.** One entry per `Scheduled` stream with at least 2 charges: period =
+median gap, drift = empirical `gap − period`, amount = latest posted amount.
+Card charges are not shifted to business days.
+
+**Not handled yet:** bills billed by day of month, single-charge streams,
+secondary income streams.
 
 ### Dependencies (core)
 
