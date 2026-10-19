@@ -13,6 +13,7 @@ pub mod linalg;
 pub mod model;
 pub mod observe;
 pub mod synth;
+pub mod tracker;
 pub mod types;
 
 pub use error::EngineError;
