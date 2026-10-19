@@ -1,0 +1,414 @@
+//! Minimal recurrence detection for the forecaster: when the primary paycheck
+//! and each recurring bill will land, with their timing noise.
+//!
+//! **Income.** Every [`PaySchedule`] candidate (weekly and biweekly anchors,
+//! every day of month, every pair of days) is scored against the observed
+//! paydays: each payday costs the smallest |offset| `k` with
+//! `pay_date(nominal + k) == payday` (`|k| <= 2`), or a miss penalty if none
+//! works, and each nominal date inside the observed span with no paycheck costs
+//! a miss too. The cheapest candidate wins. The fitted offsets become an
+//! empirical distribution, smoothed toward a prior centered on zero; the
+//! business-day rollback itself is deterministic and applied again when the
+//! forecaster samples future paydays.
+//!
+//! **Bills.** For each recurring stream (a `Scheduled` record with a stream id)
+//! with at least two charges: period = median gap, drift = empirical
+//! distribution of `gap − period` (persistent, so the phase random-walks),
+//! amount = latest posted amount. Card charges are not shifted to business days.
+//!
+//! Not handled yet: bills billed by day of month, streams with one charge,
+//! secondary income streams.
+
+use std::collections::{BTreeMap, HashSet};
+
+use rand::RngExt;
+
+use crate::calendar::PaySchedule;
+use crate::types::{Day, FlowKind, StreamId, Transaction, TxnStatus};
+
+/// Largest timing offset the detector and forecaster model, in days.
+pub const MAX_OFFSET: i32 = 2;
+const OFFSETS: usize = (2 * MAX_OFFSET + 1) as usize;
+/// Prior over offsets −2..=2 and its strength in pseudo-observations.
+const OFFSET_PRIOR: [f64; OFFSETS] = [0.025, 0.1, 0.75, 0.1, 0.025];
+const OFFSET_PRIOR_WEIGHT: f64 = 2.0;
+const MISS_COST: u32 = 10;
+/// Paydays used for fitting (about a year of biweekly pay).
+const MAX_PAYDAYS: usize = 26;
+
+/// A smoothed distribution over day offsets `−MAX_OFFSET..=MAX_OFFSET`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OffsetDist {
+    probs: [f64; OFFSETS],
+}
+
+impl OffsetDist {
+    /// Empirical offsets (clamped to ±MAX_OFFSET) mixed with the prior.
+    pub fn from_offsets(offsets: &[i32]) -> Self {
+        let mut counts = OFFSET_PRIOR.map(|p| p * OFFSET_PRIOR_WEIGHT);
+        for &k in offsets {
+            counts[(k.clamp(-MAX_OFFSET, MAX_OFFSET) + MAX_OFFSET) as usize] += 1.0;
+        }
+        let total: f64 = counts.iter().sum();
+        Self {
+            probs: counts.map(|c| c / total),
+        }
+    }
+
+    /// All mass on offset 0.
+    pub fn exact() -> Self {
+        let mut probs = [0.0; OFFSETS];
+        probs[MAX_OFFSET as usize] = 1.0;
+        Self { probs }
+    }
+
+    /// Probabilities for offsets −2, −1, 0, 1, 2.
+    pub fn probabilities(&self) -> &[f64; OFFSETS] {
+        &self.probs
+    }
+
+    pub fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> i32 {
+        let u: f64 = rng.random();
+        let mut acc = 0.0;
+        for (i, p) in self.probs.iter().enumerate() {
+            acc += p;
+            if u < acc {
+                return i as i32 - MAX_OFFSET;
+            }
+        }
+        MAX_OFFSET
+    }
+}
+
+/// When the primary paycheck lands.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayTiming {
+    pub schedule: PaySchedule,
+    /// Nominal date of the most recent observed paycheck; later nominal
+    /// dates are still to come.
+    pub last_paid_nominal: Day,
+    pub offsets: OffsetDist,
+    /// Fit cost of the chosen schedule (0 = every payday explained exactly).
+    pub fit_cost: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BillStream {
+    pub stream: StreamId,
+    pub period_days: u32,
+    pub last_day: Day,
+    /// Signed, as charged (negative for an outflow).
+    pub amount: f64,
+    pub drift: OffsetDist,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Schedule {
+    pub income: Option<PayTiming>,
+    pub bills: Vec<BillStream>,
+}
+
+/// Detect recurring flows from the records in a feed snapshot.
+pub fn detect_schedule(txns: &[Transaction]) -> Schedule {
+    Schedule {
+        income: detect_income(txns),
+        bills: detect_bills(txns),
+    }
+}
+
+/// The smallest-|k| offset that explains `payday` under `schedule`, with the
+/// nominal date it belongs to.
+fn explain(schedule: &PaySchedule, payday: Day) -> Option<(Day, i32)> {
+    let nominals = schedule.nominal_dates(payday - MAX_OFFSET - 4, payday + MAX_OFFSET + 4);
+    let mut best: Option<(Day, i32)> = None;
+    for n in nominals {
+        for k in -MAX_OFFSET..=MAX_OFFSET {
+            if PaySchedule::pay_date(n + k) == payday && best.is_none_or(|(_, b)| k.abs() < b.abs())
+            {
+                best = Some((n, k));
+            }
+        }
+    }
+    best
+}
+
+struct Fit {
+    cost: u32,
+    last_nominal: Day,
+    offsets: Vec<i32>,
+}
+
+fn fit(schedule: &PaySchedule, paydays: &[Day]) -> Option<Fit> {
+    let mut cost = 0;
+    let mut offsets = Vec::with_capacity(paydays.len());
+    let mut used = HashSet::new();
+    let mut last_nominal = None;
+    for &d in paydays {
+        match explain(schedule, d) {
+            Some((n, k)) if used.insert(n) => {
+                cost += k.unsigned_abs();
+                offsets.push(k);
+                last_nominal = Some(n);
+            }
+            _ => cost += MISS_COST,
+        }
+    }
+    let (lo, hi) = (*used.iter().min()?, *used.iter().max()?);
+    let missed = schedule
+        .nominal_dates(lo, hi)
+        .into_iter()
+        .filter(|n| !used.contains(n))
+        .count() as u32;
+    Some(Fit {
+        cost: cost + MISS_COST * missed,
+        last_nominal: last_nominal?,
+        offsets,
+    })
+}
+
+fn candidates(last: Day) -> Vec<PaySchedule> {
+    let mut out = Vec::new();
+    out.extend((0..7).map(|k| PaySchedule::Weekly { anchor: last - k }));
+    out.extend((0..14).map(|k| PaySchedule::Biweekly { anchor: last - k }));
+    out.extend((1..=31).map(|day| PaySchedule::Monthly { day }));
+    for a in 1..=31 {
+        for b in a + 1..=31 {
+            out.push(PaySchedule::SemiMonthly { days: [a, b] });
+        }
+    }
+    out
+}
+
+fn detect_income(txns: &[Transaction]) -> Option<PayTiming> {
+    let mut paydays: Vec<Day> = txns
+        .iter()
+        .filter(|t| t.kind == FlowKind::Income && t.status == TxnStatus::Posted)
+        .map(Transaction::day)
+        .collect();
+    paydays.sort_unstable();
+    paydays.dedup();
+    if paydays.len() < 2 {
+        return None;
+    }
+    let paydays = &paydays[paydays.len().saturating_sub(MAX_PAYDAYS)..];
+    let last = *paydays.last()?;
+
+    let mut best: Option<(PaySchedule, Fit)> = None;
+    for c in candidates(last) {
+        if let Some(f) = fit(&c, paydays)
+            && best.as_ref().is_none_or(|(_, b)| f.cost < b.cost)
+        {
+            best = Some((c, f));
+        }
+    }
+    let (schedule, f) = best?;
+    Some(PayTiming {
+        schedule,
+        last_paid_nominal: f.last_nominal,
+        offsets: OffsetDist::from_offsets(&f.offsets),
+        fit_cost: f.cost,
+    })
+}
+
+fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
+    let mut by_stream: BTreeMap<StreamId, Vec<&Transaction>> = BTreeMap::new();
+    for t in txns.iter().filter(|t| t.kind == FlowKind::Scheduled) {
+        if let Some(s) = t.stream {
+            by_stream.entry(s).or_default().push(t);
+        }
+    }
+    by_stream
+        .into_iter()
+        .filter_map(|(stream, mut charges)| {
+            charges.sort_by_key(|t| (t.day(), t.id));
+            let days: Vec<Day> = charges.iter().map(|t| t.day()).collect();
+            let mut gaps: Vec<i32> = days.windows(2).map(|w| w[1] - w[0]).collect();
+            if gaps.is_empty() {
+                return None;
+            }
+            let drift_from: Vec<i32> = gaps.clone();
+            gaps.sort_unstable();
+            let period = gaps[gaps.len() / 2].max(1);
+            let amount = charges
+                .iter()
+                .rev()
+                .find(|t| t.status == TxnStatus::Posted)
+                .unwrap_or(charges.last()?)
+                .amount;
+            let drift: Vec<i32> = drift_from.iter().map(|g| g - period).collect();
+            Some(BillStream {
+                stream,
+                period_days: period as u32,
+                last_day: *days.last()?,
+                amount,
+                drift: OffsetDist::from_offsets(&drift),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::calendar::day_from_civil as ymd;
+    use crate::synth::{SynthConfig, generate};
+    use crate::types::{AccountId, TxnId};
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    fn pay(id: u64, day: Day) -> Transaction {
+        Transaction {
+            id: TxnId(id),
+            account: AccountId(0),
+            date: day,
+            authorized_date: Some(day),
+            status: TxnStatus::Posted,
+            amount: 2000.0,
+            kind: FlowKind::Income,
+            stream: None,
+            pending_id: None,
+        }
+    }
+
+    fn paydays(schedule: PaySchedule, from: Day, to: Day) -> Vec<Transaction> {
+        schedule
+            .nominal_dates(from, to)
+            .into_iter()
+            .map(PaySchedule::pay_date)
+            .enumerate()
+            .map(|(i, d)| pay(i as u64, d))
+            .collect()
+    }
+
+    fn detected(txns: &[Transaction]) -> PayTiming {
+        detect_schedule(txns).income.expect("income detected")
+    }
+
+    #[test]
+    fn detects_each_schedule_kind_exactly() {
+        let (from, to) = (ymd(2024, 1, 1), ymd(2024, 12, 31));
+        let friday = ymd(2024, 1, 5);
+        for schedule in [
+            PaySchedule::Weekly { anchor: friday },
+            PaySchedule::Biweekly { anchor: friday },
+            PaySchedule::SemiMonthly { days: [1, 15] },
+            PaySchedule::SemiMonthly { days: [15, 31] },
+            PaySchedule::Monthly { day: 25 },
+        ] {
+            let timing = detected(&paydays(schedule, from, to));
+            assert_eq!(timing.fit_cost, 0, "{schedule:?}");
+            // Same nominal dates (weekly/biweekly anchors may differ by whole periods).
+            assert_eq!(
+                timing.schedule.nominal_dates(from, to),
+                schedule.nominal_dates(from, to),
+                "{schedule:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn weekend_and_holiday_paydays_are_explained_by_the_rollback() {
+        // 15th/last-day pay in 2024: June 15 (Sat) paid Fri 14th, and so on.
+        let timing = detected(&paydays(
+            PaySchedule::SemiMonthly { days: [15, 31] },
+            ymd(2024, 1, 1),
+            ymd(2024, 12, 31),
+        ));
+        assert_eq!(timing.fit_cost, 0);
+        // All offsets were 0, so the distribution is the prior pulled toward 0.
+        let p = timing.offsets.probabilities();
+        assert!(p[2] > 0.95, "{p:?}");
+        assert_eq!(timing.last_paid_nominal, ymd(2024, 12, 31));
+    }
+
+    #[test]
+    fn jittered_paydays_yield_offsets() {
+        let mut txns = paydays(
+            PaySchedule::Biweekly {
+                anchor: ymd(2024, 1, 5),
+            },
+            ymd(2024, 1, 1),
+            ymd(2024, 6, 30),
+        );
+        // Two paychecks arrive a day early, on Thursday.
+        txns[2].date -= 1;
+        txns[2].authorized_date = Some(txns[2].date);
+        txns[5].date -= 1;
+        txns[5].authorized_date = Some(txns[5].date);
+        let timing = detected(&txns);
+        assert_eq!(timing.fit_cost, 2);
+        assert!(matches!(timing.schedule, PaySchedule::Biweekly { .. }));
+        let p = timing.offsets.probabilities();
+        assert!(p[1] > 0.1 && p[1] > p[3], "{p:?}");
+    }
+
+    #[test]
+    fn too_few_paychecks_means_no_income_timing() {
+        assert!(detect_schedule(&[pay(0, ymd(2024, 1, 5))]).income.is_none());
+        assert!(detect_schedule(&[]).income.is_none());
+    }
+
+    #[test]
+    fn detects_synthetic_income_and_bills() {
+        let cfg = SynthConfig::realistic(ymd(2024, 1, 1));
+        let run = generate(&cfg, 3).unwrap();
+        let s = detect_schedule(&run.snapshot(ymd(2024, 12, 31)));
+        let timing = s.income.unwrap();
+        assert!(matches!(timing.schedule, PaySchedule::Biweekly { .. }));
+        assert_eq!(
+            timing
+                .schedule
+                .nominal_dates(ymd(2024, 1, 1), ymd(2024, 12, 31)),
+            cfg.income
+                .schedule
+                .nominal_dates(ymd(2024, 1, 1), ymd(2024, 12, 31))
+        );
+        assert_eq!(s.bills.len(), cfg.subscriptions.len());
+        for (bill, sub) in s.bills.iter().zip(&cfg.subscriptions) {
+            assert_eq!(bill.period_days, sub.period_days);
+            assert_eq!(bill.amount, -sub.amount);
+        }
+    }
+
+    #[test]
+    fn bill_period_drift_and_amount() {
+        let mk = |id: u64, day: Day, amount: f64, status: TxnStatus| Transaction {
+            id: TxnId(id),
+            account: AccountId(0),
+            date: day,
+            authorized_date: Some(day),
+            status,
+            amount,
+            kind: FlowKind::Scheduled,
+            stream: Some(StreamId(7)),
+            pending_id: None,
+        };
+        let txns = [
+            mk(1, 100, -15.0, TxnStatus::Posted),
+            mk(2, 130, -15.0, TxnStatus::Posted),
+            mk(3, 161, -16.0, TxnStatus::Posted),
+            mk(4, 191, -18.0, TxnStatus::Pending),
+        ];
+        let bills = detect_schedule(&txns).bills;
+        assert_eq!(bills.len(), 1);
+        let b = &bills[0];
+        assert_eq!((b.period_days, b.last_day), (30, 191));
+        assert_eq!(b.amount, -16.0, "latest posted amount, not the pending one");
+        // Gaps 30, 31, 30 → drift 0, +1, 0.
+        let p = b.drift.probabilities();
+        assert!(p[3] > OFFSET_PRIOR[3] && p[2] > p[3]);
+    }
+
+    #[test]
+    fn offset_sampling_matches_probabilities() {
+        let dist = OffsetDist::from_offsets(&[1, 1, 1, 0]);
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let mut counts = [0usize; OFFSETS];
+        for _ in 0..60_000 {
+            counts[(dist.sample(&mut rng) + MAX_OFFSET) as usize] += 1;
+        }
+        for (c, p) in counts.iter().zip(dist.probabilities()) {
+            assert!((*c as f64 / 60_000.0 - p).abs() < 0.01);
+        }
+    }
+}

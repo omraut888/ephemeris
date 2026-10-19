@@ -12,6 +12,7 @@ pub mod kalman;
 pub mod linalg;
 pub mod model;
 pub mod observe;
+pub mod schedule;
 pub mod synth;
 pub mod tracker;
 pub mod types;
