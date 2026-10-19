@@ -9,6 +9,7 @@ pub mod calendar;
 pub mod error;
 pub mod kalman;
 pub mod linalg;
+pub mod model;
 pub mod synth;
 pub mod types;
 
