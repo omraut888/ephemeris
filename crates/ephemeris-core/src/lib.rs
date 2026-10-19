@@ -1,14 +1,15 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! EPHEMERIS core engine: state estimation and forecasting over transaction data.
+//!
+//! Pure computation only: no I/O, no network, no printing (see CLAUDE.md).
+//! Design: docs/phase1-design.md.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![forbid(unsafe_code)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod error;
+pub mod types;
+
+pub use error::EngineError;
+pub use types::{
+    AccountId, Channel, Day, DayInput, FlowKind, Observation, StreamId, Transaction, TxnId,
+    TxnStatus,
+};
