@@ -109,6 +109,15 @@ impl TrackerConfig {
     }
 }
 
+/// Unexplained lump flows the balance gate absorbed on settled days. The
+/// forecaster resamples them to put back the tail the gate trimmed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LumpHistory {
+    pub amounts: Vec<f64>,
+    /// Settled days with a balance observation (the denominator for the rate).
+    pub days: u32,
+}
+
 /// The estimate handed to the forecaster.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateEstimate {
@@ -119,6 +128,7 @@ pub struct StateEstimate {
     pub p: Matrix3<f64>,
     pub spend_var: VarianceEstimate,
     pub income_var: VarianceEstimate,
+    pub lumps: LumpHistory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -153,6 +163,7 @@ struct FilterState {
     income: VarianceEstimator,
     days_since_balance: u32,
     spend_var_since_balance: f64,
+    lumps: LumpHistory,
 }
 
 impl FilterState {
@@ -174,6 +185,7 @@ impl FilterState {
             income: VarianceEstimator::new(cfg.income_var)?,
             days_since_balance: 0,
             spend_var_since_balance: 0.0,
+            lumps: LumpHistory::default(),
         })
     }
 
@@ -187,6 +199,7 @@ impl FilterState {
             p,
             spend_var: self.spend.estimate(),
             income_var: self.income.estimate(),
+            lumps: self.lumps.clone(),
         }
     }
 
@@ -226,6 +239,12 @@ impl FilterState {
                 self.filter.shift_balance(report.lump)?;
             }
             self.filter.update(Channel::Balance, r, z)?;
+            if settled {
+                self.lumps.days += 1;
+                if gated {
+                    self.lumps.amounts.push(report.lump);
+                }
+            }
             if adapt {
                 // E[ν²] = S, of which g days of spending contribute g·σ_s².
                 let g = f64::from(self.days_since_balance);
