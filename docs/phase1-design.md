@@ -391,7 +391,8 @@ crates/ephemeris-core/src/
   schedule.rs   detect_schedule(snapshot) -> Schedule { income: PayTiming, bills: Vec<BillStream> }
   forecast.rs   forecast(estimate, schedule, model, cfg) -> Cone (bands, P(b ≥ X))
   synth.rs      seeded generator with ground truth (§5)
-  metrics.rs    NEES, NIS, RMSE, interval coverage (shared by tests and CLI)
+  metrics.rs    CRPS (Gaussian, quantile grid, point); NEES, NIS, RMSE, interval
+                coverage to follow (shared by tests and CLI)
 ```
 
 `synth` and `metrics` are ordinary pure modules. If a binary doesn't use them,

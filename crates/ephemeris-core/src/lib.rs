@@ -11,6 +11,7 @@ pub mod error;
 pub mod forecast;
 pub mod kalman;
 pub mod linalg;
+pub mod metrics;
 pub mod model;
 pub mod observe;
 pub mod schedule;
