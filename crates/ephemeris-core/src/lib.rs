@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod adaptive;
 pub mod calendar;
 pub mod error;
 pub mod kalman;
