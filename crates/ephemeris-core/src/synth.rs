@@ -749,3 +749,646 @@ fn charge_days(cfg: &SubscriptionConfig, start: Day, end: Day, rng: &mut ChaCha8
     }
     days
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::calendar::{business_day_on_or_after, day_from_civil, is_business_day};
+    use std::collections::HashSet;
+
+    /// 2024-01-01, a Monday.
+    const MON: Day = 19_723;
+
+    fn mean_sd(xs: &[f64]) -> (f64, f64) {
+        let n = xs.len() as f64;
+        let mean = xs.iter().sum::<f64>() / n;
+        let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        (mean, var.sqrt())
+    }
+
+    fn of_kind(run: &SynthRun, kind: FlowKind) -> Vec<&SynthEvent> {
+        run.events.iter().filter(|e| e.kind == kind).collect()
+    }
+
+    fn pay_days(run: &SynthRun) -> Vec<Day> {
+        of_kind(run, FlowKind::Income)
+            .iter()
+            .map(|e| e.authorized_day)
+            .collect()
+    }
+
+    /// Model-matched config with frozen `c`, `m` so sample moments are easy to check.
+    fn stationary(n_days: u32) -> SynthConfig {
+        SynthConfig {
+            n_days,
+            q_c: 0.0,
+            q_m: 0.0,
+            ..SynthConfig::model_matched(MON)
+        }
+    }
+
+    #[test]
+    fn same_seed_same_output() {
+        for cfg in [SynthConfig::model_matched(MON), SynthConfig::realistic(MON)] {
+            let a = generate(&cfg, 42).unwrap();
+            let b = generate(&cfg, 42).unwrap();
+            assert_eq!(a, b);
+            // Bitwise, not just approximately.
+            for (x, y) in a.truth.iter().zip(&b.truth) {
+                assert_eq!(x.state.b.to_bits(), y.state.b.to_bits());
+            }
+        }
+    }
+
+    #[test]
+    fn different_seed_different_output() {
+        let cfg = SynthConfig::realistic(MON);
+        assert_ne!(generate(&cfg, 1).unwrap(), generate(&cfg, 2).unwrap());
+    }
+
+    #[test]
+    fn components_draw_from_independent_streams() {
+        let with = SynthConfig::realistic(MON);
+        let without = SynthConfig {
+            subscriptions: Vec::new(),
+            ..with.clone()
+        };
+        let a = generate(&with, 7).unwrap();
+        let b = generate(&without, 7).unwrap();
+        let strip = |run: &SynthRun| -> Vec<(Day, Day, u64, u64)> {
+            run.events
+                .iter()
+                .filter(|e| e.kind != FlowKind::Scheduled)
+                .map(|e| {
+                    (
+                        e.authorized_day,
+                        e.posted_day,
+                        e.final_amount.to_bits(),
+                        e.pending_amount.to_bits(),
+                    )
+                })
+                .collect()
+        };
+        assert_eq!(strip(&a), strip(&b));
+        let c_a: Vec<f64> = a.truth.iter().map(|t| t.state.c).collect();
+        let c_b: Vec<f64> = b.truth.iter().map(|t| t.state.c).collect();
+        assert_eq!(c_a, c_b);
+    }
+
+    /// Paychecks and `m` depend only on the state and income streams, so
+    /// switching spend, pending, posting, or weekday settings leaves them
+    /// bit-identical for the same seed.
+    #[test]
+    fn income_is_identical_across_modes() {
+        for seed in 0..5 {
+            let a = generate(&SynthConfig::model_matched(MON), seed).unwrap();
+            let b = generate(&SynthConfig::realistic(MON), seed).unwrap();
+            let pays = |run: &SynthRun| -> Vec<(Day, u64)> {
+                of_kind(run, FlowKind::Income)
+                    .iter()
+                    .map(|e| (e.authorized_day, e.final_amount.to_bits()))
+                    .collect()
+            };
+            assert_eq!(pays(&a), pays(&b));
+            let m = |run: &SynthRun| -> Vec<u64> {
+                run.truth.iter().map(|t| t.state.m.to_bits()).collect()
+            };
+            assert_eq!(m(&a), m(&b));
+        }
+    }
+
+    #[test]
+    fn truth_balance_is_cumulative_final_amounts() {
+        let run = generate(&SynthConfig::realistic(MON), 3).unwrap();
+        assert_eq!(run.truth.len(), 365);
+        let mut prev = run.initial.b;
+        for t in &run.truth {
+            let flow: f64 = run
+                .events
+                .iter()
+                .filter(|e| e.authorized_day == t.day)
+                .map(|e| e.final_amount)
+                .sum();
+            assert!((t.state.b - (prev + flow)).abs() < 1e-6, "day {}", t.day);
+            prev = t.state.b;
+        }
+        assert_eq!(run.truth_on(MON).unwrap(), &run.truth[0].state);
+        assert!(run.truth_on(MON - 1).is_none());
+        assert!(run.truth_on(MON + 365).is_none());
+    }
+
+    #[test]
+    fn zero_process_noise_freezes_c_and_m() {
+        let run = generate(&stationary(200), 5).unwrap();
+        assert!(
+            run.truth
+                .iter()
+                .all(|t| t.state.c == 60.0 && t.state.m == 2400.0)
+        );
+    }
+
+    #[test]
+    fn paychecks_follow_jittered_biweekly_schedule() {
+        let cfg = SynthConfig {
+            n_days: 730,
+            ..SynthConfig::realistic(MON)
+        };
+        let PaySchedule::Biweekly { anchor } = cfg.income.schedule else {
+            unreachable!()
+        };
+        let run = generate(&cfg, 11).unwrap();
+        let pays = of_kind(&run, FlowKind::Income);
+        assert!(pays.len() >= 50);
+        let mut off_schedule = 0;
+        for p in &pays {
+            assert!(is_business_day(p.authorized_day));
+            assert_eq!(
+                p.posted_day, p.authorized_day,
+                "direct deposit posts same day"
+            );
+            assert_eq!(p.stream, Some(INCOME_STREAM));
+            assert_eq!(p.account, CHECKING);
+            // Explained by some nominal date, a jitter of at most 1, and the
+            // business-day rollback (e.g. jittered onto Juneteenth → Wednesday).
+            let explained = cfg
+                .income
+                .schedule
+                .nominal_dates(p.authorized_day - 1, p.authorized_day + 4)
+                .into_iter()
+                .any(|n| (-1..=1).any(|j| PaySchedule::pay_date(n + j) == p.authorized_day));
+            assert!(explained, "payday {}", p.authorized_day);
+            let phase = (p.authorized_day - anchor).rem_euclid(14);
+            off_schedule += usize::from(phase != 0);
+        }
+        assert!(off_schedule > 0, "jitter_prob 0.3 should move some paydays");
+        for w in pays.windows(2) {
+            let gap = w[1].authorized_day - w[0].authorized_day;
+            assert!((12..=16).contains(&gap), "gap {gap}");
+        }
+    }
+
+    #[test]
+    fn no_jitter_pays_on_schedule_shifted_to_business_days() {
+        let schedules = [
+            PaySchedule::Weekly { anchor: MON + 4 },
+            PaySchedule::Biweekly { anchor: MON + 4 },
+            PaySchedule::SemiMonthly { days: [1, 15] },
+            PaySchedule::SemiMonthly { days: [15, 31] },
+            PaySchedule::Monthly { day: 1 },
+        ];
+        for schedule in schedules {
+            let mut cfg = SynthConfig::realistic(MON);
+            cfg.income.schedule = schedule;
+            cfg.income.jitter_prob = 0.0;
+            let run = generate(&cfg, 11).unwrap();
+            let expected: Vec<Day> = schedule
+                .nominal_dates(MON, MON + 364 + 3)
+                .into_iter()
+                .map(PaySchedule::pay_date)
+                .filter(|&d| (MON..MON + 365).contains(&d))
+                .collect();
+            assert_eq!(pay_days(&run), expected, "{schedule:?}");
+            assert!(pay_days(&run).iter().all(|&d| is_business_day(d)));
+        }
+    }
+
+    #[test]
+    fn semi_monthly_weekend_and_holiday_shifts() {
+        let mut cfg = SynthConfig::realistic(MON);
+        cfg.income.schedule = PaySchedule::SemiMonthly { days: [1, 15] };
+        cfg.income.jitter_prob = 0.0;
+        let pays = pay_days(&generate(&cfg, 0).unwrap());
+        let ymd = day_from_civil;
+        // 2024-06-15 is a Saturday: paid Friday the 14th.
+        assert!(pays.contains(&ymd(2024, 6, 14)) && !pays.contains(&ymd(2024, 6, 15)));
+        // 2024-09-01 is a Sunday before Labor Day: paid Friday 2024-08-30.
+        assert!(pays.contains(&ymd(2024, 8, 30)));
+        // 2024-01-01 is New Year's Day: paid the previous Friday, outside the horizon.
+        // 2024-01-15 is MLK Day: paid Friday the 12th.
+        assert!(!pays.contains(&ymd(2024, 1, 1)));
+        assert_eq!(pays[0], ymd(2024, 1, 12));
+    }
+
+    #[test]
+    fn subscription_dates_drift_as_a_random_walk() {
+        let mut cfg = SynthConfig {
+            n_days: 3650,
+            ..SynthConfig::realistic(MON)
+        };
+        cfg.subscriptions = vec![
+            SubscriptionConfig {
+                amount: 10.0,
+                first_day: MON,
+                period_days: 30,
+                drift_prob: 0.0,
+            },
+            SubscriptionConfig {
+                amount: 20.0,
+                first_day: MON,
+                period_days: 30,
+                drift_prob: 1.0,
+            },
+        ];
+        let run = generate(&cfg, 9).unwrap();
+        let days = |i: usize| -> Vec<Day> {
+            run.events
+                .iter()
+                .filter(|e| e.stream == Some(subscription_stream(i)))
+                .map(|e| e.authorized_day)
+                .collect()
+        };
+        let fixed = days(0);
+        assert!(fixed.windows(2).all(|w| w[1] - w[0] == 30));
+
+        let drifting = days(1);
+        assert!(drifting.len() > 100);
+        assert!(
+            drifting
+                .windows(2)
+                .all(|w| (29..=31).contains(&(w[1] - w[0])))
+        );
+        // With a slip on every charge, the phase must wander from the fixed schedule.
+        let max_drift = drifting
+            .iter()
+            .enumerate()
+            .map(|(k, &d)| (d - (MON + 30 * k as Day)).abs())
+            .max()
+            .unwrap();
+        assert!(max_drift >= 3, "max drift {max_drift}");
+
+        for e in of_kind(&run, FlowKind::Scheduled) {
+            assert!(e.final_amount < 0.0);
+        }
+    }
+
+    #[test]
+    fn posting_lags_are_business_days_within_bound() {
+        let run = generate(&SynthConfig::realistic(MON), 4).unwrap();
+        let mut lagged = 0;
+        for e in &run.events {
+            assert!(e.posted_day >= e.authorized_day);
+            assert!(is_business_day(e.posted_day));
+            // Lag is counted from the first business day on or after authorization.
+            let first = business_day_on_or_after(e.authorized_day);
+            let lag = (first + 1..=e.posted_day)
+                .filter(|&d| is_business_day(d))
+                .count();
+            assert!(lag <= 3, "{e:?}");
+            lagged += usize::from(e.shows_pending());
+        }
+        assert!(lagged > run.events.len() / 2);
+    }
+
+    #[test]
+    fn transfers_net_to_zero() {
+        for cfg in [SynthConfig::model_matched(MON), SynthConfig::realistic(MON)] {
+            let run = generate(&cfg, 31).unwrap();
+            let legs = of_kind(&run, FlowKind::Transfer);
+            assert!(legs.len() >= 20, "{} legs", legs.len());
+            for (i, e) in run.events.iter().enumerate() {
+                if e.kind != FlowKind::Transfer {
+                    assert_eq!(e.counterpart, None);
+                    continue;
+                }
+                let other = &run.events[e.counterpart.unwrap()];
+                assert_eq!(other.counterpart, Some(i));
+                assert_eq!(e.final_amount + other.final_amount, 0.0);
+                assert_eq!(e.pending_amount, e.final_amount);
+                assert_eq!(e.authorized_day, other.authorized_day);
+                assert_ne!(e.account, other.account);
+                assert_eq!(e.stream, None);
+                if e.final_amount > 0.0 {
+                    assert!(!e.visible_while_pending);
+                    assert!(e.posted_day >= other.posted_day);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transfers_never_change_spending_income_or_truth() {
+        let with = SynthConfig::realistic(MON);
+        let mut without = with.clone();
+        without.transfers.daily_prob = 0.0;
+        let a = generate(&with, 32).unwrap();
+        let b = generate(&without, 32).unwrap();
+        let non_transfer = |run: &SynthRun| -> Vec<(Day, u64, FlowKind)> {
+            run.events
+                .iter()
+                .filter(|e| e.kind != FlowKind::Transfer)
+                .map(|e| (e.authorized_day, e.final_amount.to_bits(), e.kind))
+                .collect()
+        };
+        assert_eq!(non_transfer(&a), non_transfer(&b));
+        for (x, y) in a.truth.iter().zip(&b.truth) {
+            assert_eq!((x.state.c, x.state.m), (y.state.c, y.state.m));
+            assert!((x.state.b - y.state.b).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn incoming_transfer_leg_is_invisible_until_posted() {
+        let run = generate(&SynthConfig::model_matched(MON), 33).unwrap();
+        let (out, inc) = run
+            .events
+            .iter()
+            .filter(|e| e.kind == FlowKind::Transfer && e.final_amount < 0.0)
+            .map(|e| (e, &run.events[e.counterpart.unwrap()]))
+            .find(|(_, inc)| inc.posted_day > inc.authorized_day)
+            .expect("some transfer with a lagged incoming leg");
+        let snap = run.snapshot(out.authorized_day);
+        let ids: HashSet<TxnId> = snap.iter().map(|t| t.id).collect();
+        assert!(ids.contains(&out.pending_id) || ids.contains(&out.posted_id));
+        assert!(!ids.contains(&inc.pending_id) && !ids.contains(&inc.posted_id));
+
+        let posted = run.snapshot(inc.posted_day);
+        let t = posted.iter().find(|t| t.id == inc.posted_id).unwrap();
+        assert_eq!(t.kind, FlowKind::Transfer);
+        assert_eq!(t.pending_id, None);
+    }
+
+    #[test]
+    fn snapshot_shows_pending_then_posted() {
+        let run = generate(&SynthConfig::model_matched(MON), 8).unwrap();
+        let (idx, e) = run
+            .events
+            .iter()
+            .enumerate()
+            .find(|(_, e)| {
+                e.kind == FlowKind::Discretionary && e.posted_day - e.authorized_day >= 2
+            })
+            .unwrap();
+
+        let find = |as_of: Day, id: TxnId| run.snapshot(as_of).into_iter().find(|t| t.id == id);
+
+        // Not visible before authorization.
+        assert!(run.snapshot(e.authorized_day - 1).len() <= idx);
+        assert!(find(e.authorized_day - 1, e.pending_id).is_none());
+
+        let pending = find(e.authorized_day, e.pending_id).unwrap();
+        assert_eq!(pending.status, TxnStatus::Pending);
+        assert_eq!(pending.amount, e.pending_amount);
+        assert_eq!(pending.date, e.authorized_day);
+        assert_eq!(pending.pending_id, None);
+        assert!(find(e.posted_day - 1, e.pending_id).is_some());
+
+        let snap = run.snapshot(e.posted_day);
+        assert!(snap.iter().all(|t| t.id != e.pending_id));
+        let posted = snap.iter().find(|t| t.id == e.posted_id).unwrap();
+        assert_eq!(posted.status, TxnStatus::Posted);
+        assert_eq!(posted.amount, e.final_amount);
+        assert_eq!(posted.date, e.posted_day);
+        assert_eq!(posted.authorized_date, Some(e.authorized_day));
+        assert_eq!(posted.pending_id, Some(e.pending_id));
+    }
+
+    #[test]
+    fn snapshot_records_are_valid_and_unique() {
+        let run = generate(&SynthConfig::realistic(MON), 12).unwrap();
+        for as_of in [MON, MON + 100, MON + 364, MON + 400] {
+            let snap = run.snapshot(as_of);
+            let ids: HashSet<TxnId> = snap.iter().map(|t| t.id).collect();
+            assert_eq!(ids.len(), snap.len());
+            for t in &snap {
+                assert_eq!(t.validate(), Ok(()));
+                assert!(t.day() <= as_of);
+                if t.status == TxnStatus::Pending {
+                    assert!(t.authorized_date.is_some());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ledger_equals_truth_minus_unposted() {
+        let run = generate(&SynthConfig::realistic(MON), 13).unwrap();
+        for t in &run.truth {
+            let in_flight: f64 = run
+                .events
+                .iter()
+                .filter(|e| e.authorized_day <= t.day && e.posted_day > t.day)
+                .map(|e| e.final_amount)
+                .sum();
+            assert!((run.ledger_balance(t.day) - (t.state.b - in_flight)).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn missing_authorized_dates_only_on_posted_records() {
+        let mut cfg = SynthConfig::realistic(MON);
+        cfg.posting.missing_authorized_prob = 1.0;
+        let run = generate(&cfg, 14).unwrap();
+        let snap = run.snapshot(MON + 200);
+        assert!(snap.iter().any(|t| t.status == TxnStatus::Pending));
+        for t in &snap {
+            match t.status {
+                TxnStatus::Posted => assert_eq!(t.authorized_date, None),
+                TxnStatus::Pending => assert!(t.authorized_date.is_some()),
+            }
+        }
+
+        cfg.posting.missing_authorized_prob = 0.0;
+        let run = generate(&cfg, 14).unwrap();
+        assert!(
+            run.snapshot(MON + 200)
+                .iter()
+                .all(|t| t.authorized_date.is_some())
+        );
+    }
+
+    #[test]
+    fn gaussian_spend_matches_model_moments() {
+        let run = generate(&stationary(3650), 21).unwrap();
+        let spend: Vec<f64> = of_kind(&run, FlowKind::Discretionary)
+            .iter()
+            .map(|e| -e.final_amount)
+            .collect();
+        assert_eq!(spend.len(), 3650, "one net transaction per day");
+        let (mean, sd) = mean_sd(&spend);
+        assert!((mean - 60.0).abs() < 3.0, "mean {mean}");
+        assert!((sd - 40.0).abs() < 3.0, "sd {sd}");
+
+        let pay: Vec<f64> = of_kind(&run, FlowKind::Income)
+            .iter()
+            .map(|e| e.final_amount)
+            .collect();
+        let (mean, sd) = mean_sd(&pay);
+        assert!((mean - 2400.0).abs() < 15.0, "mean {mean}");
+        assert!((sd - 50.0).abs() < 12.0, "sd {sd}");
+    }
+
+    #[test]
+    fn gaussian_pending_noise_matches_design_r() {
+        let run = generate(&stationary(3650), 22).unwrap();
+        let z: Vec<f64> = run
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, FlowKind::Discretionary | FlowKind::Scheduled))
+            .map(|e| {
+                let sd = (0.2 * e.final_amount.abs()).max(20.0);
+                (e.pending_amount - e.final_amount) / sd
+            })
+            .collect();
+        let (mean, sd) = mean_sd(&z);
+        assert!(mean.abs() < 0.05, "mean {mean}");
+        assert!((sd - 1.0).abs() < 0.05, "sd {sd}");
+    }
+
+    #[test]
+    fn poisson_lognormal_spend_is_skewed_zero_inflated_and_weekly() {
+        let cfg = SynthConfig {
+            q_c: 0.0,
+            q_m: 0.0,
+            n_days: 3640, // whole weeks
+            ..SynthConfig::realistic(MON)
+        };
+        let run = generate(&cfg, 23).unwrap();
+        let mut daily = vec![0.0; 3640];
+        for e in of_kind(&run, FlowKind::Discretionary) {
+            assert!(e.final_amount < 0.0);
+            daily[(e.authorized_day - MON) as usize] -= e.final_amount;
+        }
+        let (mean, _) = mean_sd(&daily);
+        assert!((mean - 60.0).abs() < 3.0, "mean {mean}");
+        let zero_frac = daily.iter().filter(|&&s| s == 0.0).count() as f64 / 3640.0;
+        let expected = (-2.5f64).exp(); // P(Poisson(2.5) = 0)
+        assert!(
+            (zero_frac - expected).abs() < 0.02,
+            "zero fraction {zero_frac}"
+        );
+        // Saturday (factor 1.35) vs Sunday (0.8); the factors already average 1.
+        let by_weekday = |wd: usize| {
+            let xs: Vec<f64> = daily.iter().skip(wd).step_by(7).copied().collect();
+            mean_sd(&xs).0
+        };
+        let (sat, sun) = (by_weekday(5), by_weekday(6));
+        assert!((sat - 81.0).abs() < 8.0, "saturday {sat}");
+        assert!((sun - 48.0).abs() < 6.0, "sunday {sun}");
+    }
+
+    #[test]
+    fn realistic_pending_has_tips_and_holds() {
+        let run = generate(&SynthConfig::realistic(MON), 24).unwrap();
+        let disc = of_kind(&run, FlowKind::Discretionary);
+        let holds = disc.iter().filter(|e| e.pending_amount == -1.0).count();
+        let tips = disc
+            .iter()
+            .filter(|e| e.pending_amount != -1.0 && e.pending_amount > e.final_amount)
+            .count();
+        assert!(holds > 0 && tips > 0);
+        // A tip is never added at authorization: |pending| ≤ |final| unless it is a hold.
+        assert!(
+            disc.iter()
+                .filter(|e| e.pending_amount != -1.0)
+                .all(|e| e.pending_amount >= e.final_amount)
+        );
+        for e in of_kind(&run, FlowKind::Scheduled) {
+            assert_eq!(e.pending_amount, e.final_amount);
+        }
+    }
+
+    #[test]
+    fn empty_horizon() {
+        let run = generate(
+            &SynthConfig {
+                n_days: 0,
+                ..SynthConfig::realistic(MON)
+            },
+            1,
+        )
+        .unwrap();
+        assert!(run.truth.is_empty() && run.events.is_empty());
+        assert_eq!(run.ledger_balance(MON), run.initial.b);
+    }
+
+    #[test]
+    fn invalid_configs_are_rejected() {
+        let base = SynthConfig::model_matched(MON);
+        let with_income = |f: fn(&mut IncomeConfig)| {
+            let mut cfg = base.clone();
+            f(&mut cfg.income);
+            cfg
+        };
+        let bad: Vec<SynthConfig> = vec![
+            SynthConfig {
+                q_c: -1.0,
+                ..base.clone()
+            },
+            SynthConfig {
+                q_m: f64::NAN,
+                ..base.clone()
+            },
+            SynthConfig {
+                n_days: MAX_DAYS + 1,
+                ..base.clone()
+            },
+            SynthConfig {
+                spend: SpendModel::Gaussian { sigma: -1.0 },
+                ..base.clone()
+            },
+            SynthConfig {
+                spend: SpendModel::PoissonLogNormal {
+                    mean_count: 0.0,
+                    sigma_log: 1.0,
+                },
+                ..base.clone()
+            },
+            SynthConfig {
+                weekday_factors: [0.0; 7],
+                ..base.clone()
+            },
+            SynthConfig {
+                weekday_factors: [1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0],
+                ..base.clone()
+            },
+            with_income(|i| i.jitter_prob = 1.5),
+            with_income(|i| i.schedule = PaySchedule::Monthly { day: 0 }),
+            // Weekly pay cannot absorb ±2 days of jitter plus a 3-day rollback.
+            with_income(|i| {
+                i.schedule = PaySchedule::Weekly { anchor: 0 };
+                i.max_jitter_days = 2;
+            }),
+            SynthConfig {
+                subscriptions: vec![SubscriptionConfig {
+                    period_days: 2,
+                    ..base.subscriptions[0]
+                }],
+                ..base.clone()
+            },
+            SynthConfig {
+                transfers: TransferConfig {
+                    daily_prob: 2.0,
+                    ..base.transfers
+                },
+                ..base.clone()
+            },
+            SynthConfig {
+                posting: PostingConfig {
+                    missing_authorized_prob: -0.1,
+                    ..base.posting
+                },
+                ..base.clone()
+            },
+            SynthConfig {
+                pending: PendingModel::Gaussian {
+                    rel_sd: 0.2,
+                    min_sd: f64::INFINITY,
+                },
+                ..base.clone()
+            },
+        ];
+        for cfg in &bad {
+            assert!(
+                matches!(generate(cfg, 0), Err(EngineError::InvalidConfig(_))),
+                "{cfg:?}"
+            );
+        }
+        assert_eq!(base.validate(), Ok(()));
+        assert_eq!(SynthConfig::realistic(MON).validate(), Ok(()));
+        // Weekly pay with ±1 day of jitter is fine.
+        assert_eq!(
+            with_income(|i| i.schedule = PaySchedule::Weekly { anchor: 0 }).validate(),
+            Ok(())
+        );
+    }
+}
