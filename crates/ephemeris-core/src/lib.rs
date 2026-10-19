@@ -10,6 +10,7 @@ pub mod error;
 pub mod kalman;
 pub mod linalg;
 pub mod model;
+pub mod observe;
 pub mod synth;
 pub mod types;
 
