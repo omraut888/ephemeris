@@ -7,6 +7,7 @@
 
 pub mod calendar;
 pub mod error;
+pub mod synth;
 pub mod types;
 
 pub use error::EngineError;
