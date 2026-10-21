@@ -3,5 +3,12 @@ name = "ephemeris-cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "ephemeris"
+path = "src/main.rs"
+
 [dependencies]
-ephemeris-core = { version = "0.1.0", path = "../ephemeris-core" }
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
+serde = "1"
+clap = { version = "4", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }

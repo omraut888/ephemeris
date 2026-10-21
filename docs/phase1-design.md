@@ -523,9 +523,18 @@ secondary income streams.
 | `approx` | dev-only | `assert_relative_eq!`. nalgebra already depends on it, so it adds nothing. |
 | `serde` | 1, **optional** (`serde` feature, off by default) | Derives for the versioned JSON contracts in `schema` (feed in, forecast report out; see docs/forecast-schema.md). Off by default so WASM/UniFFI builds that don't need JSON never compile it. It doesn't touch `num-traits`, so determinism is unaffected. |
 
-No `chrono`, `rayon`, or `proptest` in the core for Phase 1. The CLI
-will need `serde`/`serde_json`, an HTTP client, and `.env` loading for Plaid;
-those will be justified when the CLI is designed. Versions get pinned through
+No `chrono`, `rayon`, or `proptest` in the core for Phase 1.
+
+### Dependencies (CLI)
+
+| Crate | Why |
+|---|---|
+| `clap` 4, `derive` | Subcommands, typed flags, range checks and `--help` for free. Hand-rolled parsing would be more code and worse errors. |
+| `serde_json` 1, `float_roundtrip` | Reads and writes the JSON contracts (docs/forecast-schema.md). `float_roundtrip` makes every f64 parse back bit-identical, so a feed written and reread drives the tracker exactly as the in-memory one would. |
+| `serde` 1 | Already in the graph through the core's `serde` feature. Named directly only for the generic read/write helpers. |
+
+The Plaid adapter will add an HTTP client and `.env` loading; those will be
+justified then. Versions get pinned through
 the committed `Cargo.lock`. Cross-platform bit-identity also depends on the
 crate versions, so upgrades must be deliberate.
 
