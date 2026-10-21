@@ -15,13 +15,23 @@
 //! and the clipped remainder updates normally. Gated income observations are
 //! skipped for `m`. Either way the variance estimator gets the clipped sample,
 //! so a too-small prior cannot lock every observation out.
+//!
+//! Regime changes (design §6): each channel's clipped innovations feed a
+//! [`ChangeDetector`]. On an alarm, the run's mean shift `Δ̂` becomes a
+//! zero-mean jump of variance `Δ̂²` in `c` (balance channel) or `m` (income
+//! channel), the matching noise estimate forgets back to its prior count, and
+//! the day's innovation is recomputed and re-gated before the update. A pay cut that would otherwise be gated for ever is learned from
+//! the second short paycheck. The detector also runs on the provisional tail,
+//! so a change shows in the live estimate before it settles; the tail's
+//! detector state is thrown away with the tail.
 
 use nalgebra::{Matrix3, Vector3};
 
 use crate::adaptive::{AdaptiveConfig, VarianceEstimate, VarianceEstimator, sample_weight};
+use crate::change::{ChangeConfig, ChangeDetector};
 use crate::error::EngineError;
 use crate::kalman::Innovation;
-use crate::model::{FinanceFilter, IDX_B, ModelParams};
+use crate::model::{FinanceFilter, IDX_B, IDX_C, IDX_M, ModelParams};
 use crate::observe::{FeedDay, ObserveConfig, ObservedFeed};
 use crate::types::{Channel, Day, Transaction};
 
@@ -48,6 +58,8 @@ pub struct TrackerConfig {
     pub income_var: AdaptiveConfig,
     /// NIS above which an innovation is gated (χ²₁ 99.9% ≈ 10.83).
     pub gate_nis: f64,
+    /// Regime-change detection on both channels; `None` turns it off.
+    pub change: Option<ChangeConfig>,
     pub prior: Prior,
     pub observe: ObserveConfig,
 }
@@ -73,6 +85,7 @@ impl TrackerConfig {
                 max: 1e8,
             },
             gate_nis: 10.83,
+            change: Some(ChangeConfig::default()),
             prior: Prior {
                 c_mean: 0.0,
                 c_sd: 100.0,
@@ -87,6 +100,9 @@ impl TrackerConfig {
         self.spend_var.validate()?;
         self.income_var.validate()?;
         self.observe.validate()?;
+        if let Some(c) = &self.change {
+            c.validate()?;
+        }
         ModelParams {
             spend_var: self.spend_var.prior,
             q_c: self.q_c,
@@ -139,14 +155,28 @@ pub struct GatedInnovation {
     pub gated: bool,
 }
 
+/// A detected regime change and the covariance jump it triggered.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Jump {
+    /// Balance: a jump in the spend rate `c`. Income: in the paycheck `m`.
+    pub channel: Channel,
+    /// Estimated change in the state, signed: $/day for `c` (positive means
+    /// more spending), $ per paycheck for `m`. Its square is the jump variance.
+    pub shift: f64,
+    /// Observations in the run that set off the alarm.
+    pub run_len: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DayReport {
     pub day: Day,
     /// Part of the settled checkpoint (false for the provisional tail).
     pub settled: bool,
+    /// After any jump: what the update actually used, before gating.
     pub innovations: Vec<GatedInnovation>,
     /// Unexplained flow absorbed into `b` by the balance gate.
     pub lump: f64,
+    pub jumps: Vec<Jump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +194,8 @@ struct FilterState {
     days_since_balance: u32,
     spend_var_since_balance: f64,
     lumps: LumpHistory,
+    balance_change: Option<ChangeDetector>,
+    income_change: Option<ChangeDetector>,
 }
 
 impl FilterState {
@@ -186,6 +218,8 @@ impl FilterState {
             days_since_balance: 0,
             spend_var_since_balance: 0.0,
             lumps: LumpHistory::default(),
+            balance_change: cfg.change.map(ChangeDetector::new).transpose()?,
+            income_change: cfg.change.map(ChangeDetector::new).transpose()?,
         })
     }
 
@@ -224,16 +258,27 @@ impl FilterState {
             settled,
             innovations: Vec::new(),
             lump: 0.0,
+            jumps: Vec::new(),
         };
 
         if let Some((z, r)) = fd.balance {
-            let inn = self.filter.innovation(Channel::Balance, r, z)?;
+            let g = f64::from(self.days_since_balance);
+            let mut inn = self.filter.innovation(Channel::Balance, r, z)?;
+            if let Some(det) = &mut self.balance_change
+                && let Some(alarm) = det.observe(clip(inn, gate), inn.s, g)?
+            {
+                // The balance fell by Δc more than predicted each day.
+                self.filter.add_jump(IDX_C, alarm.shift.powi(2))?;
+                self.spend.forget();
+                inn = self.filter.innovation(Channel::Balance, r, z)?;
+                report.jumps.push(Jump {
+                    channel: Channel::Balance,
+                    shift: -alarm.shift,
+                    run_len: alarm.run_len,
+                });
+            }
             let gated = inn.nis > gate;
-            let nu = if gated {
-                inn.nu.signum() * (gate * inn.s).sqrt()
-            } else {
-                inn.nu
-            };
+            let nu = clip(inn, gate);
             if gated {
                 report.lump = inn.nu - nu;
                 self.filter.shift_balance(report.lump)?;
@@ -247,7 +292,6 @@ impl FilterState {
             }
             if adapt {
                 // E[ν²] = S, of which g days of spending contribute g·σ_s².
-                let g = f64::from(self.days_since_balance);
                 let spend_part = self.spend_var_since_balance;
                 let sample = (nu * nu - inn.s + spend_part) / g;
                 self.spend
@@ -264,7 +308,19 @@ impl FilterState {
 
         for &amount in &fd.income {
             let r = self.income.value();
-            let inn = self.filter.innovation(Channel::Income, r, amount)?;
+            let mut inn = self.filter.innovation(Channel::Income, r, amount)?;
+            if let Some(det) = &mut self.income_change
+                && let Some(alarm) = det.observe(clip(inn, gate), inn.s, 1.0)?
+            {
+                self.filter.add_jump(IDX_M, alarm.shift.powi(2))?;
+                self.income.forget();
+                inn = self.filter.innovation(Channel::Income, r, amount)?;
+                report.jumps.push(Jump {
+                    channel: Channel::Income,
+                    shift: alarm.shift,
+                    run_len: alarm.run_len,
+                });
+            }
             let gated = inn.nis > gate;
             if !gated {
                 self.filter.update(Channel::Income, r, amount)?;
@@ -387,6 +443,12 @@ impl Tracker {
         self.live = Some(live.estimate(settled_through, feed.shared_variance()));
         Ok(IngestReport { rebuilt, days })
     }
+}
+
+/// The innovation with its excess beyond the gate removed (Huber clip).
+fn clip(inn: Innovation, gate: f64) -> f64 {
+    let bound = (gate * inn.s).sqrt();
+    inn.nu.clamp(-bound, bound)
 }
 
 /// Amounts recomputed from a later snapshot can differ in the last bits
@@ -543,6 +605,99 @@ mod tests {
         assert!(income[9].gated);
         let m = t.estimate().unwrap().x[IDX_M];
         assert!((m - 2010.0).abs() < 20.0, "m = {m}");
+    }
+
+    /// Biweekly paychecks of 2000, then a 20% pay cut. One short paycheck
+    /// is gated like a one-off deduction; the second sets off the income
+    /// detector and `m` follows.
+    #[test]
+    fn pay_cut_is_learned_from_the_second_short_paycheck() {
+        let mut txns = Vec::new();
+        let mut balance = 1000.0;
+        for k in 0..14 {
+            let amount = if k < 10 { 2000.0 } else { 1600.0 };
+            txns.push(posted(k as u64, START + 14 * k, amount, FlowKind::Income));
+            balance += amount;
+        }
+        let today = START + 14 * 13;
+        let run = |change| {
+            let mut tcfg = TrackerConfig::new(START);
+            tcfg.change = change;
+            let mut t = Tracker::new(tcfg).unwrap();
+            let report = t.ingest(&txns, balance, today).unwrap();
+            let income: Vec<(Day, bool, Vec<Jump>)> = report
+                .days
+                .iter()
+                .filter(|d| !d.jumps.is_empty() || d.innovations.len() > 1)
+                .map(|d| (d.day, d.innovations[1].gated, d.jumps.clone()))
+                .collect();
+            (t.estimate().unwrap().x[IDX_M], income)
+        };
+
+        let (m, income) = run(Some(ChangeConfig::default()));
+        assert!(income[..10].iter().all(|(_, g, j)| !g && j.is_empty()));
+        let (day, gated, jumps) = &income[10];
+        assert!(
+            *gated && jumps.is_empty(),
+            "first short paycheck: gated only"
+        );
+        assert_eq!(*day, START + 140);
+        let (_, gated, jumps) = &income[11];
+        assert!(!gated, "re-gated after the jump, and accepted");
+        assert_eq!(jumps.len(), 1);
+        assert_eq!(jumps[0].channel, Channel::Income);
+        assert!(jumps[0].shift < -150.0, "{:?}", jumps[0]);
+        assert!((m - 1600.0).abs() < 30.0, "m = {m}");
+
+        // Without the detector the short paychecks are gated until R̂_inc's
+        // clipped samples widen the gate, and m is still far off at the end.
+        let (m, income) = run(None);
+        assert!(income[10].1 && income[11].1);
+        assert!(m > 1900.0, "m = {m}");
+    }
+
+    /// 60 quiet days at 50/day, then 150/day: the balance detector fires
+    /// within days, `c` catches up, and `P_cc` shows the uncertainty.
+    #[test]
+    fn spend_step_sets_off_a_jump_in_c() {
+        let day_spend = |i: u64| if i < 60 { 50.0 } else { 150.0 };
+        let txns: Vec<Transaction> = (0..90)
+            .map(|i| {
+                // ±20 alternating, so innovations are not all identical.
+                let wiggle = if i % 2 == 0 { 20.0 } else { -20.0 };
+                posted(
+                    i,
+                    START + i as Day,
+                    -(day_spend(i) + wiggle),
+                    FlowKind::Discretionary,
+                )
+            })
+            .collect();
+        let ledger = |n: usize| 10_000.0 + txns[..n].iter().map(|t| t.amount).sum::<f64>();
+        let mut t = Tracker::new(TrackerConfig::new(START)).unwrap();
+        let mut jumps = Vec::new();
+        let mut c_sd_before = f64::INFINITY;
+        for k in 59..90 {
+            let report = t
+                .ingest(&txns[..=k], ledger(k + 1), START + k as Day)
+                .unwrap();
+            for d in &report.days {
+                jumps.extend(d.jumps.iter().map(|j| (d.day - START, *j)));
+            }
+            if k == 59 {
+                c_sd_before = t.estimate().unwrap().p[(IDX_C, IDX_C)].sqrt();
+            }
+            let c_sd = t.estimate().unwrap().p[(IDX_C, IDX_C)].sqrt();
+            if report.days.iter().any(|d| !d.jumps.is_empty()) {
+                assert!(c_sd > 4.0 * c_sd_before, "sd {c_sd} vs {c_sd_before}");
+            }
+        }
+        let (day, jump) = jumps[0];
+        assert!((60..=64).contains(&day), "first jump on day {day}");
+        assert_eq!(jump.channel, Channel::Balance);
+        assert!(jump.shift > 50.0, "{jump:?}");
+        let c = t.estimate().unwrap().x[IDX_C];
+        assert!((c - 150.0).abs() < 10.0, "c = {c}");
     }
 
     #[test]
