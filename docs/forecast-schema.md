@@ -45,7 +45,9 @@ all linked depository accounts.
       "amount": -48.19,
       "kind": "discretionary",
       "stream": null,
-      "pending_id": 1041
+      "pending_id": 1041,
+      "merchant_name": "Target",
+      "description": "INTERAC PURCHASE - 67200 TARGET"
     }
   ]
 }
@@ -71,6 +73,8 @@ Each transaction:
 | `kind` | `"income"` \| `"scheduled"` \| `"discretionary"` \| `"transfer"` | How the flow enters the model (design §0–§1). `income` is the primary paycheck only. |
 | `stream` | integer or null | Recurring stream (an employer or a subscription). Bill detection groups `scheduled` records by it. |
 | `pending_id` | integer or null | On a posted record, the pending record it replaces. Must be null on pending records. |
+| `merchant_name` | string or null | Display name of the counterparty (Plaid `merchant_name`). For display only; the engine never reads it. |
+| `description` | string or null | The bank's description line (Plaid `name`). For display only. |
 
 ## Forecast report
 

@@ -6,6 +6,7 @@
 mod cone;
 mod files;
 mod forecast;
+mod plaid;
 mod simulate;
 
 use std::path::PathBuf;
@@ -36,6 +37,18 @@ enum Command {
         /// First day of history.
         #[arg(long, default_value = "2024-01-01", value_parser = parse_date)]
         start: Day,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Convert raw Plaid responses (scripts/fetch_plaid_sandbox.py) into a feed.
+    ImportPlaid {
+        /// Directory holding transactions_sync.json, accounts_balance.json
+        /// and fetch_meta.json.
+        #[arg(long, default_value = "data/sandbox")]
+        raw: PathBuf,
+        /// The snapshot day; defaults to fetch_meta.json's fetched_on.
+        #[arg(long, value_parser = parse_date)]
+        today: Option<Day>,
         #[arg(long)]
         out: PathBuf,
     },
@@ -84,6 +97,7 @@ fn main() -> ExitCode {
             start,
             out,
         } => simulate::run(seed, days, mode, start, &out),
+        Command::ImportPlaid { raw, today, out } => plaid::run(&raw, today, &out),
         Command::Forecast {
             input,
             horizon,

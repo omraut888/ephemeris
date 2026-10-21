@@ -103,6 +103,12 @@ pub struct FeedTransaction {
     pub stream: Option<u32>,
     #[serde(default)]
     pub pending_id: Option<u64>,
+    /// Display name of the counterparty (Plaid `merchant_name`), if known.
+    #[serde(default)]
+    pub merchant_name: Option<String>,
+    /// The bank's description line (Plaid `name`), if any.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 impl From<&Transaction> for FeedTransaction {
@@ -117,6 +123,8 @@ impl From<&Transaction> for FeedTransaction {
             kind: t.kind,
             stream: t.stream.map(|s| s.0),
             pending_id: t.pending_id.map(|p| p.0),
+            merchant_name: None,
+            description: None,
         }
     }
 }
@@ -148,6 +156,16 @@ impl Feed {
         }
     }
 
+    /// The same feed with every amount and the ledger balance rounded to
+    /// cents, as a bank reports them.
+    pub fn rounded_to_cents(mut self) -> Self {
+        self.ledger_balance = cents(self.ledger_balance);
+        for t in &mut self.transactions {
+            t.amount = cents(t.amount);
+        }
+        self
+    }
+
     /// The records as engine transactions, after checking the version.
     pub fn transactions(&self) -> Result<Vec<Transaction>, EngineError> {
         if self.schema_version != SCHEMA_VERSION {
@@ -155,6 +173,11 @@ impl Feed {
         }
         Ok(self.transactions.iter().map(Transaction::from).collect())
     }
+}
+
+/// Nearest cent. `+ 0.0` turns a rounded `-0.0` into `0.0`.
+fn cents(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0 + 0.0
 }
 
 /// A scalar estimate with its ±2σ range.
@@ -406,6 +429,33 @@ mod tests {
             (t.authorized_date, t.stream, t.pending_id),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn rounding_to_cents() {
+        let mut feed = Feed::new(0, 0, 1234.5678, &[]);
+        feed.transactions = [48.2542, -0.004, 2.675, -15.607_323]
+            .iter()
+            .enumerate()
+            .map(|(i, &amount)| FeedTransaction {
+                id: i as u64,
+                account: 0,
+                date: Date(0),
+                authorized_date: None,
+                status: TxnStatus::Posted,
+                amount,
+                kind: FlowKind::Discretionary,
+                stream: None,
+                pending_id: None,
+                merchant_name: None,
+                description: None,
+            })
+            .collect();
+        let feed = feed.rounded_to_cents();
+        assert_eq!(feed.ledger_balance, 1234.57);
+        let amounts: Vec<f64> = feed.transactions.iter().map(|t| t.amount).collect();
+        assert_eq!(amounts, [48.25, 0.0, 2.68, -15.61]);
+        assert!(amounts[1].is_sign_positive());
     }
 
     #[test]
