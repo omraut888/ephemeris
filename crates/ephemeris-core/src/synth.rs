@@ -31,6 +31,8 @@ pub const SAVINGS: AccountId = AccountId(1);
 
 /// Stream id of the primary income.
 pub const INCOME_STREAM: StreamId = StreamId(0);
+/// Display name of the primary income stream.
+pub const INCOME_NAME: &str = "Payroll";
 
 /// Stream id of the `i`-th configured subscription.
 pub fn subscription_stream(i: usize) -> StreamId {
@@ -95,6 +97,8 @@ pub struct IncomeConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SubscriptionConfig {
+    /// Display name for the stream, as a bank feed's merchant name would be.
+    pub name: &'static str,
     /// Charge size, positive (emitted as an outflow).
     pub amount: f64,
     /// First charge; must not precede `start_day`.
@@ -199,7 +203,8 @@ impl SynthConfig {
         let first_friday = (start_day..)
             .find(|&d| weekday(d) == 4)
             .unwrap_or(start_day);
-        let sub = |amount, offset, drift_prob| SubscriptionConfig {
+        let sub = |name, amount, offset, drift_prob| SubscriptionConfig {
+            name,
             amount,
             first_day: start_day + offset,
             period_days: 30,
@@ -226,10 +231,10 @@ impl SynthConfig {
                 max_jitter_days: 1,
             },
             subscriptions: vec![
-                sub(1500.0, 0, 0.05),
-                sub(15.99, 4, 0.2),
-                sub(40.0, 11, 0.2),
-                sub(65.0, 19, 0.1),
+                sub("Rent", 1500.0, 0, 0.05),
+                sub("Streaming", 15.99, 4, 0.2),
+                sub("Phone", 40.0, 11, 0.2),
+                sub("Gym", 65.0, 19, 0.1),
             ],
             transfers: TransferConfig {
                 daily_prob: 0.05,
@@ -977,12 +982,14 @@ mod tests {
         };
         cfg.subscriptions = vec![
             SubscriptionConfig {
+                name: "A",
                 amount: 10.0,
                 first_day: MON,
                 period_days: 30,
                 drift_prob: 0.0,
             },
             SubscriptionConfig {
+                name: "B",
                 amount: 20.0,
                 first_day: MON,
                 period_days: 30,

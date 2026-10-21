@@ -87,6 +87,7 @@ Each transaction:
   "spend_rate":        { "mean": 58.7,   "sd": 4.1,  "low_2sd": 50.5,   "high_2sd": 66.9 },
   "expected_paycheck": { "mean": 2391.0, "sd": 22.8, "low_2sd": 2345.4, "high_2sd": 2436.6 },
   "income": {
+    "name": "Sweetgreen",
     "cadence": { "kind": "biweekly", "anchor": "2024-01-05" },
     "last_paid_nominal": "2024-12-20",
     "next_scheduled": "2025-01-03",
@@ -94,10 +95,10 @@ Each transaction:
     "fit_cost": 9
   },
   "bills": [
-    { "stream": 100, "amount": -1500.0, "period_days": 31,
+    { "stream": 100, "name": "Rent", "amount": -1500.0, "period_days": 31,
       "monthly_on": { "day": 1, "shift": "next_business_day" },
       "last_charged": "2024-12-02", "next_due": "2025-01-02" },
-    { "stream": 101, "amount": -15.99, "period_days": 30, "monthly_on": null,
+    { "stream": 101, "name": "Netflix", "amount": -15.99, "period_days": 30, "monthly_on": null,
       "last_charged": "2024-12-11", "next_due": "2025-01-10" }
   ],
   "forecast": {
@@ -133,6 +134,7 @@ a forecast.
 
 | Field | Type | Meaning |
 |---|---|---|
+| `name` | string or null | The payer's name from the latest paycheck (merchant name, else description). |
 | `cadence` | object, tagged by `kind` | `{"kind":"weekly","anchor":date}`, `{"kind":"biweekly","anchor":date}`, `{"kind":"semi_monthly","days":[d1,d2]}`, or `{"kind":"monthly","day":d}`. A day of the month past the end of a month means its last day. |
 | `last_paid_nominal` | date | Nominal date of the most recent observed paycheck. |
 | `next_scheduled` | date or null | The next nominal date, moved to the previous business day (US Federal Reserve calendar), before timing jitter. |
@@ -144,6 +146,7 @@ a forecast.
 | Field | Type | Meaning |
 |---|---|---|
 | `stream` | integer | The feed's stream id. |
+| `name` | string or null | From the stream's latest named record: merchant name, else description. |
 | `amount` | number | Latest posted charge, signed. |
 | `period_days` | integer | Median gap between charges. |
 | `monthly_on` | object or null | Set when the bill is charged on a fixed day of the month: `{ "day": 1–31, "shift": "none" \| "previous_business_day" \| "next_business_day" }`. A day past the end of a month means its last day. `shift` says how a weekend or bank-holiday date moves. When it's null, the bill recurs every `period_days`, with drift. |

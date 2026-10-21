@@ -13,6 +13,7 @@
 //! in the account's local calendar. Documented in docs/forecast-schema.md;
 //! change the two together, and bump the version on any breaking change.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -145,6 +146,17 @@ impl From<&FeedTransaction> for Transaction {
     }
 }
 
+impl FeedTransaction {
+    /// Merchant name, else description, if either is non-empty.
+    pub fn display_name(&self) -> Option<&str> {
+        [self.merchant_name.as_deref(), self.description.as_deref()]
+            .into_iter()
+            .flatten()
+            .map(str::trim)
+            .find(|s| !s.is_empty())
+    }
+}
+
 impl Feed {
     pub fn new(history_start: Day, today: Day, ledger_balance: f64, txns: &[Transaction]) -> Self {
         Self {
@@ -164,6 +176,35 @@ impl Feed {
             t.amount = cents(t.amount);
         }
         self
+    }
+
+    /// Display name per stream, from its most recent named record.
+    pub fn stream_names(&self) -> BTreeMap<u32, String> {
+        let mut latest: BTreeMap<u32, (Day, u64, &str)> = BTreeMap::new();
+        for t in &self.transactions {
+            let (Some(stream), Some(name)) = (t.stream, t.display_name()) else {
+                continue;
+            };
+            let key = (t.authorized_date.unwrap_or(t.date).0, t.id, name);
+            let e = latest.entry(stream).or_insert(key);
+            if (key.0, key.1) > (e.0, e.1) {
+                *e = key;
+            }
+        }
+        latest
+            .into_iter()
+            .map(|(s, (_, _, n))| (s, n.to_string()))
+            .collect()
+    }
+
+    /// Display name of the most recent posted income record.
+    pub fn income_name(&self) -> Option<String> {
+        self.transactions
+            .iter()
+            .filter(|t| t.kind == FlowKind::Income && t.status == TxnStatus::Posted)
+            .filter_map(|t| Some((t.authorized_date.unwrap_or(t.date), t.id, t.display_name()?)))
+            .max_by_key(|&(d, id, _)| (d, id))
+            .map(|(_, _, n)| n.to_string())
     }
 
     /// The records as engine transactions, after checking the version.
@@ -228,6 +269,9 @@ impl From<PaySchedule> for PayCadence {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IncomeReport {
+    /// Payer's display name from the latest paycheck, if the feed has one.
+    #[serde(default)]
+    pub name: Option<String>,
     pub cadence: PayCadence,
     /// Nominal date of the most recent observed paycheck.
     pub last_paid_nominal: Date,
@@ -272,6 +316,9 @@ pub struct MonthlyOn {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BillReport {
     pub stream: u32,
+    /// Display name from the stream's latest record, if the feed has one.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Latest charged amount, signed (negative for an outflow).
     pub amount: f64,
     /// Median gap between charges.
@@ -324,15 +371,19 @@ pub struct ForecastReport {
 
 impl ForecastReport {
     /// Assemble the report. Horizon and levels come from `cone`; `cfg`
-    /// supplies the path count and seed that produced it.
+    /// supplies the path count and seed that produced it; `feed` supplies
+    /// display names.
     pub fn new(
+        feed: &Feed,
         est: &StateEstimate,
         schedule: &Schedule,
         cone: &Cone,
         cfg: &ForecastConfig,
     ) -> Self {
         let state = |i: usize| Estimate::from_variance(est.x[i], est.p[(i, i)]);
+        let names = feed.stream_names();
         let income = schedule.income.as_ref().map(|t| IncomeReport {
+            name: feed.income_name(),
             cadence: t.schedule.into(),
             last_paid_nominal: Date(t.last_paid_nominal),
             next_scheduled: t
@@ -348,6 +399,7 @@ impl ForecastReport {
             .iter()
             .map(|b| BillReport {
                 stream: b.stream.0,
+                name: names.get(&b.stream.0).cloned(),
                 amount: b.amount,
                 period_days: b.period_days,
                 monthly_on: b.day_of_month.map(|a| MonthlyOn {
@@ -540,7 +592,63 @@ mod tests {
         cfg.n_paths = 50;
         let model = ForecastModel { q_c: 0.0, q_m: 0.0 };
         let cone = forecast(&est, &schedule, &model, &cfg).unwrap();
-        let r = ForecastReport::new(&est, &schedule, &cone, &cfg);
+        let mut feed = Feed::new(t0 - 60, t0, 1000.0, &[]);
+        let named = |id, day, kind, stream: Option<u32>, merchant: Option<&str>, desc: &str| {
+            FeedTransaction {
+                id,
+                account: 0,
+                date: Date(day),
+                authorized_date: Some(Date(day)),
+                status: TxnStatus::Posted,
+                amount: -900.0,
+                kind,
+                stream,
+                pending_id: None,
+                merchant_name: merchant.map(str::to_string),
+                description: Some(desc.to_string()),
+            }
+        };
+        feed.transactions = vec![
+            named(
+                1,
+                t0 - 55,
+                FlowKind::Scheduled,
+                Some(3),
+                Some("Old name"),
+                "x",
+            ),
+            named(
+                2,
+                t0 - 25,
+                FlowKind::Scheduled,
+                Some(3),
+                None,
+                "ACME RENT ACH",
+            ),
+            named(
+                3,
+                t0 - 16,
+                FlowKind::Income,
+                None,
+                Some("Employer"),
+                "PAYROLL",
+            ),
+            named(
+                4,
+                t0,
+                FlowKind::Income,
+                None,
+                Some("  "),
+                "Employer Inc payroll",
+            ),
+        ];
+        assert_eq!(feed.stream_names()[&3], "ACME RENT ACH");
+        let r = ForecastReport::new(&feed, &est, &schedule, &cone, &cfg);
+        assert_eq!(
+            r.income.as_ref().unwrap().name.as_deref(),
+            Some("Employer Inc payroll")
+        );
+        assert_eq!(r.bills[0].name.as_deref(), Some("ACME RENT ACH"));
 
         assert_eq!(r.schema_version, SCHEMA_VERSION);
         assert_eq!((r.as_of, r.settled_through), (Date(t0), Date(t0 - 2)));

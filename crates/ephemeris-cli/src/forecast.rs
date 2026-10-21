@@ -60,7 +60,7 @@ fn build_report(args: &Args) -> Result<ForecastReport, String> {
     };
     let cone = forecast(est, &schedule, &ForecastModel::from_tracker(&tcfg), &fcfg)
         .map_err(|e| format!("forecast: {e}"))?;
-    Ok(ForecastReport::new(est, &schedule, &cone, &fcfg))
+    Ok(ForecastReport::new(&feed, est, &schedule, &cone, &fcfg))
 }
 
 fn print_report(r: &ForecastReport) {
@@ -86,8 +86,12 @@ fn print_report(r: &ForecastReport) {
             let next = inc
                 .next_scheduled
                 .map_or_else(|| "none".to_string(), |d| d.to_string());
+            let payer = inc
+                .name
+                .as_deref()
+                .map_or_else(String::new, |n| format!("{n}, "));
             println!(
-                "  Pay schedule {}, next {next} (last paid {})",
+                "  Pay schedule {payer}{}, next {next} (last paid {})",
                 cadence(&inc.cadence),
                 inc.last_paid_nominal
             );
@@ -109,9 +113,13 @@ fn print_report(r: &ForecastReport) {
                 Some(on) => format!("monthly on the {}{}", ordinal(on.day), shift_note(on.shift)),
                 None => format!("every {} days", b.period_days),
             };
+            let name = b
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("stream {}", b.stream));
             println!(
-                "    stream {:<5} {:>11}  {cadence:<40} last {}   next {}",
-                b.stream,
+                "    {:<22} {:>11}  {cadence:<40} last {}   next {}",
+                truncate(&name, 22),
                 money(b.amount),
                 b.last_charged,
                 b.next_due
@@ -161,6 +169,14 @@ fn cadence(c: &PayCadence) -> String {
             format!("semi-monthly on the {} and {}", ordinal(*a), ordinal(*b))
         }
         PayCadence::Monthly { day } => format!("monthly on the {}", ordinal(*day)),
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max - 1).chain(['~']).collect()
     }
 }
 

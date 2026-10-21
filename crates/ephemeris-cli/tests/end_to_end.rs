@@ -75,7 +75,8 @@ fn simulate_then_forecast() {
         "EPHEMERIS forecast as of 2024-07-18",
         "Balance ",
         "Spend rate",
-        "Pay schedule biweekly",
+        "Pay schedule Payroll, biweekly",
+        "Rent ",
         "Recurring bills:",
         "Balance quantiles (400 paths, seed 5)",
         "  7 days  2024-07-25",
@@ -103,6 +104,12 @@ fn simulate_then_forecast() {
         Some(PayCadence::Biweekly { .. })
     ));
     assert_eq!(r.bills.len(), 4, "the generator has four subscriptions");
+    let names: Vec<Option<&str>> = r.bills.iter().map(|b| b.name.as_deref()).collect();
+    assert_eq!(
+        names,
+        [Some("Rent"), Some("Streaming"), Some("Phone"), Some("Gym")]
+    );
+    assert_eq!(r.income.as_ref().unwrap().name.as_deref(), Some("Payroll"));
 
     let f = &r.forecast;
     assert_eq!((f.horizon_days, f.paths, f.seed), (60, 400, 5));
