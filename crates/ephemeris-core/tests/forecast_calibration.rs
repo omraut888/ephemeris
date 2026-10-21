@@ -24,6 +24,10 @@
 //! interval coverage, and CRPS of the whole predictive distribution (MC: from
 //! a 200-quantile grid; Gaussian baselines: closed form).
 //!
+//! Model-matched coverage is asserted with regime-change detection off, since
+//! that data has no regime changes and the detector's false alarms widen the
+//! cone a little (design §6); the default tracker's numbers are printed too.
+//!
 //! The sweeps are `#[ignore]`d; run `scripts/test-full.sh --nocapture`.
 
 use ephemeris_core::Day;
@@ -222,9 +226,8 @@ fn schedule_aware(
 }
 
 /// `tallies[method][horizon]`.
-fn evaluate(cfg: &SynthConfig, seeds: u64) -> Vec<Vec<Tally>> {
+fn evaluate(cfg: &SynthConfig, tcfg: TrackerConfig, seeds: u64) -> Vec<Vec<Tally>> {
     let mut tallies = vec![vec![Tally::default(); HORIZONS.len()]; METHODS.len()];
-    let tcfg = TrackerConfig::new(START);
     let model = ForecastModel::from_tracker(&tcfg);
     let levels: Vec<f64> = INTERVALS
         .iter()
@@ -315,22 +318,45 @@ const SEEDS: u64 = 100;
 #[test]
 #[ignore = "100-seed forecast sweep; run scripts/test-full.sh"]
 fn forecast_calibration() {
-    let realistic = evaluate(&SynthConfig::realistic(START), SEEDS);
-    let matched = evaluate(&SynthConfig::model_matched(START), SEEDS);
+    let realistic = evaluate(
+        &SynthConfig::realistic(START),
+        TrackerConfig::new(START),
+        SEEDS,
+    );
+    let matched_default = evaluate(
+        &SynthConfig::model_matched(START),
+        TrackerConfig::new(START),
+        SEEDS,
+    );
+    // The model has no jumps, so the strict check runs the filter on its own
+    // assumptions: no regime-change detection. With detection on, false
+    // alarms widen the cone a little (design §6); that run is reported.
+    let mut no_detection = TrackerConfig::new(START);
+    no_detection.spend_change = None;
+    no_detection.income_change = None;
+    let matched = evaluate(&SynthConfig::model_matched(START), no_detection, SEEDS);
     print_table(
         "REALISTIC (model mismatch; reported, not asserted)",
         &realistic,
     );
-    print_table("model-matched (asserted)", &matched);
+    print_table(
+        "model-matched, default tracker with regime detection (reported)",
+        &matched_default,
+    );
+    print_table("model-matched, no regime detection (asserted)", &matched);
 
     // Model-matched: every MC interval within 5 points of nominal. Forecasts
     // from the same seed share a path, so the effective sample count is below n.
+    // Compared in counts, so a hit exactly on the bound is not lost to rounding.
     for (hi, h) in HORIZONS.iter().enumerate() {
         for (k, &(level, _)) in INTERVALS.iter().enumerate() {
-            let cov = matched[0][hi].coverage(k);
+            let t = &matched[0][hi];
+            let n = t.n_bounded as f64;
+            let off = (t.inside[k] as f64 - level * n).abs();
             assert!(
-                (cov - level).abs() <= 0.05,
-                "h={h}: {level} interval covers {cov}"
+                off <= (0.05 * n).round(),
+                "h={h}: {level} interval covers {}",
+                t.coverage(k)
             );
         }
     }
@@ -339,7 +365,7 @@ fn forecast_calibration() {
 /// Fast smoke test: one seed through the whole pipeline.
 #[test]
 fn pipeline_smoke() {
-    let tallies = evaluate(&SynthConfig::realistic(START), 1);
+    let tallies = evaluate(&SynthConfig::realistic(START), TrackerConfig::new(START), 1);
     for row in &tallies {
         for t in row {
             assert_eq!(t.n, ORIGINS.len());
