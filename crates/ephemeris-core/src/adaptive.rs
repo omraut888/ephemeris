@@ -105,6 +105,14 @@ impl VarianceEstimator {
         }
     }
 
+    /// Keep the value but cut its support back to the prior's pseudo-count,
+    /// after a regime change made the old samples less relevant (design §6).
+    /// New samples then move it quickly, and the forecast's variance draws
+    /// widen with the lower dof.
+    pub fn forget(&mut self) {
+        self.count = self.count.min(self.cfg.prior_count);
+    }
+
     /// Fold in one single-sample estimate with weight `w` (clamped to [0, 1]).
     /// Samples may be negative; only the running value is clamped.
     pub fn update(&mut self, sample: f64, weight: f64) -> Result<(), EngineError> {
@@ -205,6 +213,35 @@ mod tests {
             e.update(10.0, 1.0).unwrap();
         }
         assert!((e.estimate().dof - 1.0 / 0.03).abs() < 1e-6);
+    }
+
+    #[test]
+    fn forget_cuts_dof_to_the_prior_count() {
+        let mut e = VarianceEstimator::new(AdaptiveConfig {
+            forgetting: 1.0,
+            ..cfg()
+        })
+        .unwrap();
+        for _ in 0..10 {
+            e.update(20.0, 1.0).unwrap();
+        }
+        assert_eq!(e.estimate().dof, 12.0);
+        let v = e.value();
+        e.forget();
+        assert_eq!(e.estimate(), VarianceEstimate { value: v, dof: 2.0 });
+        // The next sample now counts for a third: n = 3, v + (40 − v)/3.
+        e.update(40.0, 1.0).unwrap();
+        assert!((e.value() - (v + (40.0 - v) / 3.0)).abs() < 1e-12);
+        // Below the prior count, forgetting changes nothing.
+        let mut fresh = VarianceEstimator::new(AdaptiveConfig {
+            prior_count: 5.0,
+            ..cfg()
+        })
+        .unwrap();
+        fresh.update(10.0, 0.5).unwrap();
+        let before = fresh.clone();
+        fresh.forget();
+        assert_eq!(fresh, before);
     }
 
     #[test]
