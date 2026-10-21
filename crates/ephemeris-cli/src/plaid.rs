@@ -431,3 +431,334 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn txn(id: &str, amount: f64, date: &str) -> Value {
+        json!({
+            "transaction_id": id,
+            "account_id": "chk",
+            "amount": amount,
+            "iso_currency_code": "USD",
+            "date": date,
+            "authorized_date": date,
+            "pending": false,
+            "pending_transaction_id": null,
+            "merchant_name": null,
+            "name": "SOMETHING",
+            "personal_finance_category": {"primary": "GENERAL_MERCHANDISE",
+                                          "detailed": "GENERAL_MERCHANDISE_OTHER"},
+            "location": {"city": null}
+        })
+    }
+
+    fn with(mut t: Value, field: &str, v: Value) -> Value {
+        t[field] = v;
+        t
+    }
+
+    fn category(t: Value, primary: &str, detailed: &str) -> Value {
+        with(
+            t,
+            "personal_finance_category",
+            json!({"primary": primary, "detailed": detailed}),
+        )
+    }
+
+    fn balances() -> BalanceFile {
+        serde_json::from_value(json!({"accounts": [
+            {"account_id": "chk", "type": "depository",
+             "balances": {"current": 1000.004, "available": 900, "iso_currency_code": "USD"}},
+            {"account_id": "sav", "type": "depository",
+             "balances": {"current": 250.0, "iso_currency_code": "USD"}},
+            {"account_id": "cc", "type": "credit",
+             "balances": {"current": 300.0, "iso_currency_code": "USD"}}
+        ]}))
+        .unwrap()
+    }
+
+    fn convert(pages: Value) -> (Feed, Notes) {
+        let sync: SyncFile = serde_json::from_value(json!({ "pages": pages })).unwrap();
+        to_feed(&sync, &balances(), Date::parse("2026-10-21").unwrap()).unwrap()
+    }
+
+    fn one_page(added: Vec<Value>) -> Value {
+        json!([{"added": added, "modified": [], "removed": []}])
+    }
+
+    fn by_desc<'a>(feed: &'a Feed, desc: &str) -> &'a FeedTransaction {
+        feed.transactions
+            .iter()
+            .find(|t| t.description.as_deref() == Some(desc))
+            .unwrap_or_else(|| panic!("no record {desc:?}"))
+    }
+
+    #[test]
+    fn sign_is_flipped_and_amounts_rounded_to_cents() {
+        let (feed, _) = convert(one_page(vec![
+            with(txn("a", 48.2542, "2026-10-01"), "name", json!("OUT")),
+            with(txn("b", -95.0, "2026-10-02"), "name", json!("IN")),
+        ]));
+        assert_eq!(by_desc(&feed, "OUT").amount, -48.25);
+        assert_eq!(by_desc(&feed, "IN").amount, 95.0);
+        // Depository current balances only, rounded: 1000.004 + 250.
+        assert_eq!(feed.ledger_balance, 1250.0);
+        assert_eq!(feed.schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn posted_record_replaces_the_pending_one_it_names() {
+        let pending = with(
+            with(txn("p1", 10.0, "2026-10-19"), "pending", json!(true)),
+            "name",
+            json!("PENDING"),
+        );
+        let posted = with(
+            with(
+                txn("q1", 12.5, "2026-10-20"),
+                "pending_transaction_id",
+                json!("p1"),
+            ),
+            "name",
+            json!("POSTED"),
+        );
+        let still_pending = with(
+            with(txn("p2", 7.0, "2026-10-21"), "pending", json!(true)),
+            "name",
+            json!("OPEN"),
+        );
+        let (feed, notes) = convert(one_page(vec![pending, posted, still_pending]));
+        assert_eq!(notes.superseded_pending, 1);
+        assert_eq!(feed.transactions.len(), 2);
+        let posted = by_desc(&feed, "POSTED");
+        assert_eq!(posted.status, TxnStatus::Posted);
+        let open = by_desc(&feed, "OPEN");
+        assert_eq!((open.status, open.pending_id), (TxnStatus::Pending, None));
+        // The link survives as an id distinct from every present record.
+        let link = posted.pending_id.expect("pending_id kept");
+        assert!(feed.transactions.iter().all(|t| t.id != link));
+        assert!(feed.transactions().is_ok(), "core accepts the records");
+    }
+
+    #[test]
+    fn sync_pages_replay_added_modified_and_removed() {
+        let pages = json!([
+            {"added": [with(txn("a", 5.0, "2026-10-01"), "name", json!("A")),
+                       with(txn("b", 6.0, "2026-10-01"), "name", json!("B"))],
+             "modified": [], "removed": []},
+            {"added": [],
+             "modified": [with(txn("a", 9.0, "2026-10-01"), "name", json!("A"))],
+             "removed": [{"transaction_id": "b", "account_id": "chk"}]}
+        ]);
+        let (feed, _) = convert(pages);
+        assert_eq!(feed.transactions.len(), 1);
+        assert_eq!(by_desc(&feed, "A").amount, -9.0);
+    }
+
+    #[test]
+    fn authorized_date_is_used_when_present() {
+        let early = with(
+            with(
+                txn("a", 5.0, "2026-10-03"),
+                "authorized_date",
+                json!("2026-09-30"),
+            ),
+            "name",
+            json!("AUTH"),
+        );
+        let missing = with(
+            with(txn("b", 5.0, "2026-10-05"), "authorized_date", Value::Null),
+            "name",
+            json!("NOAUTH"),
+        );
+        let (feed, notes) = convert(one_page(vec![early, missing]));
+        let a = by_desc(&feed, "AUTH");
+        assert_eq!(a.authorized_date, Date::parse("2026-09-30"));
+        assert_eq!(a.date, Date::parse("2026-10-03").unwrap());
+        assert_eq!(by_desc(&feed, "NOAUTH").authorized_date, None);
+        assert_eq!(notes.missing_authorized_date, 1);
+        // History starts at the earliest authorized day.
+        assert_eq!(feed.history_start, Date::parse("2026-09-30").unwrap());
+        let txns = feed.transactions().unwrap();
+        assert_eq!(txns[0].day(), Date::parse("2026-09-30").unwrap().0);
+    }
+
+    #[test]
+    fn transfer_categories_become_transfers() {
+        let (feed, notes) = convert(one_page(vec![
+            category(
+                with(txn("a", 145.09, "2026-10-02"), "name", json!("Venmo")),
+                "TRANSFER_OUT",
+                "TRANSFER_OUT_TRANSFER_OUT_FROM_APPS",
+            ),
+            category(
+                with(
+                    txn("b", -496.0, "2026-10-14"),
+                    "name",
+                    json!("CASH DEPOSIT"),
+                ),
+                "TRANSFER_IN",
+                "TRANSFER_IN_DEPOSIT",
+            ),
+            category(
+                with(txn("c", 3.0, "2026-10-14"), "name", json!("FEE")),
+                "BANK_FEES",
+                "BANK_FEES_OTHER_BANK_FEES",
+            ),
+        ]));
+        assert_eq!(notes.transfers, 2);
+        assert_eq!(by_desc(&feed, "Venmo").kind, FlowKind::Transfer);
+        assert_eq!(by_desc(&feed, "CASH DEPOSIT").kind, FlowKind::Transfer);
+        assert_eq!(by_desc(&feed, "FEE").kind, FlowKind::Discretionary);
+    }
+
+    #[test]
+    fn merchant_name_and_description_are_kept() {
+        let t = with(
+            with(
+                txn("a", 12.65, "2026-10-21"),
+                "merchant_name",
+                json!("Spotify"),
+            ),
+            "name",
+            json!("SPOTIFY USA 8777"),
+        );
+        let (feed, _) = convert(one_page(vec![t]));
+        let t = &feed.transactions[0];
+        assert_eq!(t.merchant_name.as_deref(), Some("Spotify"));
+        assert_eq!(t.description.as_deref(), Some("SPOTIFY USA 8777"));
+    }
+
+    #[test]
+    fn only_depository_accounts_are_kept() {
+        let card = with(txn("cc1", 20.0, "2026-10-01"), "account_id", json!("cc"));
+        let savings = with(txn("s1", -5.0, "2026-10-01"), "account_id", json!("sav"));
+        let (feed, notes) = convert(one_page(vec![card, savings, txn("c1", 1.0, "2026-10-01")]));
+        assert_eq!((notes.skipped_accounts, notes.skipped_transactions), (1, 1));
+        let mut accounts: Vec<u32> = feed.transactions.iter().map(|t| t.account).collect();
+        accounts.sort();
+        assert_eq!(
+            accounts,
+            [0, 1],
+            "checking and savings get distinct accounts"
+        );
+
+        let none: BalanceFile = serde_json::from_value(json!({"accounts": [
+            {"account_id": "cc", "type": "credit", "balances": {"current": 1.0}}
+        ]}))
+        .unwrap();
+        let sync: SyncFile = serde_json::from_value(json!({"pages": []})).unwrap();
+        assert!(to_feed(&sync, &none, Date(0)).is_err());
+    }
+
+    #[test]
+    fn income_and_scheduled_tagging() {
+        let pay = |id: &str, date: &str| {
+            category(
+                with(
+                    txn(id, -810.0, date),
+                    "name",
+                    json!("Sweetgreen inc payroll ppd"),
+                ),
+                "FOOD_AND_DRINK",
+                "FOOD_AND_DRINK_RESTAURANT",
+            )
+        };
+        let sub =
+            |id: &str, date: &str| with(txn(id, 12.65, date), "merchant_name", json!("Spotify"));
+        let coffee = |id: &str, date: &str, amount: f64| {
+            with(txn(id, amount, date), "merchant_name", json!("Starbucks"))
+        };
+        let wages = category(txn("w", -2000.0, "2026-10-15"), "INCOME", "INCOME_WAGES");
+        let rent = category(
+            with(txn("r", 1500.0, "2026-10-01"), "name", json!("RENT")),
+            "RENT_AND_UTILITIES",
+            "RENT_AND_UTILITIES_RENT",
+        );
+        let (feed, notes) = convert(one_page(vec![
+            pay("p1", "2026-10-06"),
+            pay("p2", "2026-10-13"),
+            sub("s1", "2026-08-21"),
+            sub("s2", "2026-09-21"),
+            sub("s3", "2026-10-21"),
+            coffee("c1", "2026-10-01", 4.5),
+            coffee("c2", "2026-10-02", 4.5),
+            coffee("c3", "2026-10-03", 5.25),
+            wages,
+            rent,
+        ]));
+        let kinds: Vec<(FlowKind, Option<u32>)> = feed
+            .transactions
+            .iter()
+            .map(|t| (t.kind, t.stream))
+            .collect();
+        let kind_of = |desc_or_merchant: &str| -> Vec<FlowKind> {
+            feed.transactions
+                .iter()
+                .filter(|t| {
+                    t.merchant_name.as_deref() == Some(desc_or_merchant)
+                        || t.description.as_deref() == Some(desc_or_merchant)
+                })
+                .map(|t| t.kind)
+                .collect()
+        };
+        assert_eq!(kind_of("Sweetgreen inc payroll ppd"), [FlowKind::Income; 2]);
+        assert_eq!(kind_of("Spotify"), [FlowKind::Scheduled; 3]);
+        // Two equal charges are not enough.
+        assert_eq!(kind_of("Starbucks"), [FlowKind::Discretionary; 3]);
+        assert_eq!(kind_of("RENT"), [FlowKind::Scheduled]);
+        assert_eq!(
+            (
+                notes.income_by_name,
+                notes.scheduled_by_repeat,
+                notes.scheduled_by_category
+            ),
+            (2, 3, 1)
+        );
+        // Streams: one per tagged counterparty, none for discretionary.
+        let spotify: BTreeSet<Option<u32>> = feed
+            .transactions
+            .iter()
+            .filter(|t| t.merchant_name.as_deref() == Some("Spotify"))
+            .map(|t| t.stream)
+            .collect();
+        assert_eq!(spotify.len(), 1);
+        assert!(spotify.iter().all(Option::is_some));
+        for (kind, stream) in kinds {
+            assert_eq!(
+                stream.is_some(),
+                matches!(kind, FlowKind::Income | FlowKind::Scheduled)
+            );
+        }
+    }
+
+    #[test]
+    fn counterparty_keys() {
+        assert_eq!(counterparty(Some(" Spotify "), Some("x")), "SPOTIFY");
+        assert_eq!(
+            counterparty(None, Some("CHECKCARD 538036 CLEO AI IN")),
+            "CHECKCARD CLEO AI IN"
+        );
+        assert_eq!(
+            counterparty(Some(""), Some("Interest payment")),
+            "INTEREST PAYMENT"
+        );
+        assert_eq!(counterparty(None, None), "");
+    }
+
+    #[test]
+    fn output_is_sorted_and_ids_are_unique() {
+        let (feed, _) = convert(one_page(vec![
+            txn("z", 1.0, "2026-10-01"),
+            txn("a", 1.0, "2026-10-03"),
+            txn("m", 1.0, "2026-10-02"),
+        ]));
+        let days: Vec<Date> = feed.transactions.iter().map(|t| t.date).collect();
+        assert!(days.windows(2).all(|w| w[0] <= w[1]));
+        let ids: BTreeSet<u64> = feed.transactions.iter().map(|t| t.id).collect();
+        assert_eq!(ids.len(), 3);
+    }
+}
