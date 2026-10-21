@@ -614,6 +614,122 @@ Fast tests run under `cargo test`. The heavy calibration sweeps are
 `#[ignore]`, run with `cargo test --release -- --ignored`, and the CLI exposes
 them as `ephemeris validate --seed S --runs M`, which prints the metrics table.
 
+## 6. Regime changes
+
+Status: proposal (2026-10-21), written before implementation.
+
+**The problem.** `c` and `m` are random walks with small daily variances
+(`q_c = 0.25`, so `c` drifts about $0.50/day per day). A *step*, such as a
+move, a new habit, a raise or a job loss, takes the filter a long time to
+follow. Its time constant on `c` is about `√(σ_s²/q_c)` = 80 days at
+`σ_s = 40`. The Plaid sandbox showed the failure: spending started abruptly,
+the spend rate stayed at $18.76/day against an actual $111.75/day, and
+nothing in the estimate or the cone admitted it. `P_cc` stays at its steady
+state, which is small, so the cone stays narrow around the wrong slope.
+
+For income it is worse. A paycheck 20% smaller than `m` is gated as an
+outlier (NIS > 10.83), so `m` is never updated, and every later paycheck is
+gated too.
+
+### Proposal: CUSUM on normalized innovations, then a covariance jump
+
+**Detect** a shift in the *mean* of the innovations, not a burst of large
+ones. When the model holds, the normalized innovations `e_k = ν_k/√S_k` are
+white with unit variance. A step in `c` makes them biased: every day the
+balance falls by about `Δc` more than predicted. A two-sided CUSUM (Page)
+is the standard sequential test for such a bias:
+
+```
+e   = clip(ν/√S, ±√gate)                 the same Huber clip as the gate
+g⁺ ← max(0, g⁺ + e − κ)                  g⁻ ← max(0, g⁻ − e − κ)
+alarm when g⁺ > h or g⁻ > h
+```
+
+There is one detector per channel: balance (for `c`) and income (for `m`).
+They run on settled days only, like the adaptive variances (§3).
+
+**Respond** by treating the alarm as evidence that the state jumped. Each
+side of the CUSUM tracks the mean innovation over its current run: `Δ̂ =
+Σν / Σg` (`g` = days covered by each balance innovation; 1 per paycheck).
+The jump variance `Δ̂²` is added to the predicted covariance as if the jump
+happened at the start of the day:
+
+```
+P⁻ ← P⁻ + A·(Δ̂² e_i e_iᵀ)·Aᵀ             i = c for balance, m for income
+```
+
+For `c` this adds `Δ̂²` to `P_bb` and `P_cc` and `−Δ̂²` to `P_bc`. The
+day's innovation is then recomputed and re-gated, the normal update runs,
+and the detector resets. This is a one-step inflation of the process noise
+(a jump in a jump-diffusion), not a permanent change in `q_c`:
+- The next few observations get a large gain on `c` (or `m`), so the state
+  catches up within days instead of months.
+- `P_cc` shrinks again as the data comes in. The forecast draws
+  `x₀ ~ N(x̂, P)`, so the cone is wide right after an alarm and narrows as
+  the filter recovers. That is the behaviour we want: wide while unsure.
+- Using the *clipped* `ν` makes `Δ̂` robust to a single lump. For a large
+  step it underestimates, but the next alarm covers the rest.
+
+### The tradeoff: false alarms against recovery speed
+
+`κ` (the allowance, in σ) and `h` (the threshold) set both sides of the
+tradeoff. Siegmund's approximation for Gaussian innovations gives:
+
+| κ | h | false alarms per year (no change) | delay at 1σ | at 1.5σ | at 2σ |
+|---|---|---|---|---|---|
+| 0.25 | 5 | 5.1 | 7.3 d | 4.6 d | 3.4 d |
+| 0.5 | 4 | 2.2 | 8.3 d | 4.7 d | 3.2 d |
+| **0.5** | **5** | **0.8** | **10.3 d** | **5.7 d** | **3.9 d** |
+| 0.5 | 6 | 0.3 | 12.3 d | 6.7 d | 4.6 d |
+| 0.75 | 5 | 0.1 | 17.0 d | 7.3 d | 4.6 d |
+
+The shift is in σ units of the daily spend noise: doubling `c = 60` at
+`σ_s = 40` is a 1.5σ shift, and halving it is 0.75σ.
+
+- **A false alarm costs** a temporarily wider cone and a noisier `c`. `P_cc`
+  goes from its steady state (~20, sd ≈ $4.5/day) to roughly the run's
+  `Δ̂²` (a few hundred) and relaxes over a few weeks. The estimate itself
+  barely moves, because the innovations were unbiased.
+- **A missed or late alarm costs** a confident cone around the wrong slope.
+  That is the failure we are fixing, and it is worse.
+- Below about 0.5σ the CUSUM is slow (weeks), but the random walk on `c`
+  already follows small drifts, so the two complement each other.
+
+Proposed default: **κ = 0.5, h = 5** on both channels. It needs measuring
+on the realistic generator, whose heavy tails and weekly pattern push NIS
+above χ²₁ and will raise the false-alarm rate. On the income channel, a
+single bonus raises `g⁺` by at most `√gate − κ ≈ 2.8 < h`, so one bonus never
+alarms; two consecutive paychecks off by more than about 2σ do.
+
+### Alternatives considered
+
+- **A run of large NIS values** (windowed `ΣNIS` against χ²_W). It detects
+  variance as well as bias, so it confuses a level shift with heavy-tailed
+  spending, lumps and the weekly pattern, all of which inflate NIS without
+  any change in `c`. It also needs a window, which fixes the detection delay
+  whatever the shift size. The signed CUSUM uses the direction, which is what
+  a step changes.
+- **Fading memory** (inflating `P` every day by a factor). It is always on,
+  so it pays the noise cost every day to buy speed it rarely needs.
+- **Sage–Husa / covariance matching for `q_c`.** It runs on the §3
+  machinery, but `q_c` is weakly identified from balance data and a step is
+  not a random walk: it would learn a large `q_c` for ever after one move.
+- **Interacting multiple models (IMM)** with a "jump" mode. This is the
+  principled upgrade. It costs a bank of filters and mode probabilities, and
+  it loses the hand-checkable single update. It is worth revisiting if the
+  CUSUM's false alarms prove costly on real data.
+
+### Tests
+
+- The synthetic generator gets step changes: on a given day, spending
+  (`c`) or income (`m`) is multiplied by a configurable factor.
+- Recovery time: days from the step until `|ĉ − c|` stays within 25% of the
+  step for 14 days, with and without the detector.
+- Forecast coverage in the weeks after the change. Origins 1–4 weeks after
+  the step, 30-day horizon, 90% interval coverage, with and without the
+  detector. The cone must be wider than in the same run with no step.
+- False-alarm rate with no step, on model-matched and realistic data.
+
 ## Decisions (resolved 2026-10-19)
 
 1. **Accounts:** checking and savings only. Own-account transfers net to zero
