@@ -35,6 +35,8 @@ pub fn run(seed: u64, days: u32, mode: Mode, start: Day, out: &Path) -> Result<(
             None => None,
         };
     }
+    // Banks report cents; so does the Plaid adapter.
+    let feed = feed.rounded_to_cents();
     write_json(out, &feed)?;
 
     let pending = txns

@@ -63,6 +63,9 @@ fn simulate_then_forecast() {
     assert_eq!(feed.schema_version, SCHEMA_VERSION);
     assert_eq!(feed.history_start, Date::parse("2024-01-01").unwrap());
     assert_eq!(feed.today, Date::parse("2024-07-18").unwrap());
+    let whole_cents = |x: f64| ((x * 100.0).round() / 100.0 - x).abs() < 1e-9;
+    assert!(whole_cents(feed.ledger_balance));
+    assert!(feed.transactions.iter().all(|t| whole_cents(t.amount)));
 
     let o = forecast(
         &feed_path,
