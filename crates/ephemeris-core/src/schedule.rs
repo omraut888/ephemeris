@@ -12,18 +12,24 @@
 //! forecaster samples future paydays.
 //!
 //! **Bills.** For each recurring stream (a `Scheduled` record with a stream id)
-//! with at least two charges: period = median gap, drift = empirical
-//! distribution of `gap − period` (persistent, so the phase random-walks),
-//! amount = latest posted amount. Card charges are not shifted to business days.
+//! with at least two charges: period = median gap, amount = latest posted
+//! amount. Then the dates are read in one of two ways:
+//! - **Day of month** ([`MonthlyAnchor`]), as with rent on the 1st: the
+//!   median gap is 28–31 days and at least 80% of at least
+//!   [`MONTHLY_MIN_CHARGES`] charges fall exactly on one day of the month
+//!   (clamped to month end), moved by one [`DayShift`]. The shift is none for
+//!   card charges, or the previous or next business day for ACH debits that
+//!   avoid weekends and holidays. Future dates are then deterministic.
+//! - **Every N days** otherwise: drift = empirical distribution of
+//!   `gap − period`, persistent, so the phase random-walks.
 //!
-//! Not handled yet: bills billed by day of month, streams with one charge,
-//! secondary income streams.
+//! Not handled yet: streams with one charge, secondary income streams.
 
 use std::collections::{BTreeMap, HashSet};
 
 use rand::RngExt;
 
-use crate::calendar::PaySchedule;
+use crate::calendar::{PaySchedule, business_day_on_or_after, business_day_on_or_before};
 use crate::types::{Day, FlowKind, StreamId, Transaction, TxnStatus};
 
 /// Largest timing offset the detector and forecaster model, in days.
@@ -35,6 +41,8 @@ const OFFSET_PRIOR_WEIGHT: f64 = 2.0;
 const MISS_COST: u32 = 10;
 /// Paydays used for fitting (about a year of biweekly pay).
 const MAX_PAYDAYS: usize = 26;
+/// Fewest charges for a day-of-month reading of a bill stream.
+pub const MONTHLY_MIN_CHARGES: usize = 3;
 
 /// A smoothed distribution over day offsets `−MAX_OFFSET..=MAX_OFFSET`.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,14 +100,82 @@ pub struct PayTiming {
     pub fit_cost: u32,
 }
 
+/// How a bill's nominal date moves when it is not a business day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DayShift {
+    /// Charged on the nominal day regardless (card charges).
+    None,
+    PreviousBusinessDay,
+    NextBusinessDay,
+}
+
+impl DayShift {
+    pub fn apply(self, nominal: Day) -> Day {
+        match self {
+            DayShift::None => nominal,
+            DayShift::PreviousBusinessDay => business_day_on_or_before(nominal),
+            DayShift::NextBusinessDay => business_day_on_or_after(nominal),
+        }
+    }
+}
+
+/// A bill charged on a fixed day of the month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonthlyAnchor {
+    /// 1–31; a day past the end of a month means its last day.
+    pub day: u32,
+    pub shift: DayShift,
+}
+
+impl MonthlyAnchor {
+    /// Charge days whose nominal date is in `from..=to`, ascending.
+    pub fn charge_days(&self, from: Day, to: Day) -> Vec<Day> {
+        PaySchedule::Monthly { day: self.day }
+            .nominal_dates(from, to)
+            .into_iter()
+            .map(|n| self.shift.apply(n))
+            .collect()
+    }
+
+    /// The first charge day strictly after `after`.
+    pub fn next_after(&self, after: Day) -> Day {
+        // A shift moves a date by at most a few days, so nominal dates from
+        // a week before `after` to two months after cover the answer.
+        self.charge_days(after - 7, after + 62)
+            .into_iter()
+            .find(|&d| d > after)
+            .unwrap_or(after + 31)
+    }
+
+    fn explains(&self, day: Day) -> bool {
+        self.charge_days(day - 7, day + 7).contains(&day)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillStream {
     pub stream: StreamId,
+    /// Median gap between charges.
     pub period_days: u32,
     pub last_day: Day,
     /// Signed, as charged (negative for an outflow).
     pub amount: f64,
+    /// For an every-N-days stream: persistent drift of each gap from the period.
     pub drift: OffsetDist,
+    /// Set when the stream is charged on a fixed day of the month; future
+    /// dates then follow it instead of `period_days` and `drift`.
+    pub day_of_month: Option<MonthlyAnchor>,
+}
+
+impl BillStream {
+    /// The nominal next charge after `last_day`: by day of month if anchored,
+    /// otherwise `last_day + period_days` before drift.
+    pub fn next_due(&self) -> Day {
+        match self.day_of_month {
+            Some(a) => a.next_after(self.last_day),
+            None => self.last_day + self.period_days as Day,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -242,9 +318,37 @@ fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
                 last_day: *days.last()?,
                 amount,
                 drift: OffsetDist::from_offsets(&drift),
+                day_of_month: (28..=31)
+                    .contains(&period)
+                    .then(|| detect_day_of_month(&days))
+                    .flatten(),
             })
         })
         .collect()
+}
+
+/// The (day, shift) that explains the most charge days, if it explains at
+/// least 80% of them. Ties go to no shift, then to the earlier day.
+fn detect_day_of_month(days: &[Day]) -> Option<MonthlyAnchor> {
+    if days.len() < MONTHLY_MIN_CHARGES {
+        return None;
+    }
+    let mut best: Option<(usize, MonthlyAnchor)> = None;
+    for shift in [
+        DayShift::None,
+        DayShift::PreviousBusinessDay,
+        DayShift::NextBusinessDay,
+    ] {
+        for day in 1..=31 {
+            let anchor = MonthlyAnchor { day, shift };
+            let hits = days.iter().filter(|&&d| anchor.explains(d)).count();
+            if best.is_none_or(|(b, _)| hits > b) {
+                best = Some((hits, anchor));
+            }
+        }
+    }
+    let (hits, anchor) = best?;
+    (hits * 5 >= days.len() * 4).then_some(anchor)
 }
 
 #[cfg(test)]
@@ -367,6 +471,7 @@ mod tests {
         for (bill, sub) in s.bills.iter().zip(&cfg.subscriptions) {
             assert_eq!(bill.period_days, sub.period_days);
             assert_eq!(bill.amount, -sub.amount);
+            assert_eq!(bill.day_of_month, None, "30-day streams drift off any day");
         }
     }
 
@@ -397,6 +502,120 @@ mod tests {
         // Gaps 30, 31, 30 → drift 0, +1, 0.
         let p = b.drift.probabilities();
         assert!(p[3] > OFFSET_PRIOR[3] && p[2] > p[3]);
+    }
+
+    fn bill(id: u64, day: Day) -> Transaction {
+        Transaction {
+            id: TxnId(id),
+            account: AccountId(0),
+            date: day,
+            authorized_date: Some(day),
+            status: TxnStatus::Posted,
+            amount: -1500.0,
+            kind: FlowKind::Scheduled,
+            stream: Some(StreamId(1)),
+            pending_id: None,
+        }
+    }
+
+    fn anchor_of(days: &[Day]) -> Option<MonthlyAnchor> {
+        let txns: Vec<Transaction> = days
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| bill(i as u64, d))
+            .collect();
+        detect_schedule(&txns).bills[0].day_of_month
+    }
+
+    #[test]
+    fn day_shifts_by_hand() {
+        // 2024-06-01 is a Saturday; 2024-07-04 a Thursday holiday.
+        let sat = ymd(2024, 6, 1);
+        assert_eq!(DayShift::None.apply(sat), sat);
+        assert_eq!(DayShift::PreviousBusinessDay.apply(sat), ymd(2024, 5, 31));
+        assert_eq!(DayShift::NextBusinessDay.apply(sat), ymd(2024, 6, 3));
+        assert_eq!(
+            DayShift::NextBusinessDay.apply(ymd(2024, 7, 4)),
+            ymd(2024, 7, 5)
+        );
+
+        let rent = MonthlyAnchor {
+            day: 1,
+            shift: DayShift::NextBusinessDay,
+        };
+        assert_eq!(rent.next_after(ymd(2024, 5, 31)), ymd(2024, 6, 3));
+        assert_eq!(rent.next_after(ymd(2024, 6, 3)), ymd(2024, 7, 1));
+        // Month-end clamp: the 31st in June is June 30, a Sunday.
+        let end = MonthlyAnchor {
+            day: 31,
+            shift: DayShift::PreviousBusinessDay,
+        };
+        assert_eq!(end.next_after(ymd(2024, 6, 1)), ymd(2024, 6, 28));
+        assert_eq!(end.next_after(ymd(2024, 6, 28)), ymd(2024, 7, 31));
+    }
+
+    #[test]
+    fn rent_on_the_first_with_weekend_shifts() {
+        for shift in [DayShift::NextBusinessDay, DayShift::PreviousBusinessDay] {
+            let days: Vec<Day> = (1..=12).map(|m| shift.apply(ymd(2024, m, 1))).collect();
+            // Several firsts of 2024 fall on weekends or holidays.
+            assert!(days.iter().filter(|&&d| civil_dom(d) != 1).count() >= 3);
+            assert_eq!(anchor_of(&days), Some(MonthlyAnchor { day: 1, shift }));
+        }
+    }
+
+    #[test]
+    fn card_charge_on_the_31st_is_clamped_not_shifted() {
+        let days: Vec<Day> = (1..=8)
+            .map(|m| {
+                let last = crate::calendar::days_in_month(2024, m);
+                ymd(2024, m, last.min(31))
+            })
+            .collect();
+        assert_eq!(
+            anchor_of(&days),
+            Some(MonthlyAnchor {
+                day: 31,
+                shift: DayShift::None
+            })
+        );
+    }
+
+    #[test]
+    fn thirty_day_streams_are_not_day_of_month() {
+        let days: Vec<Day> = (0..12).map(|k| ymd(2024, 1, 5) + 30 * k).collect();
+        let txns: Vec<Transaction> = days
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| bill(i as u64, d))
+            .collect();
+        let b = &detect_schedule(&txns).bills[0];
+        assert_eq!((b.period_days, b.day_of_month), (30, None));
+        assert_eq!(b.next_due(), days[11] + 30);
+        // Two charges are too few to call it either way.
+        assert_eq!(anchor_of(&[ymd(2024, 1, 21), ymd(2024, 2, 21)]), None);
+    }
+
+    #[test]
+    fn one_late_charge_in_ten_is_tolerated() {
+        let mut days: Vec<Day> = (1..=10).map(|m| ymd(2024, m, 21)).collect();
+        days[4] += 2;
+        let a = anchor_of(&days).unwrap();
+        assert_eq!(a.day, 21);
+        let b = detect_schedule(
+            &days
+                .iter()
+                .enumerate()
+                .map(|(i, &d)| bill(i as u64, d))
+                .collect::<Vec<_>>(),
+        )
+        .bills[0]
+            .next_due();
+        assert_eq!(b, a.shift.apply(ymd(2024, 11, 21)));
+    }
+
+    fn civil_dom(d: Day) -> u32 {
+        crate::calendar::civil_from_day(d).2
     }
 
     #[test]

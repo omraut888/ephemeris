@@ -94,8 +94,11 @@ Each transaction:
     "fit_cost": 9
   },
   "bills": [
-    { "stream": 100, "amount": -1500.0, "period_days": 30,
-      "last_charged": "2024-12-26", "next_due": "2025-01-25" }
+    { "stream": 100, "amount": -1500.0, "period_days": 31,
+      "monthly_on": { "day": 1, "shift": "next_business_day" },
+      "last_charged": "2024-12-02", "next_due": "2025-01-02" },
+    { "stream": 101, "amount": -15.99, "period_days": 30, "monthly_on": null,
+      "last_charged": "2024-12-11", "next_due": "2025-01-10" }
   ],
   "forecast": {
     "horizon_days": 90,
@@ -136,9 +139,16 @@ a forecast.
 | `offset_probabilities` | 5 numbers | Probability that a paycheck lands −2, −1, 0, +1 or +2 days from its nominal date, before the business-day shift. They sum to 1. |
 | `fit_cost` | integer | How well the cadence explains the history (0 = exactly). |
 
-**`bills[]`:** `stream` (integer), `amount` (latest charge, signed), `period_days`
-(median gap), `last_charged` (date), `next_due` (`last_charged + period_days`,
-before drift).
+**`bills[]`:**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `stream` | integer | The feed's stream id. |
+| `amount` | number | Latest posted charge, signed. |
+| `period_days` | integer | Median gap between charges. |
+| `monthly_on` | object or null | Set when the bill is charged on a fixed day of the month: `{ "day": 1–31, "shift": "none" \| "previous_business_day" \| "next_business_day" }`. A day past the end of a month means its last day. `shift` says how a weekend or bank-holiday date moves. When it's null, the bill recurs every `period_days`, with drift. |
+| `last_charged` | date | Most recent charge. |
+| `next_due` | date | The next charge: by day of month, shift applied, when `monthly_on` is set; otherwise `last_charged + period_days`, before drift. |
 
 **`forecast`:**
 

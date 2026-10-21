@@ -21,7 +21,7 @@ use crate::calendar::{PaySchedule, civil_from_day, day_from_civil, days_in_month
 use crate::error::EngineError;
 use crate::forecast::{Cone, ForecastConfig};
 use crate::model::{IDX_B, IDX_C, IDX_M};
-use crate::schedule::Schedule;
+use crate::schedule::{DayShift, Schedule};
 use crate::tracker::StateEstimate;
 use crate::types::{AccountId, Day, FlowKind, StreamId, Transaction, TxnId, TxnStatus};
 
@@ -241,14 +241,47 @@ pub struct IncomeReport {
     pub fit_cost: u32,
 }
 
+/// [`DayShift`] on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Shift {
+    None,
+    PreviousBusinessDay,
+    NextBusinessDay,
+}
+
+impl From<DayShift> for Shift {
+    fn from(s: DayShift) -> Self {
+        match s {
+            DayShift::None => Shift::None,
+            DayShift::PreviousBusinessDay => Shift::PreviousBusinessDay,
+            DayShift::NextBusinessDay => Shift::NextBusinessDay,
+        }
+    }
+}
+
+/// A bill charged on a fixed day of the month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MonthlyOn {
+    /// 1–31; past the end of a month means its last day.
+    pub day: u32,
+    /// How a weekend or holiday date moves.
+    pub shift: Shift,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BillReport {
     pub stream: u32,
     /// Latest charged amount, signed (negative for an outflow).
     pub amount: f64,
+    /// Median gap between charges.
     pub period_days: u32,
+    /// Set for a day-of-month bill; otherwise it recurs every `period_days`.
+    #[serde(default)]
+    pub monthly_on: Option<MonthlyOn>,
     pub last_charged: Date,
-    /// `last_charged + period_days`, before drift.
+    /// The next charge: by day of month (shift applied) when `monthly_on` is
+    /// set, otherwise `last_charged + period_days` before drift.
     pub next_due: Date,
 }
 
@@ -317,8 +350,12 @@ impl ForecastReport {
                 stream: b.stream.0,
                 amount: b.amount,
                 period_days: b.period_days,
+                monthly_on: b.day_of_month.map(|a| MonthlyOn {
+                    day: a.day,
+                    shift: a.shift.into(),
+                }),
                 last_charged: Date(b.last_day),
-                next_due: Date(b.last_day + b.period_days as Day),
+                next_due: Date(b.next_due()),
             })
             .collect();
         let days = (1..=cone.horizon() as Day)
@@ -496,6 +533,7 @@ mod tests {
                 last_day: t0 - 25,
                 amount: -900.0,
                 drift: OffsetDist::exact(),
+                day_of_month: None,
             }],
         };
         let mut cfg = ForecastConfig::new(10, 4);

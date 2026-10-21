@@ -15,7 +15,9 @@
 //! * **Income** lands on the detected schedule's nominal dates plus a sampled
 //!   offset, moved to the previous business day ([`PaySchedule::pay_date`]),
 //!   with amount `m + N(0, R_inc)`.
-//! * **Bills** recur at their period plus a sampled persistent drift.
+//! * **Bills** recur on their day of month when anchored (deterministic,
+//!   business-day shift included), otherwise at their period plus a sampled
+//!   persistent drift.
 //!
 //! **Memory and determinism.** The simulation runs day-major over `N` small
 //! path states (O(N) memory, no per-day allocation). Randomness is
@@ -413,7 +415,10 @@ impl<'a> Simulator<'a> {
         let spend_sd = draw_variance(self.spend, &mut rng).sqrt();
         let income_sd = draw_variance(self.income, &mut rng).sqrt();
         for (next, bill) in bill_next.iter_mut().zip(self.bills) {
-            let first = bill.last_day + bill.period_days as Day + bill.drift.sample(&mut rng);
+            let first = match bill.day_of_month {
+                Some(anchor) => anchor.next_after(bill.last_day),
+                None => bill.last_day + bill.period_days as Day + bill.drift.sample(&mut rng),
+            };
             *next = first.max(self.t0 + 1);
         }
         let pay_day = self.sample_pay_day(0, self.t0 + 1, &mut rng);
@@ -469,7 +474,12 @@ impl<'a> Simulator<'a> {
         for (next, bill) in bill_next.iter_mut().zip(self.bills) {
             if *next == day {
                 flow += bill.amount;
-                *next = (day + bill.period_days as Day + bill.drift.sample(&mut rng)).max(day + 1);
+                *next = match bill.day_of_month {
+                    Some(anchor) => anchor.next_after(day),
+                    None => {
+                        (day + bill.period_days as Day + bill.drift.sample(&mut rng)).max(day + 1)
+                    }
+                };
             }
         }
         p.b += flow;
@@ -561,6 +571,7 @@ mod tests {
                 last_day: t0() - 25,
                 amount: -900.0,
                 drift: OffsetDist::exact(),
+                day_of_month: None,
             }],
         }
     }
@@ -600,6 +611,38 @@ mod tests {
         assert_eq!(cone.prob_at_least_on(0, ymd(2024, 6, 30)), Some(1.0));
         assert_eq!(cone.band(t0()), None);
         assert_eq!(cone.band(t0() + 31), None);
+    }
+
+    #[test]
+    fn anchored_bill_lands_on_its_shifted_day_of_month() {
+        use crate::schedule::{DayShift, MonthlyAnchor};
+        // Rent on the 1st, next business day; last paid Wed May 1 2024.
+        let sched = Schedule {
+            income: None,
+            bills: vec![BillStream {
+                stream: StreamId(1),
+                period_days: 30,
+                last_day: ymd(2024, 5, 1),
+                amount: -1000.0,
+                drift: OffsetDist::exact(),
+                day_of_month: Some(MonthlyAnchor {
+                    day: 1,
+                    shift: DayShift::NextBusinessDay,
+                }),
+            }],
+        };
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 2,
+            ..ForecastConfig::new(40, 1)
+        });
+        let cone = forecast(&quiet_estimate(), &sched, &STILL, &cfg).unwrap();
+        let b = |y, m, d| cone.band(ymd(y, m, d)).unwrap()[2];
+        // Sat June 1 → Mon June 3; then Mon July 1.
+        let close = |a: f64, e: f64| (a - e).abs() < 1e-3;
+        assert!(close(b(2024, 6, 2), 1000.0 - 50.0 * 2.0));
+        assert!(close(b(2024, 6, 3), 1000.0 - 50.0 * 3.0 - 1000.0));
+        assert!(close(b(2024, 6, 30), 1000.0 - 50.0 * 30.0 - 1000.0));
+        assert!(close(b(2024, 7, 1), 1000.0 - 50.0 * 31.0 - 2000.0));
     }
 
     fn noisy_estimate(dof: f64) -> StateEstimate {

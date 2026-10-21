@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use ephemeris_core::forecast::{ForecastConfig, ForecastModel, forecast};
 use ephemeris_core::schedule::detect_schedule;
-use ephemeris_core::schema::{Estimate, Feed, ForecastReport, PayCadence, SCHEMA_VERSION};
+use ephemeris_core::schema::{Estimate, Feed, ForecastReport, PayCadence, SCHEMA_VERSION, Shift};
 use ephemeris_core::tracker::{Tracker, TrackerConfig};
 
 use crate::cone;
@@ -105,11 +105,14 @@ fn print_report(r: &ForecastReport) {
     } else {
         println!("  Recurring bills:");
         for b in &r.bills {
+            let cadence = match b.monthly_on {
+                Some(on) => format!("monthly on the {}{}", ordinal(on.day), shift_note(on.shift)),
+                None => format!("every {} days", b.period_days),
+            };
             println!(
-                "    stream {:<5} {:>11} every {:>2} days   last {}   next {}",
+                "    stream {:<5} {:>11}  {cadence:<40} last {}   next {}",
                 b.stream,
                 money(b.amount),
-                b.period_days,
                 b.last_charged,
                 b.next_due
             );
@@ -158,6 +161,14 @@ fn cadence(c: &PayCadence) -> String {
             format!("semi-monthly on the {} and {}", ordinal(*a), ordinal(*b))
         }
         PayCadence::Monthly { day } => format!("monthly on the {}", ordinal(*day)),
+    }
+}
+
+fn shift_note(s: Shift) -> &'static str {
+    match s {
+        Shift::None => "",
+        Shift::PreviousBusinessDay => " (earlier on weekends)",
+        Shift::NextBusinessDay => " (later on weekends)",
     }
 }
 
