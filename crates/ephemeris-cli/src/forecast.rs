@@ -8,6 +8,7 @@ use ephemeris_core::schedule::detect_schedule;
 use ephemeris_core::schema::{Estimate, Feed, ForecastReport, PayCadence, SCHEMA_VERSION};
 use ephemeris_core::tracker::{Tracker, TrackerConfig};
 
+use crate::cone;
 use crate::files::{read_json, write_json};
 
 /// Horizons shown in the quantile table, plus the full horizon if absent.
@@ -144,6 +145,9 @@ fn print_report(r: &ForecastReport) {
             .collect();
         println!("    {:>3} days  {:<10}{cells}", h, day.date.to_string());
     }
+
+    println!("\n  Balance cone:\n");
+    print!("{}", cone::render(&f.levels, &f.days));
 }
 
 fn cadence(c: &PayCadence) -> String {

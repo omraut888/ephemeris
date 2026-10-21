@@ -3,6 +3,7 @@
 //! The CLI loads and writes files, calls the core, and prints. All estimation
 //! and forecasting math lives in the core (see CLAUDE.md).
 
+mod cone;
 mod files;
 mod forecast;
 mod simulate;
