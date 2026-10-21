@@ -10,6 +10,9 @@
 //! `b_k = b_{k-1} + (all final amounts authorized on day k)`, where discretionary
 //! spend has mean `c_{k-1}` (times a day-of-week factor), and `c`, `m` are
 //! Gaussian random walks. Paycheck amounts are drawn around the updated `m_k`.
+//! A [`StepChange`] multiplies `c` or `m` at the start of its day, before that
+//! day's spending and paycheck are drawn; it consumes no randomness, so every
+//! other draw is unchanged (design §6).
 //! Transfers between the user's two accounts move money but leave `b` unchanged.
 //!
 //! Every component (state walks, spending, income, transfers, each subscription)
@@ -148,6 +151,15 @@ pub enum PendingModel {
     },
 }
 
+/// A regime change: from `day` on, a state variable is multiplied by `factor`
+/// (design §6). The variable keeps its random walk afterwards.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StepChange {
+    /// First day that sees the new level.
+    pub day: Day,
+    pub factor: f64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SynthConfig {
     pub start_day: Day,
@@ -167,6 +179,10 @@ pub struct SynthConfig {
     pub transfers: TransferConfig,
     pub posting: PostingConfig,
     pub pending: PendingModel,
+    /// Steps in the spend rate `c` (a move, a new habit).
+    pub spend_steps: Vec<StepChange>,
+    /// Steps in the expected paycheck `m` (a raise, a pay cut).
+    pub income_steps: Vec<StepChange>,
 }
 
 impl SynthConfig {
@@ -196,6 +212,18 @@ impl SynthConfig {
                 hold_amount: 1.0,
             },
             ..Self::base(start_day)
+        }
+    }
+
+    /// Realistic data whose spend rate doubles halfway through the year
+    /// (design §5, the `regime_change` scenario).
+    pub fn regime_change(start_day: Day) -> Self {
+        Self {
+            spend_steps: vec![StepChange {
+                day: start_day + 182,
+                factor: 2.0,
+            }],
+            ..Self::realistic(start_day)
         }
     }
 
@@ -249,6 +277,8 @@ impl SynthConfig {
                 rel_sd: 0.2,
                 min_sd: 20.0,
             },
+            spend_steps: Vec::new(),
+            income_steps: Vec::new(),
         }
     }
 
@@ -286,6 +316,14 @@ impl SynthConfig {
                 ));
             }
             _ => {}
+        }
+        if !self
+            .spend_steps
+            .iter()
+            .chain(&self.income_steps)
+            .all(|s| variance(s.factor))
+        {
+            return Err(E("step factors must be non-negative and finite"));
         }
         if !self.weekday_factors.iter().all(|&f| variance(f))
             || self.weekday_factors.iter().sum::<f64>() <= 0.0
@@ -489,6 +527,8 @@ pub fn generate(cfg: &SynthConfig, seed: u64) -> Result<SynthRun, EngineError> {
 
     for day in cfg.start_day..end {
         let first_event = events.len();
+        state.c *= step_factor(&cfg.spend_steps, day);
+        state.m *= step_factor(&cfg.income_steps, day);
 
         let factor = cfg.weekday_factors[weekday(day) as usize] / factor_mean;
         for amount in discretionary(
@@ -567,6 +607,15 @@ pub fn generate(cfg: &SynthConfig, seed: u64) -> Result<SynthRun, EngineError> {
         truth,
         events,
     })
+}
+
+/// The product of the factors of the steps that take effect on `day`.
+fn step_factor(steps: &[StepChange], day: Day) -> f64 {
+    steps
+        .iter()
+        .filter(|s| s.day == day)
+        .map(|s| s.factor)
+        .product()
 }
 
 fn stream_rng(seed: u64, stream: u64) -> ChaCha8Rng {
@@ -890,6 +939,68 @@ mod tests {
                 .iter()
                 .all(|t| t.state.c == 60.0 && t.state.m == 2400.0)
         );
+    }
+
+    #[test]
+    fn step_changes_multiply_c_and_m_from_their_day() {
+        let step = MON + 100;
+        let cfg = SynthConfig {
+            spend_steps: vec![StepChange {
+                day: step,
+                factor: 2.0,
+            }],
+            income_steps: vec![StepChange {
+                day: step,
+                factor: 0.8,
+            }],
+            ..stationary(200)
+        };
+        let run = generate(&cfg, 5).unwrap();
+        for t in &run.truth {
+            let (c, m) = if t.day < step {
+                (60.0, 2400.0)
+            } else {
+                (120.0, 1920.0)
+            };
+            assert_eq!((t.state.c, t.state.m), (c, m), "day {}", t.day);
+        }
+
+        // Spending on the step day already uses the new rate, and nothing
+        // before the step changes: the steps consume no randomness.
+        let plain = generate(&stationary(200), 5).unwrap();
+        let disc = |run: &SynthRun, day: Day| -> f64 {
+            run.events
+                .iter()
+                .filter(|e| e.kind == FlowKind::Discretionary && e.authorized_day == day)
+                .map(|e| e.final_amount)
+                .sum()
+        };
+        assert!((disc(&run, step) - disc(&plain, step) + 60.0).abs() < 1e-9);
+        let before = |run: &SynthRun| -> Vec<SynthEvent> {
+            run.events
+                .iter()
+                .filter(|e| e.authorized_day < step)
+                .cloned()
+                .collect()
+        };
+        assert_eq!(before(&run), before(&plain));
+        let pay_after: Vec<f64> = of_kind(&run, FlowKind::Income)
+            .iter()
+            .filter(|e| e.authorized_day >= step)
+            .map(|e| e.final_amount)
+            .collect();
+        let (mean, _) = mean_sd(&pay_after);
+        assert!((mean - 1920.0).abs() < 40.0, "mean paycheck {mean}");
+    }
+
+    #[test]
+    fn regime_change_scenario_doubles_spending() {
+        let cfg = SynthConfig::regime_change(MON);
+        let step = cfg.spend_steps[0].day;
+        let run = generate(&cfg, 1).unwrap();
+        let c = |d: Day| run.truth_on(d).unwrap().c;
+        // c keeps its random walk; one day's step dwarfs one day's drift.
+        assert!((c(step) / c(step - 1) - 2.0).abs() < 0.05);
     }
 
     #[test]
@@ -1381,6 +1492,20 @@ mod tests {
                     rel_sd: 0.2,
                     min_sd: f64::INFINITY,
                 },
+                ..base.clone()
+            },
+            SynthConfig {
+                spend_steps: vec![StepChange {
+                    day: MON,
+                    factor: -1.0,
+                }],
+                ..base.clone()
+            },
+            SynthConfig {
+                income_steps: vec![StepChange {
+                    day: MON,
+                    factor: f64::NAN,
+                }],
                 ..base.clone()
             },
         ];
