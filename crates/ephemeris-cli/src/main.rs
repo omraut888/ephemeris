@@ -4,6 +4,7 @@
 //! and forecasting math lives in the core (see CLAUDE.md).
 
 mod files;
+mod forecast;
 mod simulate;
 
 use std::path::PathBuf;
@@ -37,6 +38,24 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Estimate the current state from a feed and forecast the balance.
+    Forecast {
+        /// A schema-v1 feed (docs/forecast-schema.md).
+        #[arg(long)]
+        input: PathBuf,
+        /// Days to forecast.
+        #[arg(long, default_value_t = 90, value_parser = clap::value_parser!(u32).range(1..=3660))]
+        horizon: u32,
+        /// Monte Carlo paths.
+        #[arg(long, default_value_t = 2000, value_parser = clap::value_parser!(u32).range(1..=1_000_000))]
+        paths: u32,
+        /// Monte Carlo seed; the same feed, seed and paths give the same cone.
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        /// Also write the forecast report as JSON (schema version 1).
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
 }
 
 /// Which synthetic generator to use (design §5).
@@ -64,6 +83,19 @@ fn main() -> ExitCode {
             start,
             out,
         } => simulate::run(seed, days, mode, start, &out),
+        Command::Forecast {
+            input,
+            horizon,
+            paths,
+            seed,
+            json,
+        } => forecast::run(&forecast::Args {
+            input,
+            horizon,
+            paths,
+            seed,
+            json,
+        }),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
