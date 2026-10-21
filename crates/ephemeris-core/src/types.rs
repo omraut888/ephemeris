@@ -23,6 +23,8 @@ pub struct StreamId(pub u32);
 
 /// How a flow enters the model (design §1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum FlowKind {
     /// Primary income: control input `u` for `b`, and an observation of `m`.
     Income,
@@ -37,6 +39,8 @@ pub enum FlowKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum TxnStatus {
     /// Authorized but not settled; the amount may still change.
     Pending,

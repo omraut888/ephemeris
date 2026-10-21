@@ -521,8 +521,9 @@ secondary income streams.
 | `rand_chacha` | 0.10 | ChaCha8 has a fixed, documented output stream that is the same on every platform, and it supports multiple streams. `StdRng` does not guarantee a stable algorithm. |
 | `rand_distr` | 0.6, default features | Normal, ChiSquared, LogNormal (the last only for synth). Its default build uses `libm`, which is pure Rust, so the transcendental functions are bit-identical on native and WASM. **Do not enable `std_math`**, which changes results by platform. The same goes for anything that enables `num-traits/std`: nalgebra's `std` feature does, which is why nalgebra runs in `libm` mode (static matrices need no allocation). Check with `cargo tree -e features -i num-traits`. |
 | `approx` | dev-only | `assert_relative_eq!`. nalgebra already depends on it, so it adds nothing. |
+| `serde` | 1, **optional** (`serde` feature, off by default) | Derives for the versioned JSON contracts in `schema` (feed in, forecast report out; see docs/forecast-schema.md). Off by default so WASM/UniFFI builds that don't need JSON never compile it. It doesn't touch `num-traits`, so determinism is unaffected. |
 
-No `serde`, `chrono`, `rayon`, or `proptest` in the core for Phase 1. The CLI
+No `chrono`, `rayon`, or `proptest` in the core for Phase 1. The CLI
 will need `serde`/`serde_json`, an HTTP client, and `.env` loading for Plaid;
 those will be justified when the CLI is designed. Versions get pinned through
 the committed `Cargo.lock`. Cross-platform bit-identity also depends on the

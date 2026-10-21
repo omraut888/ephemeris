@@ -3,8 +3,14 @@ name = "ephemeris-core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# Serde types for the versioned JSON contracts (feed in, forecast report out).
+# Off by default so WASM/UniFFI builds that do not need JSON stay lean.
+serde = ["dep:serde"]
+
 [dependencies]
 nalgebra = { version = "0.35", default-features = false, features = ["libm"] }
 rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
 rand_distr = "0.6"
+serde = { version = "1", features = ["derive"], optional = true }
