@@ -382,6 +382,7 @@ crates/ephemeris-core/src/
   kalman.rs     generic Kf<const N>: predict(A,B,u,Q), update_scalar(h,r,z) -> Innovation
   model.rs      the 3-state finance model: A, B, H rows, Q builder, ModelParams
   adaptive.rs   VarianceEstimator, AdaptiveConfig (incl. ::fixed), sample_weight (§3)
+  change.rs     ChangeDetector: two-sided CUSUM on normalized innovations (§6)
   observe.rs    ObservedFeed::new(snapshot, ledger_balance, today): roles (incl. transfer
                 matching), settled_through, opening balance, FeedDay { u, balance: Option<(z,R)>,
                 income: Vec<f64> } for settled days and the tail, shared_variance

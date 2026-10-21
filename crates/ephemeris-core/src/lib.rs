@@ -7,6 +7,7 @@
 
 pub mod adaptive;
 pub mod calendar;
+pub mod change;
 pub mod error;
 pub mod forecast;
 pub mod kalman;
