@@ -23,6 +23,14 @@
 //! - **Every N days** otherwise: drift = empirical distribution of
 //!   `gap − period`, persistent, so the phase random-walks.
 //!
+//! **Regularity tests for tagging.** A bank feed does not say which inflow is
+//! the paycheck or which outflow is a bill, so the adapter asks:
+//! - [`regular_pay_schedule`]: does a series of inflow days fit some
+//!   [`PaySchedule`] at under one day of error per payday (a miss costs
+//!   [`MISS_COST`])?
+//! - [`is_regular_interval`]: are the gaps between charges at least weekly
+//!   and tightly clustered around their median?
+//!
 //! Not handled yet: streams with one charge, secondary income streams.
 
 use std::collections::{BTreeMap, HashSet};
@@ -38,11 +46,21 @@ const OFFSETS: usize = (2 * MAX_OFFSET + 1) as usize;
 /// Prior over offsets −2..=2 and its strength in pseudo-observations.
 const OFFSET_PRIOR: [f64; OFFSETS] = [0.025, 0.1, 0.75, 0.1, 0.025];
 const OFFSET_PRIOR_WEIGHT: f64 = 2.0;
-const MISS_COST: u32 = 10;
+/// Fit cost of a payday no nominal date explains, or of a nominal date with
+/// no payday.
+pub const MISS_COST: u32 = 10;
 /// Paydays used for fitting (about a year of biweekly pay).
 const MAX_PAYDAYS: usize = 26;
 /// Fewest charges for a day-of-month reading of a bill stream.
 pub const MONTHLY_MIN_CHARGES: usize = 3;
+/// Fewest paydays for [`regular_pay_schedule`].
+pub const REGULAR_MIN_PAYDAYS: usize = 3;
+/// Largest mean fit cost per payday that still counts as regular income.
+pub const REGULAR_MAX_COST_PER_PAYDAY: f64 = 1.0;
+/// Shortest median gap for [`is_regular_interval`]: bills are at least weekly.
+pub const REGULAR_MIN_PERIOD: i32 = 7;
+/// Share of gaps that must sit within tolerance of the median gap.
+const REGULAR_GAP_SHARE: f64 = 0.8;
 
 /// A smoothed distribution over day offsets `−MAX_OFFSET..=MAX_OFFSET`.
 #[derive(Debug, Clone, PartialEq)]
@@ -256,11 +274,18 @@ fn candidates(last: Day) -> Vec<PaySchedule> {
 }
 
 fn detect_income(txns: &[Transaction]) -> Option<PayTiming> {
-    let mut paydays: Vec<Day> = txns
+    let paydays: Vec<Day> = txns
         .iter()
         .filter(|t| t.kind == FlowKind::Income && t.status == TxnStatus::Posted)
         .map(Transaction::day)
         .collect();
+    fit_pay_schedule(&paydays)
+}
+
+/// The cheapest [`PaySchedule`] for a series of paydays (any order,
+/// duplicates ignored), fitted to the last 26. `None` with fewer than two.
+pub fn fit_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
+    let mut paydays = paydays.to_vec();
     paydays.sort_unstable();
     paydays.dedup();
     if paydays.len() < 2 {
@@ -284,6 +309,46 @@ fn detect_income(txns: &[Transaction]) -> Option<PayTiming> {
         offsets: OffsetDist::from_offsets(&f.offsets),
         fit_cost: f.cost,
     })
+}
+
+/// The pay schedule of a regular income stream: at least
+/// [`REGULAR_MIN_PAYDAYS`] distinct days whose best fit costs at most
+/// [`REGULAR_MAX_COST_PER_PAYDAY`] per payday fitted. One missed paycheck in
+/// ten already fails; a day of jitter on every paycheck does not.
+pub fn regular_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
+    let mut distinct = paydays.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    if distinct.len() < REGULAR_MIN_PAYDAYS {
+        return None;
+    }
+    let timing = fit_pay_schedule(&distinct)?;
+    let fitted = distinct.len().min(MAX_PAYDAYS) as f64;
+    (f64::from(timing.fit_cost) <= REGULAR_MAX_COST_PER_PAYDAY * fitted).then_some(timing)
+}
+
+/// Whether charges on `days` (any order) recur on a regular interval: at
+/// least two gaps, a median gap of at least [`REGULAR_MIN_PERIOD`] days, and
+/// at least 80% of gaps within `max(3, 15% of the median)` days of it. A
+/// monthly bill (gaps 28–31, or a little more with business-day shifts)
+/// passes, and so does a monthly bill that skipped one month in five; a daily
+/// coffee, or a shop visited a few times at random, does not.
+pub fn is_regular_interval(days: &[Day]) -> bool {
+    let mut days = days.to_vec();
+    days.sort_unstable();
+    days.dedup();
+    let mut gaps: Vec<i32> = days.windows(2).map(|w| w[1] - w[0]).collect();
+    if gaps.len() < 2 {
+        return false;
+    }
+    gaps.sort_unstable();
+    let median = gaps[gaps.len() / 2];
+    if median < REGULAR_MIN_PERIOD {
+        return false;
+    }
+    let tol = 3.max((0.15 * f64::from(median)).round() as i32);
+    let close = gaps.iter().filter(|&&g| (g - median).abs() <= tol).count();
+    close as f64 >= REGULAR_GAP_SHARE * gaps.len() as f64
 }
 
 fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
@@ -616,6 +681,67 @@ mod tests {
 
     fn civil_dom(d: Day) -> u32 {
         crate::calendar::civil_from_day(d).2
+    }
+
+    #[test]
+    fn regular_pay_schedules() {
+        let friday = ymd(2024, 1, 5);
+        let biweekly: Vec<Day> = PaySchedule::Biweekly { anchor: friday }
+            .nominal_dates(ymd(2024, 1, 1), ymd(2024, 6, 30))
+            .into_iter()
+            .map(PaySchedule::pay_date)
+            .collect();
+        let t = regular_pay_schedule(&biweekly).expect("regular");
+        assert!(matches!(t.schedule, PaySchedule::Biweekly { .. }));
+        // Order and duplicates do not matter.
+        let mut shuffled = biweekly.clone();
+        shuffled.reverse();
+        shuffled.push(biweekly[3]);
+        assert_eq!(regular_pay_schedule(&shuffled), Some(t));
+
+        // A day of jitter on every other paycheck: cost 0.5 per payday.
+        let jittered: Vec<Day> = biweekly
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| if i % 2 == 1 { d - 1 } else { d })
+            .collect();
+        assert!(regular_pay_schedule(&jittered).is_some());
+
+        // Too few, or scattered at random: not regular.
+        assert!(regular_pay_schedule(&biweekly[..2]).is_none());
+        let scattered = [3, 11, 30, 34, 61, 99, 104, 140].map(|k| friday + k);
+        assert!(regular_pay_schedule(&scattered).is_none());
+        // One missed paycheck in six costs 10 / 5 = 2 per payday: not regular.
+        let mut missing = biweekly[..6].to_vec();
+        missing.remove(3);
+        assert!(regular_pay_schedule(&missing).is_none());
+    }
+
+    #[test]
+    fn regular_intervals() {
+        let monthly: Vec<Day> = (1..=6).map(|m| ymd(2024, m, 21)).collect();
+        assert!(is_regular_interval(&monthly));
+        // Rent moved to the next business day: gaps 29–33.
+        let rent: Vec<Day> = (1..=12)
+            .map(|m| DayShift::NextBusinessDay.apply(ymd(2024, m, 1)))
+            .collect();
+        assert!(is_regular_interval(&rent));
+        // One skipped month in six gaps (one gap of ~60) is tolerated.
+        let skipped: Vec<Day> = [1, 2, 3, 5, 6, 7, 8].map(|m| ymd(2024, m, 21)).to_vec();
+        assert!(is_regular_interval(&skipped));
+        assert!(is_regular_interval(&[0, 7, 14, 21]), "weekly");
+
+        // A coffee every weekday, or every day: too frequent to be a bill.
+        let weekdays: Vec<Day> = (0..28)
+            .map(|k| ymd(2024, 1, 1) + k)
+            .filter(|&d| crate::calendar::weekday(d) < 5)
+            .collect();
+        assert!(!is_regular_interval(&weekdays));
+        assert!(!is_regular_interval(&(0..30).collect::<Vec<Day>>()));
+        // The same shop on scattered days.
+        assert!(!is_regular_interval(&[0, 5, 17, 20, 41]));
+        // Two charges give one gap: not enough to judge.
+        assert!(!is_regular_interval(&[0, 30]));
     }
 
     #[test]
