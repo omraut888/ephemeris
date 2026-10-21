@@ -17,7 +17,7 @@ use nalgebra::{Matrix3, Vector3};
 
 use crate::error::EngineError;
 use crate::kalman::{Innovation, Kf};
-use crate::linalg::is_psd;
+use crate::linalg::{is_psd, symmetrize};
 use crate::types::{Channel, Day, DayInput};
 
 /// State index of the balance `b`.
@@ -166,6 +166,28 @@ impl FinanceFilter {
         Ok(())
     }
 
+    /// Add a jump of variance `var` to state `idx`, as if it had happened just
+    /// before today's transition: `P⁻ ← P⁻ + A·(var·e_i·e_iᵀ)·Aᵀ` (design §6,
+    /// a regime change). Call it after [`Self::predict`]. The mean is
+    /// unchanged; the next updates move it.
+    ///
+    /// For `c` this adds `var` to `P_bb` and `P_cc` and `−var` to `P_bc`; for
+    /// `m` it adds `var` to `P_mm`.
+    pub fn add_jump(&mut self, idx: usize, var: f64) -> Result<(), EngineError> {
+        if idx > IDX_M {
+            return Err(EngineError::InvalidInput("jump state index out of range"));
+        }
+        if !(var.is_finite() && var >= 0.0) {
+            return Err(EngineError::InvalidInput(
+                "jump variance must be non-negative and finite",
+            ));
+        }
+        let col = transition().column(idx).into_owned();
+        self.kf.p = symmetrize(&(self.kf.p + col * col.transpose() * var));
+        debug_assert!(is_psd(&self.kf.p));
+        Ok(())
+    }
+
     /// Advance to `input.day`: predict-only through any skipped days, then
     /// predict with `input.u` and apply the observations in order. An input
     /// with no observations is a predict-only day with a control input.
@@ -284,6 +306,53 @@ mod tests {
             c_at[59]
         );
         assert!((c_at[364] - 80.0).abs() < 0.5, "day 365: c = {}", c_at[364]);
+    }
+
+    #[test]
+    fn jumps_by_hand() {
+        let mut f = filter();
+        f.predict(0.0).unwrap();
+        // P⁻ = [[1 + 100 + 1600, −100, 0], [−100, 100.25, 0], [0, 0, 10025]].
+        let before = *f.covariance();
+        assert_eq!(before[(IDX_B, IDX_B)], 1701.0);
+        f.add_jump(IDX_C, 400.0).unwrap();
+        let p = f.covariance();
+        assert_eq!(p[(IDX_B, IDX_B)], 2101.0);
+        assert_eq!((p[(IDX_B, IDX_C)], p[(IDX_C, IDX_B)]), (-500.0, -500.0));
+        assert_eq!(p[(IDX_C, IDX_C)], 500.25);
+        assert_eq!(p[(IDX_M, IDX_M)], 10_025.0);
+        assert!(is_psd(p));
+
+        f.add_jump(IDX_M, 75.0).unwrap();
+        assert_eq!(f.covariance()[(IDX_M, IDX_M)], 10_100.0);
+        assert_eq!(
+            f.state(),
+            &Vector3::new(950.0, 50.0, 2000.0),
+            "mean unchanged"
+        );
+
+        let before = f.clone();
+        assert!(f.add_jump(3, 1.0).is_err());
+        assert!(f.add_jump(IDX_C, -1.0).is_err());
+        assert!(f.add_jump(IDX_C, f64::NAN).is_err());
+        assert_eq!(f, before);
+    }
+
+    /// After a jump in `c`, one balance observation moves `c` most of the way.
+    #[test]
+    fn jump_in_c_lets_one_observation_teach_c() {
+        let run = |jump: f64| {
+            let mut f = filter();
+            f.predict(0.0).unwrap();
+            f.add_jump(IDX_C, jump).unwrap();
+            // Spending was 150 instead of 50: b⁻ = 950, observed 850.
+            f.update(Channel::Balance, 1.0, 850.0).unwrap();
+            f.state()[IDX_C]
+        };
+        // Without a jump: K_c = −100/1702, so c rises 100·100/1702 ≈ 5.9.
+        assert!((run(0.0) - (50.0 + 100.0 * 100.0 / 1702.0)).abs() < 1e-9);
+        // With var = 100²: K_c = −10100/11702, c rises ≈ 86.
+        assert!((run(1e4) - (50.0 + 100.0 * 10_100.0 / 11_702.0)).abs() < 1e-9);
     }
 
     #[test]
