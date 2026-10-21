@@ -18,9 +18,10 @@
 //!
 //! Regime changes (design §6): each channel's clipped innovations feed a
 //! [`ChangeDetector`]. On an alarm, the run's mean shift `Δ̂` becomes a
-//! zero-mean jump of variance `Δ̂²` in `c` (balance channel) or `m` (income
-//! channel), the matching noise estimate forgets back to its prior count, and
-//! the day's innovation is recomputed and re-gated before the update. A pay cut that would otherwise be gated for ever is learned from
+//! zero-mean jump of variance `Δ̂²` in `c` (balance channel, capped at a
+//! multiple of `σ̂_s²`) or `m` (income channel), the matching noise estimate
+//! forgets back to its prior count, and the day's innovation is recomputed
+//! and re-gated before the update. A pay cut that would otherwise be gated for ever is learned from
 //! the second short paycheck. The detector also runs on the provisional tail,
 //! so a change shows in the live estimate before it settles; the tail's
 //! detector state is thrown away with the tail.
@@ -58,8 +59,16 @@ pub struct TrackerConfig {
     pub income_var: AdaptiveConfig,
     /// NIS above which an innovation is gated (χ²₁ 99.9% ≈ 10.83).
     pub gate_nis: f64,
-    /// Regime-change detection on both channels; `None` turns it off.
-    pub change: Option<ChangeConfig>,
+    /// Regime-change detection on the balance channel (jumps in `c`);
+    /// `None` turns it off.
+    pub spend_change: Option<ChangeConfig>,
+    /// The largest jump variance in `c`, as a multiple of `σ̂_s²`. One day's
+    /// spending then moves `c` by at most about half its deviation, so a
+    /// false alarm on a lumpy day costs little; a large change sets off
+    /// several alarms in a row instead.
+    pub max_spend_jump: f64,
+    /// Regime-change detection on the income channel (jumps in `m`).
+    pub income_change: Option<ChangeConfig>,
     pub prior: Prior,
     pub observe: ObserveConfig,
 }
@@ -85,7 +94,14 @@ impl TrackerConfig {
                 max: 1e8,
             },
             gate_nis: 10.83,
-            change: Some(ChangeConfig::default()),
+            // h = 6: heavy-tailed spending sets off h = 5 too often (design §6).
+            spend_change: Some(ChangeConfig {
+                threshold: 6.0,
+                ..ChangeConfig::default()
+            }),
+            max_spend_jump: 1.0,
+            // h = 5: two short paychecks in a row are enough; one is not.
+            income_change: Some(ChangeConfig::default()),
             prior: Prior {
                 c_mean: 0.0,
                 c_sd: 100.0,
@@ -100,8 +116,13 @@ impl TrackerConfig {
         self.spend_var.validate()?;
         self.income_var.validate()?;
         self.observe.validate()?;
-        if let Some(c) = &self.change {
+        for c in self.spend_change.iter().chain(&self.income_change) {
             c.validate()?;
+        }
+        if self.max_spend_jump.is_nan() || self.max_spend_jump <= 0.0 {
+            return Err(EngineError::InvalidConfig(
+                "tracker: max_spend_jump must be positive",
+            ));
         }
         ModelParams {
             spend_var: self.spend_var.prior,
@@ -196,6 +217,7 @@ struct FilterState {
     lumps: LumpHistory,
     balance_change: Option<ChangeDetector>,
     income_change: Option<ChangeDetector>,
+    max_spend_jump: f64,
 }
 
 impl FilterState {
@@ -218,8 +240,9 @@ impl FilterState {
             days_since_balance: 0,
             spend_var_since_balance: 0.0,
             lumps: LumpHistory::default(),
-            balance_change: cfg.change.map(ChangeDetector::new).transpose()?,
-            income_change: cfg.change.map(ChangeDetector::new).transpose()?,
+            balance_change: cfg.spend_change.map(ChangeDetector::new).transpose()?,
+            income_change: cfg.income_change.map(ChangeDetector::new).transpose()?,
+            max_spend_jump: cfg.max_spend_jump,
         })
     }
 
@@ -268,7 +291,8 @@ impl FilterState {
                 && let Some(alarm) = det.observe(clip(inn, gate), inn.s, g)?
             {
                 // The balance fell by Δc more than predicted each day.
-                self.filter.add_jump(IDX_C, alarm.shift.powi(2))?;
+                let var = alarm.shift.powi(2).min(self.max_spend_jump * spend_var);
+                self.filter.add_jump(IDX_C, var)?;
                 self.spend.forget();
                 inn = self.filter.innovation(Channel::Balance, r, z)?;
                 report.jumps.push(Jump {
@@ -622,7 +646,7 @@ mod tests {
         let today = START + 14 * 13;
         let run = |change| {
             let mut tcfg = TrackerConfig::new(START);
-            tcfg.change = change;
+            tcfg.income_change = change;
             let mut t = Tracker::new(tcfg).unwrap();
             let report = t.ingest(&txns, balance, today).unwrap();
             let income: Vec<(Day, bool, Vec<Jump>)> = report
@@ -698,6 +722,51 @@ mod tests {
         assert!(jump.shift > 50.0, "{jump:?}");
         let c = t.estimate().unwrap().x[IDX_C];
         assert!((c - 150.0).abs() < 10.0, "c = {c}");
+    }
+
+    /// The cap bounds the jump variance at a multiple of σ̂_s²: a large
+    /// step then sets off several smaller jumps instead of one huge one.
+    #[test]
+    fn spend_jumps_are_capped() {
+        let txns: Vec<Transaction> = (0..70)
+            .map(|i| {
+                let spend = if i < 60 { 50.0 } else { 400.0 };
+                let wiggle = if i % 2 == 0 { 20.0 } else { -20.0 };
+                posted(
+                    i,
+                    START + i as Day,
+                    -spend - wiggle,
+                    FlowKind::Discretionary,
+                )
+            })
+            .collect();
+        let ledger = 10_000.0 + txns.iter().map(|t| t.amount).sum::<f64>();
+        let run = |cap: f64| {
+            let mut tcfg = TrackerConfig::new(START);
+            tcfg.max_spend_jump = cap;
+            let mut t = Tracker::new(tcfg).unwrap();
+            let report = t.ingest(&txns, ledger, START + 69).unwrap();
+            let jumps: Vec<(Day, f64)> = report
+                .days
+                .iter()
+                .filter(|d| d.day >= START + 60)
+                .flat_map(|d| d.jumps.iter().map(move |j| (d.day - START, j.shift)))
+                .collect();
+            (jumps, t.estimate().unwrap().x[IDX_C])
+        };
+        let (free, _) = run(1e9);
+        let (capped, c) = run(1.0);
+        // The same first alarm; under the cap it buys less variance, so the
+        // detector fires again within days and c still catches up.
+        assert_eq!(capped[0], free[0]);
+        assert!(capped.len() > free.len(), "{capped:?} vs {free:?}");
+        assert!(c > 300.0, "c = {c}");
+
+        let mut bad = TrackerConfig::new(START);
+        for cap in [0.0, -1.0, f64::NAN] {
+            bad.max_spend_jump = cap;
+            assert!(Tracker::new(bad).is_err(), "{cap}");
+        }
     }
 
     #[test]

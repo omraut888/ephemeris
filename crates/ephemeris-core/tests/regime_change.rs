@@ -61,7 +61,8 @@ fn scenario(base: SynthConfig, target: Target, factor: f64) -> SynthConfig {
 fn tracker_config(detect: bool) -> TrackerConfig {
     let mut tcfg = TrackerConfig::new(START);
     if !detect {
-        tcfg.change = None;
+        tcfg.spend_change = None;
+        tcfg.income_change = None;
     }
     tcfg
 }
