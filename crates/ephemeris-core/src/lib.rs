@@ -15,6 +15,8 @@ pub mod metrics;
 pub mod model;
 pub mod observe;
 pub mod schedule;
+#[cfg(feature = "serde")]
+pub mod schema;
 pub mod synth;
 pub mod tracker;
 pub mod types;

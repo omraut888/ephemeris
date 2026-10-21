@@ -14,3 +14,7 @@ rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
 rand_distr = "0.6"
 serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# Round-trip tests for the `schema` JSON contracts.
+serde_json = { version = "1", features = ["float_roundtrip"] }
