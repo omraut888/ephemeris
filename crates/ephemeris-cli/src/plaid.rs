@@ -26,8 +26,11 @@
 //!      by yearly amount wins. The payee's name and category only break a
 //!      near-tie (within [`INCOME_TIE`]): a wage category or a payroll-like
 //!      name wins it;
-//!    - a counterparty with at least [`RECURRING_MIN`] posted records of the
-//!      same amount, or a bill-like category ([`is_bill_category`]) → scheduled;
+//!    - scheduled: at least [`RECURRING_MIN`] posted records with the same
+//!      counterparty and amount *on a regular interval* (the core's
+//!      [`is_regular_interval`]: at least weekly, gaps clustered around their
+//!      median), or a bill-like category ([`is_bill_category`]). Repeats
+//!      alone would make a habitual coffee a bill;
 //!    - anything else → discretionary.
 //!
 //!    Income and scheduled records get a stream per counterparty.
@@ -37,7 +40,7 @@ use std::path::Path;
 
 use ephemeris_core::calendar::{PaySchedule, add_business_days};
 use ephemeris_core::observe::ObserveConfig;
-use ephemeris_core::schedule::regular_pay_schedule;
+use ephemeris_core::schedule::{is_regular_interval, regular_pay_schedule};
 use ephemeris_core::schema::{Date, Feed, FeedTransaction, SCHEMA_VERSION};
 use ephemeris_core::{Day, FlowKind, TxnStatus};
 use serde::Deserialize;
@@ -131,6 +134,8 @@ pub struct Notes {
     /// `TRANSFER_*` records with no counterpart, tagged by the other rules.
     pub unmatched_transfers: usize,
     pub scheduled_by_repeat: usize,
+    /// Records with enough same-amount repeats but irregular timing.
+    pub irregular_repeats: usize,
     pub scheduled_by_category: usize,
 }
 
@@ -232,13 +237,16 @@ pub fn to_feed(
         &mut notes,
     );
 
-    // Same-amount repeats per counterparty, over posted records.
-    let mut repeats: HashMap<(String, i64), usize> = HashMap::new();
+    // Days of same-amount repeats per counterparty, over posted records.
+    let mut repeats: HashMap<(String, i64), Vec<Day>> = HashMap::new();
     for t in current
         .values()
         .filter(|t| !t.pending && !transfers.contains(t.transaction_id.as_str()))
     {
-        *repeats.entry((key(t), cents_key(t.amount))).or_default() += 1;
+        repeats
+            .entry((key(t), cents_key(t.amount)))
+            .or_default()
+            .push(days[t.transaction_id.as_str()]);
     }
 
     // 4–5. Convert and tag.
@@ -263,8 +271,7 @@ pub fn to_feed(
         let k = key(t);
         let same = repeats
             .get(&(k.clone(), cents_key(t.amount)))
-            .copied()
-            .unwrap_or(0);
+            .map_or(&[][..], Vec::as_slice);
         let kind = if transfers.contains(t.transaction_id.as_str()) {
             FlowKind::Transfer
         } else if t.amount < 0.0 && income.as_ref() == Some(&k) {
@@ -389,17 +396,20 @@ fn cents_key(amount: f64) -> i64 {
     (amount * 100.0).round() as i64
 }
 
-/// The flow kind of one record (see the module docs). `repeats` is how many
-/// posted records share its counterparty and amount.
-fn classify(t: &PlaidTxn, repeats: usize, notes: &mut Notes) -> FlowKind {
+/// The flow kind of a record that is neither a transfer nor income (see the
+/// module docs). `repeats` are the days of the posted records that share its
+/// counterparty and amount.
+fn classify(t: &PlaidTxn, repeats: &[Day], notes: &mut Notes) -> FlowKind {
     let cat = t.personal_finance_category.as_ref();
-    if repeats >= RECURRING_MIN {
+    let repeated = repeats.len() >= RECURRING_MIN;
+    if repeated && is_regular_interval(repeats) {
         notes.scheduled_by_repeat += 1;
         FlowKind::Scheduled
     } else if cat.is_some_and(is_bill_category) {
         notes.scheduled_by_category += 1;
         FlowKind::Scheduled
     } else {
+        notes.irregular_repeats += usize::from(repeated);
         FlowKind::Discretionary
     }
 }
@@ -602,7 +612,13 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
         (
             notes.scheduled_by_repeat,
             format!(
-                "records tagged scheduled: same counterparty and amount {RECURRING_MIN}+ times"
+                "records tagged scheduled: same counterparty and amount {RECURRING_MIN}+ times, at a regular interval"
+            ),
+        ),
+        (
+            notes.irregular_repeats,
+            format!(
+                "records left discretionary: {RECURRING_MIN}+ same-amount repeats, but irregular timing"
             ),
         ),
         (
@@ -980,7 +996,10 @@ mod tests {
         let (feed, notes) = convert(one_page(records));
         assert_eq!(kinds_of(&feed, "SWEETGREEN"), [FlowKind::Income; 6]);
         assert_eq!(kinds_of(&feed, "BIG DEPOSIT"), [FlowKind::Discretionary]);
-        assert!(!kinds_of(&feed, "ACME PAYROLL").contains(&FlowKind::Income));
+        assert_eq!(
+            kinds_of(&feed, "ACME PAYROLL"),
+            [FlowKind::Discretionary; 3]
+        );
         assert!(!kinds_of(&feed, "Interest payment").contains(&FlowKind::Income));
         assert_eq!(notes.income_stream.as_deref(), Some("SWEETGREEN (weekly)"));
         assert!(!notes.income_by_tiebreak);
@@ -1029,32 +1048,57 @@ mod tests {
 
     #[test]
     fn scheduled_tagging() {
-        let sub =
-            |id: &str, date: &str| with(txn(id, 12.65, date), "merchant_name", json!("Spotify"));
-        let coffee = |id: &str, date: &str, amount: f64| {
-            with(txn(id, amount, date), "merchant_name", json!("Starbucks"))
+        use ephemeris_core::calendar::weekday;
+        let merchant = |id: String, amount: f64, d: &str, name: &str| {
+            with(txn(&id, amount, d), "merchant_name", json!(name))
         };
-        let rent = category(
-            with(txn("r", 1500.0, "2026-10-01"), "name", json!("RENT")),
+        // The same $4.50 coffee on 12 weekdays: plenty of repeats, but daily.
+        let mut records: Vec<Value> = (1..=16)
+            .map(|d| format!("2026-10-{d:02}"))
+            .filter(|d| weekday(Date::parse(d).unwrap().0) < 5)
+            .enumerate()
+            .map(|(i, d)| merchant(format!("c{i}"), 4.5, &d, "Starbucks"))
+            .collect();
+        assert_eq!(records.len(), 12);
+        // A climbing gym on scattered days, same amount: repeats, irregular.
+        for (i, d) in ["2026-08-03", "2026-08-09", "2026-09-14", "2026-09-20"]
+            .iter()
+            .enumerate()
+        {
+            records.push(merchant(format!("g{i}"), 25.0, d, "Climbing gym"));
+        }
+        // A weekly class and a monthly subscription: regular, so bills.
+        records.extend(every(4, "2026-09-07", 7, |id, d| {
+            merchant(id, 20.0, &d, "Yoga")
+        }));
+        for (i, d) in ["2026-08-21", "2026-09-21", "2026-10-21"]
+            .iter()
+            .enumerate()
+        {
+            records.push(merchant(format!("s{i}"), 12.65, d, "Spotify"));
+        }
+        // A bill-like category is a bill even when seen once.
+        records.push(category(
+            named(txn("r", 1500.0, "2026-10-01"), "RENT"),
             "RENT_AND_UTILITIES",
             "RENT_AND_UTILITIES_RENT",
-        );
-        let (feed, notes) = convert(one_page(vec![
-            sub("s1", "2026-08-21"),
-            sub("s2", "2026-09-21"),
-            sub("s3", "2026-10-21"),
-            coffee("c1", "2026-10-01", 4.5),
-            coffee("c2", "2026-10-02", 4.5),
-            coffee("c3", "2026-10-03", 5.25),
-            rent,
-        ]));
+        ));
+        let (feed, notes) = convert(one_page(records));
         assert_eq!(kinds_of(&feed, "Spotify"), [FlowKind::Scheduled; 3]);
-        // Two equal charges are not enough.
-        assert_eq!(kinds_of(&feed, "Starbucks"), [FlowKind::Discretionary; 3]);
+        assert_eq!(kinds_of(&feed, "Yoga"), [FlowKind::Scheduled; 4]);
+        assert_eq!(kinds_of(&feed, "Starbucks"), [FlowKind::Discretionary; 12]);
+        assert_eq!(
+            kinds_of(&feed, "Climbing gym"),
+            [FlowKind::Discretionary; 4]
+        );
         assert_eq!(kinds_of(&feed, "RENT"), [FlowKind::Scheduled]);
         assert_eq!(
-            (notes.scheduled_by_repeat, notes.scheduled_by_category),
-            (3, 1)
+            (
+                notes.scheduled_by_repeat,
+                notes.irregular_repeats,
+                notes.scheduled_by_category
+            ),
+            (7, 16, 1)
         );
         for t in &feed.transactions {
             assert_eq!(
