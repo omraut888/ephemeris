@@ -1,8 +1,10 @@
 //! From one bank-feed snapshot to per-day filter inputs (design §1, §2).
 //!
 //! Every record gets a [`Role`]:
-//! - income, scheduled bills, and aged-out transfer legs are known flows (`u`);
-//! - discretionary purchases are seen only through the balance observation;
+//! - income and scheduled bills are known flows (`u`);
+//! - discretionary purchases, and transfer legs that aged out unmatched, are
+//!   seen only through the balance observation: a "transfer" with no leg in
+//!   another linked account is money leaving or entering, i.e. spending;
 //! - matched own-account transfer pairs are excluded (they cancel);
 //! - a transfer leg whose counterpart has not appeared yet is held out, and
 //!   blocks settlement until it is matched or ages out.
@@ -36,7 +38,7 @@ pub struct ObserveConfig {
     pub missing_auth_rel_sd: f64,
     pub missing_auth_window: u32,
     /// Transfer legs match when their days are within this many business days.
-    /// An unmatched leg older than this is reclassified as an external flow.
+    /// An unmatched leg older than this is reclassified as spending.
     pub transfer_window: u32,
 }
 
@@ -81,9 +83,10 @@ impl ObserveConfig {
 /// How a record enters the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
-    /// Known flow: part of `u` (income, scheduled, aged-out transfer leg).
+    /// Known flow: part of `u` (income, scheduled).
     Input,
-    /// Discretionary: seen only through the balance observation.
+    /// Discretionary, or an aged-out unmatched transfer leg: seen only through
+    /// the balance observation.
     Spend,
     /// One leg of a matched own-account transfer pair.
     MatchedTransfer,
@@ -360,7 +363,7 @@ fn assign_roles(txns: &[Transaction], today: Day, cfg: &ObserveConfig) -> Vec<Ro
         if roles[i] == Role::HeldTransfer
             && !within_business_days(txns[i].day(), today, cfg.transfer_window)
         {
-            roles[i] = Role::Input;
+            roles[i] = Role::Spend;
         }
     }
     roles
@@ -491,12 +494,13 @@ mod tests {
         let f = feed(&[out.clone(), inc], 1000.0, d + 1);
         assert_eq!(f.roles(), &[Role::HeldTransfer, Role::HeldTransfer]);
 
-        // Unmatched after the window: an external flow, in u.
+        // Unmatched after the window: spending, seen in z but not in u.
         out.date = d;
         let f = feed(&[out], 700.0, d + 7);
-        assert_eq!(f.roles(), &[Role::Input]);
+        assert_eq!(f.roles(), &[Role::Spend]);
         assert_eq!(f.settled_through(), d + 7);
-        assert_eq!(f.settled_day(d).unwrap().u, -300.0);
+        let day = f.settled_day(d).unwrap();
+        assert_eq!((day.u, day.balance), (0.0, Some((700.0, 1.0))));
     }
 
     #[test]

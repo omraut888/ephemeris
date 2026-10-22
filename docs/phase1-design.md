@@ -21,7 +21,10 @@ pure computation (see CLAUDE.md). Plaid ingestion lives in `ephemeris-cli`.
   cards come later.
 - **Own-account transfers:** every `Transaction` carries an `AccountId`. A
   movement between two of the user's linked accounts is tagged
-  `FlowKind::Transfer`. Transfers are never spending or income:
+  `FlowKind::Transfer`. A record is a transfer only because its counterpart
+  leg is in another linked account, never because of its category: a Venmo,
+  Cash App, PayPal or cash movement with no such leg is spending. Transfers
+  are never spending or income:
   - They are excluded from `u`, from the spending rate `c` and from the income
     observations of `m`.
   - Their two legs cancel exactly in the aggregated balance.
@@ -257,7 +260,7 @@ show a spurious −amount.
 `observe` therefore holds an unmatched `Transfer` leg out of `z` until its
 counterpart appears. Matching is by opposite amount within a few business days.
 If no counterpart appears within N business days, the leg is reclassified as
-an external (non-transfer) flow. The generator produces exactly this
+spending (seen through the balance, like a discretionary purchase). The generator produces exactly this
 visibility pattern.
 
 Held legs **block settlement** (`settled_through` stops before them), so a
