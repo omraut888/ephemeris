@@ -42,6 +42,11 @@ pub struct ObserveConfig {
     pub transfer_window: u32,
 }
 
+impl ObserveConfig {
+    /// The default [`ObserveConfig::transfer_window`].
+    pub const DEFAULT_TRANSFER_WINDOW: u32 = 3;
+}
+
 impl Default for ObserveConfig {
     fn default() -> Self {
         Self {
@@ -50,7 +55,7 @@ impl Default for ObserveConfig {
             pending_min_sd: 20.0,
             missing_auth_rel_sd: 0.5,
             missing_auth_window: 3,
-            transfer_window: 3,
+            transfer_window: Self::DEFAULT_TRANSFER_WINDOW,
         }
     }
 }

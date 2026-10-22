@@ -13,7 +13,13 @@
 //! 4. Flip the sign (Plaid: positive = money out) and round to cents. The
 //!    day is `authorized_date` when present, otherwise the posted `date`.
 //! 5. Tag each record (design §1 makes tagging the adapter's job):
-//!    - `TRANSFER_IN_*` / `TRANSFER_OUT_*` category → transfer;
+//!    - a `TRANSFER_IN_*` / `TRANSFER_OUT_*` record → transfer, but only when
+//!      its counterpart leg is in another depository account: the opposite
+//!      amount to the cent, within [`TRANSFER_WINDOW`] business days. A leg
+//!      still inside that window of today stays a transfer if another
+//!      account could show its counterpart later (the core holds it). Any
+//!      other `TRANSFER_*` record (Venmo, Cash App, PayPal, cash) is money
+//!      leaving or entering, and is tagged by the rules below like any other;
 //!    - inflow with category `INCOME_WAGES`, or "payroll" in the name → income;
 //!    - a counterparty with at least [`RECURRING_MIN`] posted records of the
 //!      same amount, or a bill-like category ([`is_bill_category`]) → scheduled;
@@ -24,6 +30,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
+use ephemeris_core::calendar::add_business_days;
+use ephemeris_core::observe::ObserveConfig;
 use ephemeris_core::schema::{Date, Feed, FeedTransaction, SCHEMA_VERSION};
 use ephemeris_core::{Day, FlowKind, TxnStatus};
 use serde::Deserialize;
@@ -32,6 +40,9 @@ use crate::files::{read_json, write_json};
 
 /// Same-amount repeats that make a counterparty a scheduled stream.
 pub const RECURRING_MIN: usize = 3;
+/// Business days within which two transfer legs match: the core's window,
+/// so a leg the adapter keeps as in flight is one the core will hold.
+pub const TRANSFER_WINDOW: u32 = ObserveConfig::DEFAULT_TRANSFER_WINDOW;
 
 #[derive(Debug, Deserialize)]
 pub struct SyncFile {
@@ -100,7 +111,12 @@ pub struct Notes {
     pub skipped_transactions: usize,
     pub superseded_pending: usize,
     pub missing_authorized_date: usize,
+    /// Legs of matched own-account transfer pairs.
     pub transfers: usize,
+    /// Unmatched transfer legs young enough that the counterpart may still post.
+    pub transfers_in_flight: usize,
+    /// `TRANSFER_*` records with no counterpart, tagged by the other rules.
+    pub unmatched_transfers: usize,
     pub income_by_name: usize,
     pub scheduled_by_repeat: usize,
     pub scheduled_by_category: usize,
@@ -183,10 +199,25 @@ pub fn to_feed(
         .map(|(i, id)| (id, i as u64 + 1))
         .collect();
 
+    // The day each record belongs to (design §0).
+    let mut days: HashMap<&str, Day> = HashMap::with_capacity(current.len());
+    for t in current.values() {
+        let day = match &t.authorized_date {
+            Some(d) => parse_date(d, t)?,
+            None => parse_date(&t.date, t)?,
+        };
+        days.insert(t.transaction_id.as_str(), day.0);
+    }
+
+    let transfers = match_transfers(&current, &days, today.0, accounts.len(), &mut notes);
+
     // Same-amount repeats per counterparty, over posted records.
     let key = |t: &PlaidTxn| counterparty(t.merchant_name.as_deref(), t.name.as_deref());
     let mut repeats: HashMap<(String, i64), usize> = HashMap::new();
-    for t in current.values().filter(|t| !t.pending) {
+    for t in current
+        .values()
+        .filter(|t| !t.pending && !transfers.contains(t.transaction_id.as_str()))
+    {
         *repeats.entry((key(t), cents_key(t.amount))).or_default() += 1;
     }
 
@@ -214,7 +245,11 @@ pub fn to_feed(
             .get(&(k.clone(), cents_key(t.amount)))
             .copied()
             .unwrap_or(0);
-        let kind = classify(t, same, &mut notes);
+        let kind = if transfers.contains(t.transaction_id.as_str()) {
+            FlowKind::Transfer
+        } else {
+            classify(t, same, &mut notes)
+        };
         stream_keys.push(matches!(kind, FlowKind::Income | FlowKind::Scheduled).then_some(k));
         out.push(FeedTransaction {
             id: ids[t.transaction_id.as_str()],
@@ -266,6 +301,67 @@ pub fn to_feed(
     Ok((feed.rounded_to_cents(), notes))
 }
 
+fn is_transfer_category(t: &PlaidTxn) -> bool {
+    t.personal_finance_category
+        .as_ref()
+        .is_some_and(|c| c.primary == "TRANSFER_IN" || c.primary == "TRANSFER_OUT")
+}
+
+fn within_business_days(a: Day, b: Day, window: u32) -> bool {
+    add_business_days(a.min(b), window) >= a.max(b)
+}
+
+/// Ids of the records that are own-account transfers (module docs, rule 1):
+/// matched pairs, plus unmatched legs still in flight when another account
+/// could show their counterpart.
+fn match_transfers<'a>(
+    current: &BTreeMap<&'a str, &'a PlaidTxn>,
+    days: &HashMap<&str, Day>,
+    today: Day,
+    n_accounts: usize,
+    notes: &mut Notes,
+) -> BTreeSet<&'a str> {
+    let mut legs: Vec<&PlaidTxn> = current
+        .values()
+        .copied()
+        .filter(|t| is_transfer_category(t))
+        .collect();
+    let day = |t: &PlaidTxn| days[t.transaction_id.as_str()];
+    legs.sort_by(|a, b| (day(a), &a.transaction_id).cmp(&(day(b), &b.transaction_id)));
+
+    let mut tagged = BTreeSet::new();
+    for out in legs.iter().filter(|t| t.amount > 0.0) {
+        if tagged.contains(out.transaction_id.as_str()) {
+            continue;
+        }
+        let partner = legs.iter().find(|inc| {
+            inc.amount < 0.0
+                && inc.account_id != out.account_id
+                && !tagged.contains(inc.transaction_id.as_str())
+                && cents_key(inc.amount) == -cents_key(out.amount)
+                && within_business_days(day(out), day(inc), TRANSFER_WINDOW)
+        });
+        if let Some(inc) = partner {
+            tagged.insert(out.transaction_id.as_str());
+            tagged.insert(inc.transaction_id.as_str());
+            notes.transfers += 2;
+        }
+    }
+    for t in &legs {
+        let id = t.transaction_id.as_str();
+        if tagged.contains(id) {
+            continue;
+        }
+        if n_accounts > 1 && within_business_days(day(t), today, TRANSFER_WINDOW) {
+            tagged.insert(id);
+            notes.transfers_in_flight += 1;
+        } else {
+            notes.unmatched_transfers += 1;
+        }
+    }
+    tagged
+}
+
 /// Amount in whole cents, for grouping equal charges.
 fn cents_key(amount: f64) -> i64 {
     (amount * 100.0).round() as i64
@@ -280,10 +376,7 @@ fn classify(t: &PlaidTxn, repeats: usize, notes: &mut Notes) -> FlowKind {
         .into_iter()
         .flatten()
         .any(|s| s.to_lowercase().contains("payroll"));
-    if cat.is_some_and(|c| c.primary == "TRANSFER_IN" || c.primary == "TRANSFER_OUT") {
-        notes.transfers += 1;
-        FlowKind::Transfer
-    } else if inflow && cat.is_some_and(|c| c.detailed == "INCOME_WAGES") {
+    if inflow && cat.is_some_and(|c| c.detailed == "INCOME_WAGES") {
         FlowKind::Income
     } else if inflow && says_payroll {
         notes.income_by_name += 1;
@@ -413,7 +506,18 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
         ),
         (
             notes.transfers,
-            "TRANSFER_IN/OUT records tagged transfer; unmatched legs become one-off flows".into(),
+            "transfer legs matched to a counterpart in another account".into(),
+        ),
+        (
+            notes.transfers_in_flight,
+            format!(
+                "unmatched transfer legs kept as transfers: under {TRANSFER_WINDOW} business days old"
+            ),
+        ),
+        (
+            notes.unmatched_transfers,
+            "TRANSFER_* records with no counterpart leg, tagged as spending or income instead"
+                .into(),
         ),
         (
             notes.missing_authorized_date,
@@ -586,33 +690,95 @@ mod tests {
         assert_eq!(txns[0].day(), Date::parse("2026-09-30").unwrap().0);
     }
 
+    fn transfer(t: Value, out: bool) -> Value {
+        if out {
+            category(t, "TRANSFER_OUT", "TRANSFER_OUT_ACCOUNT_TRANSFER")
+        } else {
+            category(t, "TRANSFER_IN", "TRANSFER_IN_ACCOUNT_TRANSFER")
+        }
+    }
+
+    fn named(t: Value, name: &str) -> Value {
+        with(t, "name", json!(name))
+    }
+
     #[test]
-    fn transfer_categories_become_transfers() {
-        let (feed, notes) = convert(one_page(vec![
-            category(
-                with(txn("a", 145.09, "2026-10-02"), "name", json!("Venmo")),
-                "TRANSFER_OUT",
-                "TRANSFER_OUT_TRANSFER_OUT_FROM_APPS",
+    fn only_matched_legs_are_transfers() {
+        // Checking → savings, the incoming leg posting a business day later
+        // (2026-10-02 is a Friday, 10-05 the next Monday).
+        let out = transfer(named(txn("o", 300.0, "2026-10-02"), "TO SAVINGS"), true);
+        let inc = with(
+            transfer(
+                named(txn("i", -300.0, "2026-10-05"), "FROM CHECKING"),
+                false,
             ),
-            category(
-                with(
-                    txn("b", -496.0, "2026-10-14"),
-                    "name",
-                    json!("CASH DEPOSIT"),
-                ),
-                "TRANSFER_IN",
-                "TRANSFER_IN_DEPOSIT",
+            "account_id",
+            json!("sav"),
+        );
+        // P2P and cash with no counterpart in a linked account.
+        let venmo = category(
+            named(txn("v", 145.09, "2026-10-02"), "Venmo"),
+            "TRANSFER_OUT",
+            "TRANSFER_OUT_TRANSFER_OUT_FROM_APPS",
+        );
+        let cash = category(
+            named(txn("c", -496.0, "2026-10-14"), "CASH DEPOSIT"),
+            "TRANSFER_IN",
+            "TRANSFER_IN_DEPOSIT",
+        );
+        // Same amount on the same account is not an own-account pair, and a
+        // counterpart a week later is too late.
+        let same_acct = transfer(
+            named(txn("s", -145.09, "2026-10-02"), "SAME ACCOUNT"),
+            false,
+        );
+        let late = with(
+            transfer(named(txn("l", -300.0, "2026-10-12"), "LATE"), false),
+            "account_id",
+            json!("sav"),
+        );
+        let (feed, notes) = convert(one_page(vec![out, inc, venmo, cash, same_acct, late]));
+        assert_eq!(by_desc(&feed, "TO SAVINGS").kind, FlowKind::Transfer);
+        assert_eq!(by_desc(&feed, "FROM CHECKING").kind, FlowKind::Transfer);
+        for d in ["Venmo", "CASH DEPOSIT", "SAME ACCOUNT", "LATE"] {
+            assert_eq!(by_desc(&feed, d).kind, FlowKind::Discretionary, "{d}");
+        }
+        assert_eq!(
+            (
+                notes.transfers,
+                notes.transfers_in_flight,
+                notes.unmatched_transfers
             ),
-            category(
-                with(txn("c", 3.0, "2026-10-14"), "name", json!("FEE")),
-                "BANK_FEES",
-                "BANK_FEES_OTHER_BANK_FEES",
-            ),
-        ]));
-        assert_eq!(notes.transfers, 2);
-        assert_eq!(by_desc(&feed, "Venmo").kind, FlowKind::Transfer);
-        assert_eq!(by_desc(&feed, "CASH DEPOSIT").kind, FlowKind::Transfer);
-        assert_eq!(by_desc(&feed, "FEE").kind, FlowKind::Discretionary);
+            (2, 0, 4)
+        );
+        // The core sees a matched pair it can cancel.
+        assert!(feed.transactions().is_ok());
+    }
+
+    #[test]
+    fn a_fresh_unmatched_leg_is_in_flight_only_with_another_account() {
+        // Today is 2026-10-21 (Wednesday); a leg from Monday may still match.
+        let fresh = || transfer(named(txn("f", 200.0, "2026-10-19"), "TO SAVINGS"), true);
+        let (feed, notes) = convert(one_page(vec![fresh()]));
+        assert_eq!(by_desc(&feed, "TO SAVINGS").kind, FlowKind::Transfer);
+        assert_eq!(notes.transfers_in_flight, 1);
+
+        // With checking as the only depository account there is nowhere for
+        // the counterpart to appear: spending.
+        let only_checking: BalanceFile = serde_json::from_value(json!({"accounts": [
+            {"account_id": "chk", "type": "depository",
+             "balances": {"current": 1000.0, "iso_currency_code": "USD"}}
+        ]}))
+        .unwrap();
+        let sync: SyncFile =
+            serde_json::from_value(json!({ "pages": one_page(vec![fresh()]) })).unwrap();
+        let (feed, notes) =
+            to_feed(&sync, &only_checking, Date::parse("2026-10-21").unwrap()).unwrap();
+        assert_eq!(by_desc(&feed, "TO SAVINGS").kind, FlowKind::Discretionary);
+        assert_eq!(
+            (notes.transfers_in_flight, notes.unmatched_transfers),
+            (0, 1)
+        );
     }
 
     #[test]
