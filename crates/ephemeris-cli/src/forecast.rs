@@ -5,8 +5,11 @@ use std::path::PathBuf;
 
 use ephemeris_core::forecast::{ForecastConfig, ForecastModel, forecast};
 use ephemeris_core::schedule::detect_schedule;
-use ephemeris_core::schema::{Estimate, Feed, ForecastReport, PayCadence, SCHEMA_VERSION, Shift};
-use ephemeris_core::tracker::{Tracker, TrackerConfig};
+use ephemeris_core::schema::{
+    Date, Estimate, Feed, ForecastReport, PayCadence, SCHEMA_VERSION, Shift,
+};
+use ephemeris_core::tracker::{IngestReport, Tracker, TrackerConfig};
+use ephemeris_core::{Channel, Day};
 
 use crate::cone;
 use crate::files::{read_json, write_json};
@@ -22,19 +25,28 @@ pub struct Args {
     pub json: Option<PathBuf>,
 }
 
+/// A regime change the tracker detected: day, settled or provisional, and
+/// the estimated shift.
+struct Change {
+    day: Day,
+    settled: bool,
+    channel: Channel,
+    shift: f64,
+}
+
 pub fn run(args: &Args) -> Result<(), String> {
-    let report = build_report(args)?;
+    let (report, changes) = build_report(args)?;
     if let Some(path) = &args.json {
         write_json(path, &report)?;
     }
-    print_report(&report);
+    print_report(&report, &changes);
     if let Some(path) = &args.json {
         println!("\nWrote JSON report to {}", path.display());
     }
     Ok(())
 }
 
-fn build_report(args: &Args) -> Result<ForecastReport, String> {
+fn build_report(args: &Args) -> Result<(ForecastReport, Vec<Change>), String> {
     let feed: Feed = read_json(&args.input, "feed")?;
     if feed.schema_version != SCHEMA_VERSION {
         return Err(format!(
@@ -48,7 +60,7 @@ fn build_report(args: &Args) -> Result<ForecastReport, String> {
 
     let tcfg = TrackerConfig::new(feed.history_start.0);
     let mut tracker = Tracker::new(tcfg).map_err(|e| format!("tracker config: {e}"))?;
-    tracker
+    let ingest = tracker
         .ingest(&txns, feed.ledger_balance, feed.today.0)
         .map_err(|e| format!("tracker rejected {input}: {e}"))?;
     let est = tracker.estimate().ok_or("tracker produced no estimate")?;
@@ -60,10 +72,26 @@ fn build_report(args: &Args) -> Result<ForecastReport, String> {
     };
     let cone = forecast(est, &schedule, &ForecastModel::from_tracker(&tcfg), &fcfg)
         .map_err(|e| format!("forecast: {e}"))?;
-    Ok(ForecastReport::new(&feed, est, &schedule, &cone, &fcfg))
+    let report = ForecastReport::new(&feed, est, &schedule, &cone, &fcfg);
+    Ok((report, changes(&ingest)))
 }
 
-fn print_report(r: &ForecastReport) {
+fn changes(ingest: &IngestReport) -> Vec<Change> {
+    ingest
+        .days
+        .iter()
+        .flat_map(|d| {
+            d.jumps.iter().map(|j| Change {
+                day: d.day,
+                settled: d.settled,
+                channel: j.channel,
+                shift: j.shift,
+            })
+        })
+        .collect()
+}
+
+fn print_report(r: &ForecastReport, changes: &[Change]) {
     println!(
         "EPHEMERIS forecast as of {} (settled through {})\n",
         r.as_of, r.settled_through
@@ -79,6 +107,22 @@ fn print_report(r: &ForecastReport) {
     row("Balance", &r.balance, "");
     row("Spend rate", &r.spend_rate, "/day");
     row("Paycheck", &r.expected_paycheck, "");
+    if !changes.is_empty() {
+        println!("\n  Regime changes detected (the cone widens until the filter relearns):");
+        for c in changes {
+            let (what, unit) = match c.channel {
+                Channel::Balance => ("spend rate", "/day"),
+                Channel::Income => ("paycheck", ""),
+            };
+            let sign = if c.shift < 0.0 { "-" } else { "+" };
+            let when = if c.settled { "" } else { " (provisional)" };
+            println!(
+                "    {}  {what} {sign}{}{unit}{when}",
+                Date(c.day),
+                money(c.shift.abs())
+            );
+        }
+    }
 
     println!();
     match &r.income {
