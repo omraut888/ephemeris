@@ -575,8 +575,9 @@ Both modes also produce:
 - paydays from any `PaySchedule` with jitter plus weekend/holiday rollback
 - subscriptions whose billing dates drift
 
-Implemented so far: everything above except steps in `c`, bonuses, data gaps
-and the scenarios below.
+Implemented so far: everything above except bonuses and data gaps, plus
+step changes in `c` and `m` (`spend_steps`, `income_steps`, §6). Of the
+scenarios below, only `regime_change` exists (`SynthConfig::regime_change`).
 
 Named scenarios: `salaried`, `salaried_with_bonus`, `regime_change`, `gig`
 (irregular income, expected to strain the per-event `m` model).
@@ -620,7 +621,9 @@ them as `ephemeris validate --seed S --runs M`, which prints the metrics table.
 
 ## 6. Regime changes
 
-Status: proposal (2026-10-21), written before implementation.
+Status: implemented 2026-10-21. The proposal below was written before any
+code; "As built" at the end of this section records what measurement
+changed.
 
 **The problem.** `c` and `m` are random walks with small daily variances
 (`q_c = 0.25`, so `c` drifts about $0.50/day per day). A *step*, such as a
@@ -733,6 +736,95 @@ alarms; two consecutive paychecks off by more than about 2σ do.
   the step, 30-day horizon, 90% interval coverage, with and without the
   detector. The cone must be wider than in the same run with no step.
 - False-alarm rate with no step, on model-matched and realistic data.
+
+### As built
+
+Code: `change.rs` (the CUSUM), `FinanceFilter::add_jump`,
+`VarianceEstimator::forget`, and the tracker's `spend_change`,
+`max_spend_jump` and `income_change` settings. Tests:
+`tests/regime_change.rs`, plus unit tests in each module. Measuring changed
+four things against the proposal:
+
+1. **The jump stays zero-mean.** A variant that also moved the mean by `Δ̂`
+   (the run's maximum-likelihood shift) did no better after real steps. It
+   did worse after false alarms, which then moved `c` by the full `Δ̂`:
+   realistic no-step `c` RMSE 12.7 against 10.7 $/day.
+2. **The spend jump is capped at `σ̂_s²`** (`max_spend_jump = 1`). On lumpy
+   spending a false alarm can have `Δ̂ ≈ 3.3σ̂`, and after a jump that size
+   the next single day sets `ĉ` almost by itself. With the cap, one day
+   moves `c` by at most about half its deviation. A large real change sets
+   off several alarms in a row instead (a unit test checks this), and
+   recovery got faster: realistic ×2 from 55 to 45 days at h = 5. Income is
+   not capped. Its `Δ̂` is already bounded by the gate, and a cap at `R̂_inc`
+   would be far too small for a pay cut.
+3. **h = 6 on the balance channel, h = 5 on income.** With heavy-tailed
+   spending, h = 5 gave 1.5–1.7 false alarms a year and doubled the
+   realistic no-step `c` RMSE. Income stays at h = 5 so that two short
+   paychecks in a row are enough. At h = 6 two clipped innovations
+   (2 × 2.79) would not alarm, and a pay cut would wait a third pay period.
+4. **On an alarm the noise estimate forgets** back to its prior count, so
+   `σ̂_s²` (or `R̂_inc`) can follow a change in spread too: doubling realistic
+   spending also doubles its sd. **The detector also runs on the provisional
+   tail.** Its state there is thrown away with the tail, so a change shows
+   in the live estimate 2–5 days before it settles. Tail-only alarms appear
+   on 0.3–0.4% of days with no change. That roughly doubled the 1-week
+   coverage after a doubling, from 20% to 52% (h = 5, uncapped).
+
+**Step changes** (50 seeds each; the step on day 182; median days to the
+first alarm and to recovery, defined as `|ĉ − c|` within 25% of the step for
+14 days; 30-day forecasts from 1–4 weeks after the step):
+
+| Scenario | Detector | Alarm | Recovery | Recovered ≤ 30 d | 90% coverage at +7 / +14 / +21 / +28 d |
+|---|---|---|---|---|---|
+| matched, spend ×2 | on | 9 d | 16 d | 92% | 44 / 82 / 90 / 92% |
+| | off | – | never | 0% | 0 / 0 / 0 / 12% |
+| matched, spend ×0.5 | on | 31 d | 67 d | 20% | 22 / 48 / 56 / 72% |
+| | off | – | never | 0% | 20 / 22 / 26 / 66% |
+| realistic, spend ×2 | on | 17 d | 41 d | 30% | 10 / 42 / 50 / 72% |
+| | off | – | never | 0% | 6 / 12 / 14 / 22% |
+| realistic, spend ×0.5 | on | – | 106 d | 2% | 8 / 20 / 30 / 80% |
+| | off | – | never | 2% | 8 / 20 / 30 / 76% |
+| matched, paycheck ×0.8 | on | 22 d | 18 d | 70% | 10 / 10 / 94 / 90% |
+| | off | – | never | 0% | 6 / 6 / 6 / 28% |
+| matched, paycheck ×1.1 | on | 36 d | 45 d | 26% | 66 / 72 / 84 / 88% |
+| | off | – | never | 0% | 66 / 72 / 74 / 88% |
+
+"Never" means not within the 120 days after the step. Two to four weeks
+after a doubling, the 90% cone widens to 1.4–1.9× its no-step width, and
+coverage goes from almost never to about nominal on model-matched data.
+
+**Limits, from the same table.**
+
+- **The first week is still confident.** Detection takes the CUSUM delay
+  plus, for settled alarms, the settlement lag.
+- **Halving spending is a 0.75σ shift and is found slowly** (a month),
+  where it is found at all. On realistic data its skew hides it: few days
+  spend much more than the mean, so the clipped innovations barely move.
+- **A pay cut is seen after the second short paycheck**, by design. Until
+  then it is indistinguishable from a one-off deduction, so forecasts in
+  the first two weeks miss it.
+- **Realistic recovery is slow even after detection.** A doubling there
+  also doubles the daily spread, to about $122, and pinning `c` to within
+  $17.50/day takes about 7 weeks of data whatever the detector does.
+
+**False alarms and their cost** (no step; same sweeps as §5):
+
+| | Model-matched | Realistic |
+|---|---|---|
+| Settled false alarms per year (balance channel) | 0.30 | 0.48 |
+| RMSE of `c`, $/day: detector off → on | 4.67 → 5.27 | 6.44 → 7.55 |
+| 2σ coverage of `c` | 96.1% → 96.2% | 91.6% → 91.5% |
+| MC CRPS at 7 / 30 / 90 days, off | 217 / 210 / 421 | 192 / 241 / 519 |
+| MC CRPS at 7 / 30 / 90 days, on | 217 / 211 / 424 | 194 / 251 / 560 |
+
+The cost shows mostly at 90 days on realistic data: each false alarm
+leaves `ĉ` noisier for a few weeks, and 90 days multiplies that.
+Model-matched coverage with the detector on drifts up by about one point
+(the 50% interval at 90 days: 54.0% → 55.3%). That pushed one cell of the
+asserted calibration check one forecast past its ±5-point bound, so the
+strict check (`tests/forecast_calibration.rs`) now runs with detection
+off, the model's own assumptions, and prints the default tracker's table
+next to it.
 
 ## Decisions (resolved 2026-10-19)
 
