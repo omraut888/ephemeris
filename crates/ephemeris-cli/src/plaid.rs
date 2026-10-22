@@ -20,7 +20,12 @@
 //!      account could show its counterpart later (the core holds it). Any
 //!      other `TRANSFER_*` record (Venmo, Cash App, PayPal, cash) is money
 //!      leaving or entering, and is tagged by the rules below like any other;
-//!    - inflow with category `INCOME_WAGES`, or "payroll" in the name → income;
+//!    - income: the inflows of the *primary* regular income stream. Each
+//!      counterparty's posted inflows are tested by the core's schedule
+//!      detector ([`regular_pay_schedule`]); of the regular ones, the largest
+//!      by yearly amount wins. The payee's name and category only break a
+//!      near-tie (within [`INCOME_TIE`]): a wage category or a payroll-like
+//!      name wins it;
 //!    - a counterparty with at least [`RECURRING_MIN`] posted records of the
 //!      same amount, or a bill-like category ([`is_bill_category`]) → scheduled;
 //!    - anything else → discretionary.
@@ -30,8 +35,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use ephemeris_core::calendar::add_business_days;
+use ephemeris_core::calendar::{PaySchedule, add_business_days};
 use ephemeris_core::observe::ObserveConfig;
+use ephemeris_core::schedule::regular_pay_schedule;
 use ephemeris_core::schema::{Date, Feed, FeedTransaction, SCHEMA_VERSION};
 use ephemeris_core::{Day, FlowKind, TxnStatus};
 use serde::Deserialize;
@@ -40,6 +46,9 @@ use crate::files::{read_json, write_json};
 
 /// Same-amount repeats that make a counterparty a scheduled stream.
 pub const RECURRING_MIN: usize = 3;
+/// Two regular income streams within this fraction of each other's yearly
+/// amount are a tie, broken by the payee's name or category.
+pub const INCOME_TIE: f64 = 0.1;
 /// Business days within which two transfer legs match: the core's window,
 /// so a leg the adapter keeps as in flight is one the core will hold.
 pub const TRANSFER_WINDOW: u32 = ObserveConfig::DEFAULT_TRANSFER_WINDOW;
@@ -113,11 +122,14 @@ pub struct Notes {
     pub missing_authorized_date: usize,
     /// Legs of matched own-account transfer pairs.
     pub transfers: usize,
+    /// The primary income stream, as `counterparty (cadence)`.
+    pub income_stream: Option<String>,
+    /// The income stream won a near-tie on its name or category.
+    pub income_by_tiebreak: bool,
     /// Unmatched transfer legs young enough that the counterpart may still post.
     pub transfers_in_flight: usize,
     /// `TRANSFER_*` records with no counterpart, tagged by the other rules.
     pub unmatched_transfers: usize,
-    pub income_by_name: usize,
     pub scheduled_by_repeat: usize,
     pub scheduled_by_category: usize,
 }
@@ -210,9 +222,17 @@ pub fn to_feed(
     }
 
     let transfers = match_transfers(&current, &days, today.0, accounts.len(), &mut notes);
+    let key = |t: &PlaidTxn| counterparty(t.merchant_name.as_deref(), t.name.as_deref());
+    let income = primary_income(
+        current
+            .values()
+            .copied()
+            .filter(|t| !transfers.contains(t.transaction_id.as_str())),
+        &days,
+        &mut notes,
+    );
 
     // Same-amount repeats per counterparty, over posted records.
-    let key = |t: &PlaidTxn| counterparty(t.merchant_name.as_deref(), t.name.as_deref());
     let mut repeats: HashMap<(String, i64), usize> = HashMap::new();
     for t in current
         .values()
@@ -247,6 +267,8 @@ pub fn to_feed(
             .unwrap_or(0);
         let kind = if transfers.contains(t.transaction_id.as_str()) {
             FlowKind::Transfer
+        } else if t.amount < 0.0 && income.as_ref() == Some(&k) {
+            FlowKind::Income
         } else {
             classify(t, same, &mut notes)
         };
@@ -371,17 +393,7 @@ fn cents_key(amount: f64) -> i64 {
 /// posted records share its counterparty and amount.
 fn classify(t: &PlaidTxn, repeats: usize, notes: &mut Notes) -> FlowKind {
     let cat = t.personal_finance_category.as_ref();
-    let inflow = t.amount < 0.0;
-    let says_payroll = [t.name.as_deref(), t.merchant_name.as_deref()]
-        .into_iter()
-        .flatten()
-        .any(|s| s.to_lowercase().contains("payroll"));
-    if inflow && cat.is_some_and(|c| c.detailed == "INCOME_WAGES") {
-        FlowKind::Income
-    } else if inflow && says_payroll {
-        notes.income_by_name += 1;
-        FlowKind::Income
-    } else if repeats >= RECURRING_MIN {
+    if repeats >= RECURRING_MIN {
         notes.scheduled_by_repeat += 1;
         FlowKind::Scheduled
     } else if cat.is_some_and(is_bill_category) {
@@ -389,6 +401,93 @@ fn classify(t: &PlaidTxn, repeats: usize, notes: &mut Notes) -> FlowKind {
         FlowKind::Scheduled
     } else {
         FlowKind::Discretionary
+    }
+}
+
+/// Whether a record looks like wages by its category or name. Only a
+/// tiebreaker between equally regular, similar-sized income streams.
+fn wage_hint(t: &PlaidTxn) -> bool {
+    let category = t
+        .personal_finance_category
+        .as_ref()
+        .is_some_and(|c| c.detailed == "INCOME_WAGES");
+    let name = [t.name.as_deref(), t.merchant_name.as_deref()]
+        .into_iter()
+        .flatten()
+        .map(str::to_lowercase)
+        .any(|s| {
+            ["payroll", "salary", "direct dep"]
+                .iter()
+                .any(|w| s.contains(w))
+        });
+    category || name
+}
+
+fn paydays_per_year(s: &PaySchedule) -> f64 {
+    match s {
+        PaySchedule::Weekly { .. } => 52.0,
+        PaySchedule::Biweekly { .. } => 26.0,
+        PaySchedule::SemiMonthly { .. } => 24.0,
+        PaySchedule::Monthly { .. } => 12.0,
+    }
+}
+
+/// The counterparty of the primary income stream (module docs, rule 2).
+fn primary_income<'a>(
+    records: impl Iterator<Item = &'a PlaidTxn>,
+    days: &HashMap<&str, Day>,
+    notes: &mut Notes,
+) -> Option<String> {
+    struct Stream {
+        days: Vec<Day>,
+        total: f64,
+        hint: bool,
+    }
+    let mut streams: BTreeMap<String, Stream> = BTreeMap::new();
+    for t in records.filter(|t| !t.pending && t.amount < 0.0) {
+        let s = streams
+            .entry(counterparty(t.merchant_name.as_deref(), t.name.as_deref()))
+            .or_insert(Stream {
+                days: Vec::new(),
+                total: 0.0,
+                hint: false,
+            });
+        s.days.push(days[t.transaction_id.as_str()]);
+        s.total -= t.amount;
+        s.hint |= wage_hint(t);
+    }
+    // (yearly amount, wage hint, counterparty, cadence) of each regular stream.
+    let mut regular: Vec<(f64, bool, String, PaySchedule)> = streams
+        .into_iter()
+        .filter_map(|(k, s)| {
+            let timing = regular_pay_schedule(&s.days)?;
+            let mean = s.total / s.days.len() as f64;
+            Some((
+                mean * paydays_per_year(&timing.schedule),
+                s.hint,
+                k,
+                timing.schedule,
+            ))
+        })
+        .collect();
+    regular.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let top = regular.first()?.0;
+    let leader = regular
+        .iter()
+        .take_while(|r| r.0 >= (1.0 - INCOME_TIE) * top)
+        .find(|r| r.1)
+        .unwrap_or(&regular[0]);
+    notes.income_by_tiebreak = leader.2 != regular[0].2;
+    notes.income_stream = Some(format!("{} ({})", leader.2, cadence_name(&leader.3)));
+    Some(leader.2.clone())
+}
+
+fn cadence_name(s: &PaySchedule) -> &'static str {
+    match s {
+        PaySchedule::Weekly { .. } => "weekly",
+        PaySchedule::Biweekly { .. } => "biweekly",
+        PaySchedule::SemiMonthly { .. } => "semi-monthly",
+        PaySchedule::Monthly { .. } => "monthly",
     }
 }
 
@@ -482,6 +581,16 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
     println!("  adapter guesses:");
     println!("    ledger balance = sum of depository balances.current (Plaid excludes pending)");
     println!("    history_start = earliest transaction day (not the requested window)");
+    if let Some(stream) = &notes.income_stream {
+        let how = if notes.income_by_tiebreak {
+            "won a near-tie on its name or category"
+        } else {
+            "the largest regular inflow"
+        };
+        println!("    income = {stream}: {how}");
+    } else {
+        println!("    no regular income stream found: the forecast has no paychecks");
+    }
     let notes = [
         (
             notes.skipped_accounts,
@@ -489,10 +598,6 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
                 "non-depository accounts skipped, with their {} transactions",
                 notes.skipped_transactions
             ),
-        ),
-        (
-            notes.income_by_name,
-            "income records tagged by \"payroll\" in the name, not by category".into(),
         ),
         (
             notes.scheduled_by_repeat,
@@ -820,83 +925,141 @@ mod tests {
         assert!(to_feed(&sync, &none, Date(0)).is_err());
     }
 
+    fn kinds_of(feed: &Feed, name: &str) -> Vec<FlowKind> {
+        feed.transactions
+            .iter()
+            .filter(|t| {
+                t.merchant_name.as_deref() == Some(name) || t.description.as_deref() == Some(name)
+            })
+            .map(|t| t.kind)
+            .collect()
+    }
+
+    /// `n` records `period` days apart from `first`.
+    fn every(
+        n: usize,
+        first: &str,
+        period: i32,
+        f: impl Fn(String, String) -> Value,
+    ) -> Vec<Value> {
+        let d0 = Date::parse(first).unwrap().0;
+        (0..n)
+            .map(|k| {
+                f(
+                    format!("{first}-{k}"),
+                    Date(d0 + period * k as i32).to_string(),
+                )
+            })
+            .collect()
+    }
+
     #[test]
-    fn income_and_scheduled_tagging() {
-        let pay = |id: &str, date: &str| {
+    fn income_is_the_largest_regular_inflow_whatever_its_name() {
+        // Weekly $810 under a restaurant category and an employer's name
+        // (the Plaid sandbox's payroll), from Tuesday 2026-09-01.
+        let mut records = every(6, "2026-09-01", 7, |id, d| {
             category(
-                with(
-                    txn(id, -810.0, date),
-                    "name",
-                    json!("Sweetgreen inc payroll ppd"),
-                ),
+                named(txn(&id, -810.0, &d), "SWEETGREEN"),
                 "FOOD_AND_DRINK",
                 "FOOD_AND_DRINK_RESTAURANT",
             )
+        });
+        // A regular but tiny inflow, a big one-off, and an irregular one
+        // whose name says payroll: none of them is the income stream.
+        records.extend(every(3, "2026-08-21", 31, |id, d| {
+            named(txn(&id, -0.12, &d), "Interest payment")
+        }));
+        records.push(named(txn("bonus", -5000.0, "2026-09-15"), "BIG DEPOSIT"));
+        for (id, d) in [
+            ("p1", "2026-09-02"),
+            ("p2", "2026-09-05"),
+            ("p3", "2026-09-29"),
+        ] {
+            records.push(named(txn(id, -700.0, d), "ACME PAYROLL"));
+        }
+        let (feed, notes) = convert(one_page(records));
+        assert_eq!(kinds_of(&feed, "SWEETGREEN"), [FlowKind::Income; 6]);
+        assert_eq!(kinds_of(&feed, "BIG DEPOSIT"), [FlowKind::Discretionary]);
+        assert!(!kinds_of(&feed, "ACME PAYROLL").contains(&FlowKind::Income));
+        assert!(!kinds_of(&feed, "Interest payment").contains(&FlowKind::Income));
+        assert_eq!(notes.income_stream.as_deref(), Some("SWEETGREEN (weekly)"));
+        assert!(!notes.income_by_tiebreak);
+        // One stream for the income counterparty.
+        let streams: BTreeSet<Option<u32>> = feed
+            .transactions
+            .iter()
+            .filter(|t| t.kind == FlowKind::Income)
+            .map(|t| t.stream)
+            .collect();
+        assert_eq!(streams.len(), 1);
+        assert!(streams.iter().all(Option::is_some));
+    }
+
+    #[test]
+    fn a_wage_name_only_breaks_a_near_tie() {
+        // Two biweekly streams: $2,000 and $1,900 (within 10%). The smaller
+        // one is called payroll, so it wins the tie.
+        let stream = |name: &'static str, amount: f64, first: &str| {
+            every(6, first, 14, move |id, d| {
+                named(txn(&id, -amount, &d), name)
+            })
         };
+        let mut records = stream("GIG PLATFORM", 2000.0, "2026-07-03");
+        records.extend(stream("ACME PAYROLL", 1900.0, "2026-07-10"));
+        let (feed, notes) = convert(one_page(records.clone()));
+        assert_eq!(kinds_of(&feed, "ACME PAYROLL"), [FlowKind::Income; 6]);
+        assert_ne!(kinds_of(&feed, "GIG PLATFORM")[0], FlowKind::Income);
+        assert!(notes.income_by_tiebreak);
+
+        // At $1,500 it is no longer a tie: the larger stream is the income.
+        let mut records = stream("GIG PLATFORM", 2000.0, "2026-07-03");
+        records.extend(stream("ACME PAYROLL", 1500.0, "2026-07-10"));
+        let (feed, notes) = convert(one_page(records));
+        assert_eq!(kinds_of(&feed, "GIG PLATFORM"), [FlowKind::Income; 6]);
+        assert!(!notes.income_by_tiebreak);
+    }
+
+    #[test]
+    fn no_regular_inflow_means_no_income() {
+        let wages = category(txn("w", -2000.0, "2026-10-15"), "INCOME", "INCOME_WAGES");
+        let (feed, notes) = convert(one_page(vec![wages]));
+        assert_eq!(feed.transactions[0].kind, FlowKind::Discretionary);
+        assert_eq!(notes.income_stream, None);
+    }
+
+    #[test]
+    fn scheduled_tagging() {
         let sub =
             |id: &str, date: &str| with(txn(id, 12.65, date), "merchant_name", json!("Spotify"));
         let coffee = |id: &str, date: &str, amount: f64| {
             with(txn(id, amount, date), "merchant_name", json!("Starbucks"))
         };
-        let wages = category(txn("w", -2000.0, "2026-10-15"), "INCOME", "INCOME_WAGES");
         let rent = category(
             with(txn("r", 1500.0, "2026-10-01"), "name", json!("RENT")),
             "RENT_AND_UTILITIES",
             "RENT_AND_UTILITIES_RENT",
         );
         let (feed, notes) = convert(one_page(vec![
-            pay("p1", "2026-10-06"),
-            pay("p2", "2026-10-13"),
             sub("s1", "2026-08-21"),
             sub("s2", "2026-09-21"),
             sub("s3", "2026-10-21"),
             coffee("c1", "2026-10-01", 4.5),
             coffee("c2", "2026-10-02", 4.5),
             coffee("c3", "2026-10-03", 5.25),
-            wages,
             rent,
         ]));
-        let kinds: Vec<(FlowKind, Option<u32>)> = feed
-            .transactions
-            .iter()
-            .map(|t| (t.kind, t.stream))
-            .collect();
-        let kind_of = |desc_or_merchant: &str| -> Vec<FlowKind> {
-            feed.transactions
-                .iter()
-                .filter(|t| {
-                    t.merchant_name.as_deref() == Some(desc_or_merchant)
-                        || t.description.as_deref() == Some(desc_or_merchant)
-                })
-                .map(|t| t.kind)
-                .collect()
-        };
-        assert_eq!(kind_of("Sweetgreen inc payroll ppd"), [FlowKind::Income; 2]);
-        assert_eq!(kind_of("Spotify"), [FlowKind::Scheduled; 3]);
+        assert_eq!(kinds_of(&feed, "Spotify"), [FlowKind::Scheduled; 3]);
         // Two equal charges are not enough.
-        assert_eq!(kind_of("Starbucks"), [FlowKind::Discretionary; 3]);
-        assert_eq!(kind_of("RENT"), [FlowKind::Scheduled]);
+        assert_eq!(kinds_of(&feed, "Starbucks"), [FlowKind::Discretionary; 3]);
+        assert_eq!(kinds_of(&feed, "RENT"), [FlowKind::Scheduled]);
         assert_eq!(
-            (
-                notes.income_by_name,
-                notes.scheduled_by_repeat,
-                notes.scheduled_by_category
-            ),
-            (2, 3, 1)
+            (notes.scheduled_by_repeat, notes.scheduled_by_category),
+            (3, 1)
         );
-        // Streams: one per tagged counterparty, none for discretionary.
-        let spotify: BTreeSet<Option<u32>> = feed
-            .transactions
-            .iter()
-            .filter(|t| t.merchant_name.as_deref() == Some("Spotify"))
-            .map(|t| t.stream)
-            .collect();
-        assert_eq!(spotify.len(), 1);
-        assert!(spotify.iter().all(Option::is_some));
-        for (kind, stream) in kinds {
+        for t in &feed.transactions {
             assert_eq!(
-                stream.is_some(),
-                matches!(kind, FlowKind::Income | FlowKind::Scheduled)
+                t.stream.is_some(),
+                matches!(t.kind, FlowKind::Income | FlowKind::Scheduled)
             );
         }
     }
