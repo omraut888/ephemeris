@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# wasm-pack output; `npm run wasm` regenerates it.
+src/wasm/pkg/
