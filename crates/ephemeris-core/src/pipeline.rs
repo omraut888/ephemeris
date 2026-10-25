@@ -20,6 +20,7 @@ use crate::types::Day;
 pub const MAX_SIMULATE_DAYS: u32 = 3660;
 
 /// Which synthetic generator to use (design §5).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SimMode {
@@ -31,9 +32,11 @@ pub enum SimMode {
     Matched,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SimulateOptions {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub seed: u64,
     /// Days of history, 1..=3660.
     pub days: u32,
@@ -89,6 +92,7 @@ pub fn simulate_feed(opts: &SimulateOptions) -> Result<Feed, EngineError> {
     Ok(feed.rounded_to_cents())
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ForecastOptions {
@@ -97,6 +101,7 @@ pub struct ForecastOptions {
     /// Monte Carlo paths, 1..=1,000,000.
     pub paths: u32,
     /// The same feed, options and seed give the same report, byte for byte.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub seed: u64,
     /// Balances X for `P(b ≥ X)` curves (`forecast.targets`).
     pub targets: Vec<f64>,

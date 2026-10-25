@@ -31,6 +31,11 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// A [`Day`] that serializes as `YYYY-MM-DD`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "ts",
+    derive(ts_rs::TS),
+    ts(rename = "IsoDate", type = "string")
+)]
 pub struct Date(pub Day);
 
 impl Date {
@@ -77,6 +82,7 @@ impl<'de> Deserialize<'de> for Date {
 }
 
 /// One bank-feed snapshot: everything visible at the end of `today`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Feed {
     pub schema_version: u32,
@@ -90,8 +96,10 @@ pub struct Feed {
 }
 
 /// A [`Transaction`] on the wire. Amounts are signed, **inflows positive**.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedTransaction {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub id: u64,
     pub account: u32,
     pub date: Date,
@@ -103,6 +111,7 @@ pub struct FeedTransaction {
     #[serde(default)]
     pub stream: Option<u32>,
     #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub pending_id: Option<u64>,
     /// Display name of the counterparty (Plaid `merchant_name`), if known.
     #[serde(default)]
@@ -222,6 +231,7 @@ fn cents(x: f64) -> f64 {
 }
 
 /// A scalar estimate with its ±2σ range.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Estimate {
     pub mean: f64,
@@ -243,6 +253,7 @@ impl Estimate {
 }
 
 /// [`PaySchedule`] on the wire, tagged by `kind`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PayCadence {
@@ -267,6 +278,7 @@ impl From<PaySchedule> for PayCadence {
     }
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IncomeReport {
     /// Payer's display name from the latest paycheck, if the feed has one.
@@ -286,6 +298,7 @@ pub struct IncomeReport {
 }
 
 /// [`DayShift`] on the wire.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Shift {
@@ -305,6 +318,7 @@ impl From<DayShift> for Shift {
 }
 
 /// A bill charged on a fixed day of the month.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MonthlyOn {
     /// 1–31; past the end of a month means its last day.
@@ -313,6 +327,7 @@ pub struct MonthlyOn {
     pub shift: Shift,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BillReport {
     pub stream: u32,
@@ -332,6 +347,7 @@ pub struct BillReport {
     pub next_due: Date,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConeDay {
     pub date: Date,
@@ -340,6 +356,7 @@ pub struct ConeDay {
 }
 
 /// `P(b ≥ amount)` per forecast day, parallel to [`ConeReport::days`].
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TargetReport {
     pub amount: f64,
@@ -350,6 +367,7 @@ pub struct TargetReport {
 }
 
 /// How [`CycleLowsReport::cycles`] were cut.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CycleBasisReport {
@@ -359,6 +377,7 @@ pub enum CycleBasisReport {
     Week,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CycleLowReport {
     /// First and last day of the cycle, inclusive.
@@ -371,6 +390,7 @@ pub struct CycleLowReport {
     pub quantiles: Vec<f64>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CycleLowsReport {
     pub basis: CycleBasisReport,
@@ -378,10 +398,12 @@ pub struct CycleLowsReport {
     pub cycles: Vec<CycleLowReport>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConeReport {
     pub horizon_days: u32,
     pub paths: u32,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub seed: u64,
     /// Quantile levels, ascending, each in (0, 1).
     pub levels: Vec<f64>,
@@ -397,6 +419,7 @@ pub struct ConeReport {
 }
 
 /// Which state variable a regime change hit.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeChannel {
@@ -407,6 +430,7 @@ pub enum ChangeChannel {
 }
 
 /// A regime change the tracker detected (design §6).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RegimeChange {
     /// The day whose observation set off the alarm.
@@ -441,6 +465,7 @@ impl RegimeChange {
 }
 
 /// Everything `ephemeris forecast --json` writes.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ForecastReport {
     pub schema_version: u32,

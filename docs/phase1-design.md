@@ -526,6 +526,7 @@ secondary income streams.
 | `rand_distr` | 0.6, default features | Normal, ChiSquared, LogNormal (the last only for synth). Its default build uses `libm`, which is pure Rust, so the transcendental functions are bit-identical on native and WASM. **Do not enable `std_math`**, which changes results by platform. The same goes for anything that enables `num-traits/std`: nalgebra's `std` feature does, which is why nalgebra runs in `libm` mode (static matrices need no allocation). Check with `cargo tree -e features -i num-traits`. |
 | `approx` | dev-only | `assert_relative_eq!`. nalgebra already depends on it, so it adds nothing. |
 | `serde` | 1, **optional** (`serde` feature, off by default) | Derives for the versioned JSON contracts in `schema` (feed in, forecast report out; see docs/forecast-schema.md). Off by default so WASM/UniFFI builds that don't need JSON never compile it. It doesn't touch `num-traits`, so determinism is unaffected. |
+| `ts-rs` | 12, **optional** (`ts` feature, off by default) | TypeScript declarations for the JSON contracts, rendered by a drift test in `ephemeris-wasm` against `web/src/schema.gen.ts` (docs/phase2-design.md §3). Only that crate's tests enable the feature; the CLI and WASM builds never compile it (`cargo tree -e normal` shows it absent). |
 
 No `chrono`, `rayon`, or `proptest` in the core for Phase 1.
 

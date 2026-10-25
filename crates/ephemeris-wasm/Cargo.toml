@@ -18,3 +18,7 @@ wasm-bindgen = "0.2"
 [dev-dependencies]
 # Runs the byte-identity assertions inside WASM under Node.
 wasm-bindgen-test = "0.3"
+# The schema types with their TypeScript declarations, for the drift test
+# against web/src/schema.gen.ts (docs/phase2-design.md §3).
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde", "ts"] }
+ts-rs = "12"
