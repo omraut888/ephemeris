@@ -24,9 +24,10 @@
 //! interval coverage, and CRPS of the whole predictive distribution (MC: from
 //! a 200-quantile grid; Gaussian baselines: closed form).
 //!
-//! Model-matched coverage is asserted with regime-change detection off, since
-//! that data has no regime changes and the detector's false alarms widen the
-//! cone a little (design §6); the default tracker's numbers are printed too.
+//! Model-matched coverage is asserted twice: within 5 points with
+//! regime-change detection off (the model's own assumptions; the data has no
+//! regime changes), and within 8 points with the default tracker, whose false
+//! alarms widen the cone a little (design §6).
 //!
 //! The sweeps are `#[ignore]`d; run `scripts/test-full.sh --nocapture`.
 
@@ -340,22 +341,33 @@ fn forecast_calibration() {
         &realistic,
     );
     print_table(
-        "model-matched, default tracker with regime detection (reported)",
+        "model-matched, default tracker with regime detection (asserted, ±8 points)",
         &matched_default,
     );
-    print_table("model-matched, no regime detection (asserted)", &matched);
+    print_table(
+        "model-matched, no regime detection (asserted, ±5 points)",
+        &matched,
+    );
 
-    // Model-matched: every MC interval within 5 points of nominal. Forecasts
-    // from the same seed share a path, so the effective sample count is below n.
-    // Compared in counts, so a hit exactly on the bound is not lost to rounding.
+    // Model-matched, detection off: every MC interval within 5 points of
+    // nominal. With the default tracker, false alarms widen the cone a
+    // little (design §6), so that run gets a looser 8-point bound.
+    assert_coverage("no regime detection", &matched, 0.05);
+    assert_coverage("default tracker", &matched_default, 0.08);
+}
+
+/// Every MC interval within `tol` of nominal. Forecasts from the same seed
+/// share a path, so the effective sample count is below n. Compared in
+/// counts, so a hit exactly on the bound is not lost to rounding.
+fn assert_coverage(label: &str, tallies: &[Vec<Tally>], tol: f64) {
     for (hi, h) in HORIZONS.iter().enumerate() {
         for (k, &(level, _)) in INTERVALS.iter().enumerate() {
-            let t = &matched[0][hi];
+            let t = &tallies[0][hi];
             let n = t.n_bounded as f64;
             let off = (t.inside[k] as f64 - level * n).abs();
             assert!(
-                off <= (0.05 * n).round(),
-                "h={h}: {level} interval covers {}",
+                off <= (tol * n).round(),
+                "{label}, h={h}: {level} interval covers {}",
                 t.coverage(k)
             );
         }

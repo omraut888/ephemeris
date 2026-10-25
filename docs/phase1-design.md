@@ -822,9 +822,9 @@ leaves `ĉ` noisier for a few weeks, and 90 days multiplies that.
 Model-matched coverage with the detector on drifts up by about one point
 (the 50% interval at 90 days: 54.0% → 55.3%). That pushed one cell of the
 asserted calibration check one forecast past its ±5-point bound, so the
-strict check (`tests/forecast_calibration.rs`) now runs with detection
-off, the model's own assumptions, and prints the default tracker's table
-next to it.
+strict ±5-point check (`tests/forecast_calibration.rs`) now runs with
+detection off, the model's own assumptions. The default tracker is asserted
+separately within ±8 points.
 
 ## Decisions (resolved 2026-10-19)
 
