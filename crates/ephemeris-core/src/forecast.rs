@@ -19,6 +19,14 @@
 //!   business-day shift included), otherwise at their period plus a sampled
 //!   persistent drift.
 //!
+//! **Pay-cycle lows.** Besides the daily quantiles, the cone reports, for each
+//! pay cycle (one nominal payday up to the next, or calendar weeks when no
+//! income was detected), the quantiles across paths of *each path's own*
+//! lowest balance in that cycle. That is not the minimum over the cycle of
+//! the daily quantiles, which would be optimistic: a path's minimum is never
+//! above its balance on any day, so every quantile of the minima is at or
+//! below the lowest daily quantile in the cycle (a test checks this).
+//!
 //! **Memory and determinism.** The simulation runs day-major over `N` small
 //! path states (O(N) memory, no per-day allocation). Randomness is
 //! counter-based: path `i` on step `h` uses its own ChaCha8 segment
@@ -155,7 +163,29 @@ pub struct TargetCurve {
     reached_by: Vec<f64>,
 }
 
-/// Per-day quantile bands over the horizon, plus target probabilities.
+/// How the pay cycles of [`Cone::cycle_lows`] were cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CycleBasis {
+    /// At each detected payday (nominal date moved to a business day).
+    Paycheck,
+    /// Every 7 days from the first forecast day: no income was detected.
+    Week,
+}
+
+/// The distribution of each path's lowest balance over one cycle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CycleLow {
+    /// First and last day of the cycle, inclusive.
+    pub start: Day,
+    pub end: Day,
+    /// Cut short by the forecast's start or end, so not a whole cycle.
+    pub partial: bool,
+    /// Quantiles of the per-path minimum, in the order of [`Cone::levels`].
+    pub quantiles: Vec<f64>,
+}
+
+/// Per-day quantile bands over the horizon, plus target probabilities and
+/// pay-cycle lows.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cone {
     start_day: Day,
@@ -164,6 +194,8 @@ pub struct Cone {
     /// `horizon × levels`, row-major by day.
     quantiles: Vec<f64>,
     targets: Vec<TargetCurve>,
+    cycle_basis: CycleBasis,
+    cycle_lows: Vec<CycleLow>,
 }
 
 impl Cone {
@@ -207,6 +239,73 @@ impl Cone {
     pub fn prob_reached_by(&self, t: usize, day: Day) -> Option<f64> {
         Some(self.targets.get(t)?.reached_by[self.index(day)?])
     }
+
+    pub fn cycle_basis(&self) -> CycleBasis {
+        self.cycle_basis
+    }
+
+    /// Consecutive cycles covering every forecast day, in order.
+    pub fn cycle_lows(&self) -> &[CycleLow] {
+        &self.cycle_lows
+    }
+}
+
+impl TargetCurve {
+    /// `P(b ≥ amount)` on each forecast day, in day order.
+    pub fn on_day(&self) -> &[f64] {
+        &self.on_day
+    }
+
+    /// `P(b ≥ amount on some day so far)`, in day order.
+    pub fn reached_by(&self) -> &[f64] {
+        &self.reached_by
+    }
+}
+
+/// `(start, end, partial)` of each cycle covering `t0 + 1 ..= t0 + horizon`.
+fn pay_cycles(schedule: &Schedule, t0: Day, horizon: u32) -> (CycleBasis, Vec<(Day, Day, bool)>) {
+    let (first, last) = (t0 + 1, t0 + horizon as Day);
+    let Some(timing) = &schedule.income else {
+        let cycles = (first..=last)
+            .step_by(7)
+            .map(|s| (s, (s + 6).min(last), s + 6 > last))
+            .collect();
+        return (CycleBasis::Week, cycles);
+    };
+    // Paydays from the first nominal date after the last paid one, far
+    // enough past the horizon to know whether the last cycle is whole.
+    let mut paydays: Vec<Day> = timing
+        .schedule
+        .nominal_dates(timing.last_paid_nominal + 1, last + 70)
+        .into_iter()
+        .map(PaySchedule::pay_date)
+        .filter(|&d| d > first)
+        .collect();
+    paydays.dedup();
+    let mut starts = vec![first];
+    starts.extend(paydays.iter().copied().take_while(|&d| d <= last));
+    let next_after = paydays.iter().copied().find(|&d| d > last);
+    let cycles = starts
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| {
+            let end = starts.get(i + 1).map_or(last, |&n| n - 1);
+            // The first cycle starts mid-cycle unless the forecast starts on
+            // a payday; the last ends early unless a payday follows it.
+            let cut_start = i == 0 && !timing_is_payday(timing, first);
+            let cut_end = end == last && next_after != Some(last + 1);
+            (s, end, cut_start || cut_end)
+        })
+        .collect();
+    (CycleBasis::Paycheck, cycles)
+}
+
+fn timing_is_payday(timing: &crate::schedule::PayTiming, day: Day) -> bool {
+    timing
+        .schedule
+        .nominal_dates(day - 7, day + 7)
+        .into_iter()
+        .any(|n| PaySchedule::pay_date(n) == day)
 }
 
 /// Run the forecast from a tracker estimate.
@@ -228,6 +327,10 @@ pub fn forecast(
     let mut reached = vec![false; n * t];
     let mut reached_count = vec![0u32; t];
     let mut sorted = vec![0.0; n];
+    let (cycle_basis, cycles) = pay_cycles(schedule, est.day, cfg.horizon_days);
+    let mut cycle = 0;
+    let mut lows = vec![f64::INFINITY; n];
+    let mut cycle_lows = Vec::with_capacity(cycles.len());
 
     sim.run(n, |h, balances| {
         for (k, &x) in cfg.targets.iter().enumerate() {
@@ -250,6 +353,27 @@ pub fn forecast(
             sorted.copy_from_slice(balances);
             sorted.sort_unstable_by(f64::total_cmp);
             quantiles.extend(cfg.levels.iter().map(|&l| quantile_sorted(&sorted, l)));
+
+            let day = est.day + h as Day;
+            let (start, end, partial) = cycles[cycle];
+            for (low, &b) in lows.iter_mut().zip(balances) {
+                *low = if day == start { b } else { low.min(b) };
+            }
+            if day == end {
+                sorted.copy_from_slice(&lows);
+                sorted.sort_unstable_by(f64::total_cmp);
+                cycle_lows.push(CycleLow {
+                    start,
+                    end,
+                    partial,
+                    quantiles: cfg
+                        .levels
+                        .iter()
+                        .map(|&l| quantile_sorted(&sorted, l))
+                        .collect(),
+                });
+                cycle += 1;
+            }
         }
     })?;
 
@@ -268,6 +392,8 @@ pub fn forecast(
                 reached_by,
             })
             .collect(),
+        cycle_basis,
+        cycle_lows,
     })
 }
 
@@ -611,6 +737,101 @@ mod tests {
         assert_eq!(cone.prob_at_least_on(0, ymd(2024, 6, 30)), Some(1.0));
         assert_eq!(cone.band(t0()), None);
         assert_eq!(cone.band(t0() + 31), None);
+    }
+
+    /// The zero-noise path of `zero_noise_path_by_hand`, cut at its paydays
+    /// (Fri June 14, Fri June 28): each cycle's low is the path's minimum.
+    #[test]
+    fn cycle_lows_by_hand() {
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 3,
+            ..ForecastConfig::new(30, 1)
+        });
+        let cone = forecast(&quiet_estimate(), &exact_schedule(), &STILL, &cfg).unwrap();
+        assert_eq!(cone.cycle_basis(), CycleBasis::Paycheck);
+        let lows = cone.cycle_lows();
+        let spans: Vec<(Day, Day, bool)> =
+            lows.iter().map(|c| (c.start, c.end, c.partial)).collect();
+        assert_eq!(
+            spans,
+            [
+                // Starts mid-cycle (May 31 was the last nominal payday).
+                (ymd(2024, 6, 1), ymd(2024, 6, 13), true),
+                (ymd(2024, 6, 14), ymd(2024, 6, 27), false),
+                // Ends June 30 but the next payday is July 15: cut short.
+                (ymd(2024, 6, 28), ymd(2024, 6, 30), true),
+            ]
+        );
+        let close = |a: f64, e: f64| (a - e).abs() < 1e-3;
+        // Cycle 1: lowest on June 13, after rent: 1000 − 650 − 900.
+        assert!(lows[0].quantiles.iter().all(|&q| close(q, -550.0)));
+        // Cycle 2: 1000 − 700 − 900 + 2000 = 1400 on June 14, then −50/day
+        // through June 27: 1400 − 13·50.
+        assert!(lows[1].quantiles.iter().all(|&q| close(q, 750.0)));
+        // Cycle 3: 2700 on June 28 (zero_noise_path_by_hand), 2600 by June 30.
+        assert!(lows[2].quantiles.iter().all(|&q| close(q, 2600.0)));
+    }
+
+    #[test]
+    fn cycle_lows_are_weeks_without_income() {
+        let sched = Schedule {
+            income: None,
+            bills: Vec::new(),
+        };
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 2,
+            ..ForecastConfig::new(16, 1)
+        });
+        let cone = forecast(&quiet_estimate(), &sched, &STILL, &cfg).unwrap();
+        assert_eq!(cone.cycle_basis(), CycleBasis::Week);
+        let spans: Vec<(Day, Day, bool)> = cone
+            .cycle_lows()
+            .iter()
+            .map(|c| (c.start, c.end, c.partial))
+            .collect();
+        let d = t0();
+        assert_eq!(
+            spans,
+            [
+                (d + 1, d + 7, false),
+                (d + 8, d + 14, false),
+                (d + 15, d + 16, true)
+            ]
+        );
+        // −50/day: each week's low is its last day.
+        let close = |a: f64, e: f64| (a - e).abs() < 1e-3;
+        assert!(close(
+            cone.cycle_lows()[1].quantiles[0],
+            1000.0 - 14.0 * 50.0
+        ));
+    }
+
+    /// A path's minimum is at or below its balance on every day of the cycle,
+    /// so each quantile of the minima is at or below every daily quantile.
+    #[test]
+    fn cycle_lows_never_exceed_daily_quantiles() {
+        let cfg = ForecastConfig {
+            n_paths: 500,
+            ..ForecastConfig::new(90, 3)
+        };
+        let model = ForecastModel {
+            q_c: 0.25,
+            q_m: 25.0,
+        };
+        let cone = forecast(&noisy_estimate(10.0), &exact_schedule(), &model, &cfg).unwrap();
+        let lows = cone.cycle_lows();
+        assert_eq!(lows.first().unwrap().start, t0() + 1);
+        assert_eq!(lows.last().unwrap().end, t0() + 90);
+        for w in lows.windows(2) {
+            assert_eq!(w[1].start, w[0].end + 1, "cycles tile the horizon");
+        }
+        for c in lows {
+            for (k, &q) in c.quantiles.iter().enumerate() {
+                for d in c.start..=c.end {
+                    assert!(q <= cone.band(d).unwrap()[k] + 1e-9, "{c:?} day {d}");
+                }
+            }
+        }
     }
 
     #[test]
