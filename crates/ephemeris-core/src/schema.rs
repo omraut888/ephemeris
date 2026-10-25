@@ -20,11 +20,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::calendar::{PaySchedule, civil_from_day, day_from_civil, days_in_month};
 use crate::error::EngineError;
-use crate::forecast::{Cone, ForecastConfig};
+use crate::forecast::{Cone, CycleBasis, ForecastConfig};
 use crate::model::{IDX_B, IDX_C, IDX_M};
 use crate::schedule::{DayShift, Schedule};
-use crate::tracker::StateEstimate;
-use crate::types::{AccountId, Day, FlowKind, StreamId, Transaction, TxnId, TxnStatus};
+use crate::tracker::{IngestReport, StateEstimate};
+use crate::types::{AccountId, Channel, Day, FlowKind, StreamId, Transaction, TxnId, TxnStatus};
 
 /// Version of both [`Feed`] and [`ForecastReport`].
 pub const SCHEMA_VERSION: u32 = 1;
@@ -339,6 +339,45 @@ pub struct ConeDay {
     pub quantiles: Vec<f64>,
 }
 
+/// `P(b ≥ amount)` per forecast day, parallel to [`ConeReport::days`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TargetReport {
+    pub amount: f64,
+    /// Probability that the end-of-day balance is at least `amount`.
+    pub at_least_on_day: Vec<f64>,
+    /// Probability that it is at least `amount` on some day so far.
+    pub reached_by: Vec<f64>,
+}
+
+/// How [`CycleLowsReport::cycles`] were cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CycleBasisReport {
+    /// At each detected payday.
+    Paycheck,
+    /// Calendar weeks from the first forecast day: no income detected.
+    Week,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CycleLowReport {
+    /// First and last day of the cycle, inclusive.
+    pub start: Date,
+    pub end: Date,
+    /// Cut short by the forecast's start or end.
+    pub partial: bool,
+    /// Quantiles, across paths, of each path's lowest end-of-day balance in
+    /// the cycle, in the order of [`ConeReport::levels`].
+    pub quantiles: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CycleLowsReport {
+    pub basis: CycleBasisReport,
+    /// Consecutive cycles covering the whole horizon.
+    pub cycles: Vec<CycleLowReport>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConeReport {
     pub horizon_days: u32,
@@ -348,6 +387,57 @@ pub struct ConeReport {
     pub levels: Vec<f64>,
     /// One entry per forecast day, `as_of + 1 ..= as_of + horizon_days`.
     pub days: Vec<ConeDay>,
+    /// One curve per requested target balance; empty when none was asked for.
+    #[serde(default)]
+    pub targets: Vec<TargetReport>,
+    /// Pay-cycle lows. Always written; `null` only in reports from before
+    /// the field existed.
+    #[serde(default)]
+    pub cycle_lows: Option<CycleLowsReport>,
+}
+
+/// Which state variable a regime change hit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeChannel {
+    /// The discretionary spend rate `c` (balance channel).
+    Spend,
+    /// The expected paycheck `m` (income channel).
+    Income,
+}
+
+/// A regime change the tracker detected (design §6).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RegimeChange {
+    /// The day whose observation set off the alarm.
+    pub date: Date,
+    /// False when it was found on a provisional (unsettled) day.
+    pub settled: bool,
+    pub channel: ChangeChannel,
+    /// Estimated change: $/day for `spend` (positive = more spending), $ per
+    /// paycheck for `income`.
+    pub shift: f64,
+}
+
+impl RegimeChange {
+    /// Every jump in an ingest report, in day order.
+    pub fn from_ingest(ingest: &IngestReport) -> Vec<Self> {
+        ingest
+            .days
+            .iter()
+            .flat_map(|d| {
+                d.jumps.iter().map(|j| RegimeChange {
+                    date: Date(d.day),
+                    settled: d.settled,
+                    channel: match j.channel {
+                        Channel::Balance => ChangeChannel::Spend,
+                        Channel::Income => ChangeChannel::Income,
+                    },
+                    shift: j.shift,
+                })
+            })
+            .collect()
+    }
 }
 
 /// Everything `ephemeris forecast --json` writes.
@@ -366,16 +456,20 @@ pub struct ForecastReport {
     pub expected_paycheck: Estimate,
     pub income: Option<IncomeReport>,
     pub bills: Vec<BillReport>,
+    /// Regime changes found in this ingest, in day order.
+    #[serde(default)]
+    pub regime_changes: Vec<RegimeChange>,
     pub forecast: ConeReport,
 }
 
 impl ForecastReport {
     /// Assemble the report. Horizon and levels come from `cone`; `cfg`
     /// supplies the path count and seed that produced it; `feed` supplies
-    /// display names.
+    /// display names; `ingest` the regime changes.
     pub fn new(
         feed: &Feed,
         est: &StateEstimate,
+        ingest: &IngestReport,
         schedule: &Schedule,
         cone: &Cone,
         cfg: &ForecastConfig,
@@ -428,12 +522,38 @@ impl ForecastReport {
             expected_paycheck: state(IDX_M),
             income,
             bills,
+            regime_changes: RegimeChange::from_ingest(ingest),
             forecast: ConeReport {
                 horizon_days: cone.horizon(),
                 paths: cfg.n_paths,
                 seed: cfg.seed,
                 levels: cone.levels().to_vec(),
                 days,
+                targets: cone
+                    .targets()
+                    .iter()
+                    .map(|t| TargetReport {
+                        amount: t.amount,
+                        at_least_on_day: t.on_day().to_vec(),
+                        reached_by: t.reached_by().to_vec(),
+                    })
+                    .collect(),
+                cycle_lows: Some(CycleLowsReport {
+                    basis: match cone.cycle_basis() {
+                        CycleBasis::Paycheck => CycleBasisReport::Paycheck,
+                        CycleBasis::Week => CycleBasisReport::Week,
+                    },
+                    cycles: cone
+                        .cycle_lows()
+                        .iter()
+                        .map(|c| CycleLowReport {
+                            start: Date(c.start),
+                            end: Date(c.end),
+                            partial: c.partial,
+                            quantiles: c.quantiles.clone(),
+                        })
+                        .collect(),
+                }),
             },
         }
     }
@@ -590,6 +710,7 @@ mod tests {
         };
         let mut cfg = ForecastConfig::new(10, 4);
         cfg.n_paths = 50;
+        cfg.targets = vec![900.0];
         let model = ForecastModel { q_c: 0.0, q_m: 0.0 };
         let cone = forecast(&est, &schedule, &model, &cfg).unwrap();
         let mut feed = Feed::new(t0 - 60, t0, 1000.0, &[]);
@@ -643,7 +764,41 @@ mod tests {
             ),
         ];
         assert_eq!(feed.stream_names()[&3], "ACME RENT ACH");
-        let r = ForecastReport::new(&feed, &est, &schedule, &cone, &cfg);
+        let ingest = IngestReport {
+            rebuilt: false,
+            days: vec![crate::tracker::DayReport {
+                day: t0 - 3,
+                settled: true,
+                innovations: Vec::new(),
+                lump: 0.0,
+                jumps: vec![crate::tracker::Jump {
+                    channel: Channel::Balance,
+                    shift: 42.0,
+                    run_len: 3,
+                }],
+            }],
+        };
+        let r = ForecastReport::new(&feed, &est, &ingest, &schedule, &cone, &cfg);
+        assert_eq!(
+            r.regime_changes,
+            [RegimeChange {
+                date: Date(t0 - 3),
+                settled: true,
+                channel: ChangeChannel::Spend,
+                shift: 42.0
+            }]
+        );
+        let target = &r.forecast.targets[0];
+        assert_eq!(target.amount, 900.0);
+        assert_eq!(target.at_least_on_day.len(), 10);
+        assert_eq!(
+            target.reached_by[9],
+            cone.prob_reached_by(0, t0 + 10).unwrap()
+        );
+        let lows = r.forecast.cycle_lows.as_ref().unwrap();
+        assert_eq!(lows.basis, CycleBasisReport::Paycheck);
+        assert_eq!(lows.cycles.len(), cone.cycle_lows().len());
+        assert_eq!(lows.cycles[0].start, Date(t0 + 1));
         assert_eq!(
             r.income.as_ref().unwrap().name.as_deref(),
             Some("Employer Inc payroll")

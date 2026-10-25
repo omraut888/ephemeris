@@ -7,7 +7,7 @@ documents them. Change the two together.
 | Document | Producer | Consumer |
 |---|---|---|
 | **Feed** | `ephemeris simulate`; the Plaid adapter (later) | `ephemeris forecast` |
-| **Forecast report** | `ephemeris forecast --json` | the Phase 2 web shell |
+| **Forecast report** | `ephemeris forecast --json`; the WASM `forecast()` | the Phase 2 web shell |
 
 ## Conventions
 
@@ -101,6 +101,9 @@ Each transaction:
     { "stream": 101, "name": "Netflix", "amount": -15.99, "period_days": 30, "monthly_on": null,
       "last_charged": "2024-12-11", "next_due": "2025-01-10" }
   ],
+  "regime_changes": [
+    { "date": "2024-11-04", "settled": true, "channel": "spend", "shift": 31.2 }
+  ],
   "forecast": {
     "horizon_days": 90,
     "paths": 2000,
@@ -108,7 +111,17 @@ Each transaction:
     "levels": [0.05, 0.25, 0.5, 0.75, 0.95],
     "days": [
       { "date": "2024-12-31", "quantiles": [4012.5, 4081.9, 4118.0, 4155.3, 4220.8] }
-    ]
+    ],
+    "targets": [
+      { "amount": 5000.0, "at_least_on_day": [0.0], "reached_by": [0.0] }
+    ],
+    "cycle_lows": {
+      "basis": "paycheck",
+      "cycles": [
+        { "start": "2024-12-31", "end": "2025-01-02", "partial": true,
+          "quantiles": [3890.1, 3975.4, 4013.8, 4052.0, 4119.6] }
+      ]
+    }
   }
 }
 ```
@@ -124,6 +137,7 @@ Each transaction:
 | `expected_paycheck` | estimate | Expected primary paycheck `m`. |
 | `income` | object or null | Detected pay schedule. When it's null, the forecast includes no income. |
 | `bills[]` | array | Detected recurring bill streams. |
+| `regime_changes[]` | array | Regime changes found in this ingest (design §6), in day order. Missing in reports written before this field existed; read as empty. |
 | `forecast` | object | The Monte Carlo cone. |
 
 An **estimate** is `{ mean, sd, low_2sd, high_2sd }`, with `low_2sd = mean − 2·sd` and
@@ -162,6 +176,22 @@ a forecast.
 | `seed` | integer | The same feed, seed and paths give the same cone, bit for bit. |
 | `levels` | numbers | Quantile levels in (0, 1), ascending. |
 | `days[]` | array | One entry per day from `as_of + 1` through `as_of + horizon_days`, in order. `quantiles[i]` is the end-of-day balance at `levels[i]`, non-decreasing in `i`. |
+
+| `targets[]` | array | One entry per requested target balance (the `targets` forecast option), else empty. `at_least_on_day[i]` = P(balance ≥ `amount` at the end of `days[i]`); `reached_by[i]` = P(balance ≥ `amount` at the end of some day up to `days[i]`). Missing in older reports; read as empty. |
+| `cycle_lows` | object or null | Pay-cycle lows; always written, null only in older reports. `basis` is `"paycheck"` (cycles start on each detected payday, nominal date moved to the previous business day) or `"week"` (no income detected: 7-day cycles from the first forecast day). `cycles[]` tile the horizon in order. Each has `start`, `end` (inclusive), `partial` (cut short by the forecast's start or end), and `quantiles[i]`: the `levels[i]` quantile, across paths, of **each path's lowest end-of-day balance in the cycle**. |
+
+#### `regime_changes[]` entry
+
+| Field | Type | Meaning |
+|---|---|---|
+| `date` | date | The day whose observation set off the alarm. |
+| `settled` | boolean | False when found on a provisional (unsettled) day; it may not survive the next sync. |
+| `channel` | `"spend"` \| `"income"` | Spend: a jump in the spend rate. Income: in the expected paycheck. |
+| `shift` | number | Estimated change: $/day for spend (positive = more spending), $ per paycheck for income. |
+
+These three fields are additive, so the schema version stays 1. A
+cycle's low quantile is at or below the lowest daily quantile in the
+cycle: a path's minimum is never above its balance on any day.
 
 Quantiles are the cone's **marginal** per-day quantiles. A line through the
 medians is not a plausible path, and the chance of dipping below a threshold

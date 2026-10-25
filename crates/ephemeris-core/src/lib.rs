@@ -15,6 +15,8 @@ pub mod linalg;
 pub mod metrics;
 pub mod model;
 pub mod observe;
+#[cfg(feature = "serde")]
+pub mod pipeline;
 pub mod schedule;
 #[cfg(feature = "serde")]
 pub mod schema;
