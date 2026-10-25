@@ -8,3 +8,10 @@ cargo test --release -- --include-ignored "$@"
 # The same golden files again, inside WASM under Node: native and WASM must
 # produce byte-identical feeds and reports (docs/phase2-design.md §2).
 wasm-pack test --node --release crates/ephemeris-wasm
+# The web app: builds the WASM package, then runs Vitest. Needs its npm
+# dependencies installed once (cd web && npm ci).
+if [ -d web/node_modules ]; then
+  (cd web && npm test)
+else
+  echo "SKIPPED web tests: run 'cd web && npm ci' first" >&2
+fi

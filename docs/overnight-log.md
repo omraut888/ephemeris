@@ -103,3 +103,54 @@
 - **Options types are fully required in the generated file**, even though
   every field has a serde default. The bridge accepts `Partial<…>` instead
   of hand-editing generated code.
+
+### 4. web/ app
+
+- **Dependencies:** react, react-dom; dev: vite, @vitejs/plugin-react,
+  typescript, vitest, jsdom, @testing-library/{react,dom,user-event},
+  @types/{react,react-dom,node}. Exact versions are pinned in
+  `package.json` (the latest stable on 2026-10-24) plus the committed lock.
+  There is no chart, state or CSS library and no web fonts.
+- **TypeScript 7.0.2** (the current stable release). It worked first time
+  for `tsc --noEmit`, so I didn't fall back to 5.x.
+- **The engine moved into a Web Worker.** The design set a 150 ms
+  threshold. Measured in release WASM under Node, a 90-day, 2000-path
+  forecast takes 150–250 ms (sandbox feed and demo), and about 400 ms at
+  180 days. The afford query re-runs the forecast too. So
+  `src/wasm/worker.ts` runs it, and the UI awaits an async `Engine`. The
+  worker's logic is a pure `handle()` (tested in Node), and the tests use a
+  same-thread engine with the same interface, because jsdom has no
+  `Worker`.
+- **Only the latest request updates the screen** (a ticket counter in
+  `App.tsx`), so a slow, stale forecast can't overwrite a newer one.
+- **The default view is raw** (`DEFAULT_VIEW` in `App.tsx`; reason under
+  §1). The toggle is labelled "Daily" / "Pay-cycle lows".
+- **The app opens on a demo** (realistic, seed 7) so there is something on
+  screen at once. The forecast seed is fixed at 0, so the same feed always
+  draws the same cone and the afford query's paths match it.
+- **Feed files are passed to WASM as the original text**, not re-serialized,
+  so a file's numbers reach the engine byte for byte. The app only checks
+  that the file is JSON; everything else is the engine's validation, shown
+  in a banner.
+- **"Can I afford $X by D?"** shows P(balance ≥ X on D) and P(≥ X on some
+  day by D). On the demo, $25,000 by Jan 29 is under 1% on the day but 98%
+  at some point, which is why both are shown. Probabilities print as "<1%"
+  or ">99%" at the extremes: a Monte Carlo estimate is never certain.
+- **"No math in TypeScript", as applied.** TS maps values to pixels, picks
+  round axis ticks, finds a date's index in the report, and formats. All
+  statistics, quantiles, probabilities and dates of the forecast come
+  from the report.
+- **Bridge test against the native golden files.** `test/engine.test.ts`
+  runs the golden inputs through the *browser* build (`--target web`,
+  release) and gets the native bytes. So native, WASM-in-Node and the
+  shipped web package all agree.
+- **Visual check.** No browser automation was installed, so I drove the
+  local Google Chrome headless over the DevTools protocol (a scratch script,
+  not committed). Three screenshots: the demo, the pay-cycle-lows view with
+  an afford answer, and the Plaid sandbox feed loaded through the file
+  input. All rendered, with no console errors. One fix came out of it: the
+  ±2σ ranges wrapped in the state panel, so I widened it to 330 px and
+  stopped the wrap.
+- **`scripts/test-full.sh` now also runs the web tests** when
+  `web/node_modules` exists, and prints a loud SKIPPED otherwise, rather
+  than installing packages itself.
