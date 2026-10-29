@@ -3,13 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { App, DEFAULT_VIEW, INPUT_DEBOUNCE_MS } from "../src/App";
+import type { DropHandlers, FileHost } from "../src/files";
 import { AffordQuery } from "../src/components/AffordQuery";
 import { ConeChart, bandIndex } from "../src/components/ConeChart";
 import { Risk } from "../src/components/Risk";
 import { StatePanel } from "../src/components/StatePanel";
 import { longDate, money, percent } from "../src/format";
-import { directEngine } from "../src/wasm/client";
 import * as engine from "../src/wasm/engine";
+import { directEngine } from "../src/wasm/engine";
 import { FEED_JSON, REPORT, LOW_REPORT, reportWithoutIncome } from "./fixtures";
 
 describe("StatePanel", () => {
@@ -246,5 +247,57 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByTestId("source").textContent).toContain("demo · matched · seed 12"),
     );
+  });
+
+  it("uses the shell's native files: dialog, recent menu and drops", async () => {
+    let drop: DropHandlers | null = null;
+    const opened = { name: "picked.json", path: "/data/picked.json", json: FEED_JSON };
+    const files: FileHost = {
+      pick: vi.fn(async () => opened),
+      recent: vi.fn(async () => [
+        { name: "picked.json", path: "/data/picked.json" },
+        { name: "old.json", path: "/data/old.json" },
+      ]),
+      openRecent: vi.fn(async (path: string) => ({ ...opened, name: "old.json", path })),
+      onDrop: (h) => {
+        drop = h;
+        return () => {
+          drop = null;
+        };
+      },
+    };
+    render(<App engine={directEngine} files={files} />);
+    await screen.findByTestId("cone");
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load feed…" }));
+    expect(files.pick).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.getByTestId("source").textContent).toContain("file · picked.json"),
+    );
+
+    await user.selectOptions(await screen.findByLabelText("Recent feeds"), "/data/old.json");
+    expect(files.openRecent).toHaveBeenCalledWith("/data/old.json");
+    await waitFor(() =>
+      expect(screen.getByTestId("source").textContent).toContain("file · old.json"),
+    );
+
+    act(() => drop?.hover(true));
+    expect(screen.getByText("Drop a feed JSON to forecast it")).toBeTruthy();
+    act(() => {
+      drop?.hover(false);
+      drop?.opened({ ...opened, name: "dropped.json" });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("source").textContent).toContain("file · dropped.json"),
+    );
+    act(() => drop?.error("big.json is 40 MiB; feeds over 32 MiB are not opened"));
+    expect(screen.getByRole("alert").textContent).toContain("over 32 MiB");
+  });
+
+  it("has no recent menu without native files", async () => {
+    render(<App engine={directEngine} />);
+    await screen.findByTestId("cone");
+    expect(screen.queryByLabelText("Recent feeds")).toBeNull();
   });
 });

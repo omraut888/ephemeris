@@ -1,7 +1,10 @@
-// The app's engine: async calls to the worker, plus a same-thread version
-// with the same interface for tests and environments without workers.
+// The app's engine interface, and its implementation over a message port:
+// the Web Worker in the browser, Tauri's IPC in the desktop app
+// (docs/phase4-design.md §2). Neither the WASM package nor the worker is
+// referenced here, so the desktop build bundles neither: the worker engine
+// is in ./browser, and the same-thread engine for tests is `directEngine`
+// in ./engine.
 
-import * as direct from "./engine";
 import type { Request, Response } from "./protocol";
 import type {
   ForecastOptions,
@@ -99,14 +102,3 @@ export function portEngine(port: Port): Engine {
       JSON.parse(await call({ op: "forecast", feedJson, options }, lane)) as ForecastReport,
   };
 }
-
-/** The engine in a Web Worker. */
-export function workerEngine(): Engine {
-  return portEngine(new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }));
-}
-
-/** The engine on the calling thread; `loadEngine` must have resolved. */
-export const directEngine: Engine = {
-  simulateJson: async (options) => direct.simulateJson(options),
-  forecast: async (feedJson, options) => direct.forecast(feedJson, options),
-};

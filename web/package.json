@@ -10,13 +10,18 @@
     "build": "npm run wasm && tsc --noEmit -p . && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p .",
-    "test": "npm run wasm && vitest run"
+    "test": "npm run wasm && vitest run",
+    "dev:desktop": "vite --mode desktop",
+    "build:desktop": "npm run wasm && tsc --noEmit -p . && vite build --mode desktop",
+    "tauri": "cd ../crates/ephemeris-desktop && tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.12.4",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",

@@ -8,6 +8,7 @@ import init, {
   schema_version as wasmSchemaVersion,
   simulate as wasmSimulate,
 } from "./pkg/ephemeris_wasm.js";
+import type { Engine } from "./client";
 import type {
   Feed,
   ForecastOptions,
@@ -74,3 +75,9 @@ export function forecast(
 ): ForecastReport {
   return JSON.parse(forecastJson(feedJson, options)) as ForecastReport;
 }
+
+/** The engine on the calling thread; `loadEngine` must have resolved. */
+export const directEngine: Engine = {
+  simulateJson: async (options) => simulateJson(options),
+  forecast: async (feedJson, options) => forecast(feedJson, options),
+};

@@ -1,8 +1,9 @@
 // App state: a feed (demo or file) → a forecast report → the panels.
-// All computation goes through `engine` (a Web Worker in the browser); this
-// file only sequences calls.
+// All computation goes through `engine` (a Web Worker in the browser, Tauri
+// commands on the desktop); this file only sequences calls. `files` is the
+// desktop app's native file handling; without it the browser's is used.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 
 import { AffordQuery } from "./components/AffordQuery";
@@ -12,7 +13,7 @@ import { Header } from "./components/Header";
 import { OVERDRAWN_TARGET, Risk } from "./components/Risk";
 import type { Source, Status } from "./components/Header";
 import { StatePanel } from "./components/StatePanel";
-import { workerEngine } from "./wasm/client";
+import type { FileHost, OpenedFeed, RecentFeed } from "./files";
 import type { Engine } from "./wasm/client";
 import type { ForecastOptions, ForecastReport, SimMode } from "./schema.gen";
 
@@ -36,8 +37,7 @@ interface Loaded {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function App({ engine: given }: { engine?: Engine }) {
-  const engine = useMemo(() => given ?? workerEngine(), [given]);
+export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Loaded | null>(null);
@@ -46,6 +46,7 @@ export function App({ engine: given }: { engine?: Engine }) {
   const [mode, setMode] = useState<SimMode>("realistic");
   const [seed, setSeed] = useState(7);
   const [dragging, setDragging] = useState(false);
+  const [recent, setRecent] = useState<RecentFeed[]>([]);
 
   const options = useCallback(
     (h: number): Partial<ForecastOptions> => ({
@@ -92,19 +93,58 @@ export function App({ engine: given }: { engine?: Engine }) {
     [engine, run],
   );
 
-  const loadFile = useCallback(
-    async (file: File) => {
-      const text = await file.text();
+  /** A feed's text, from a picked, dropped or recent file. */
+  const loadText = useCallback(
+    async (name: string, text: string) => {
       try {
         JSON.parse(text);
       } catch {
-        setError(`${file.name} is not JSON.`);
+        setError(`${name} is not JSON.`);
         setStatus("error");
         return;
       }
-      await run({ kind: "file", name: file.name }, text, horizon);
+      await run({ kind: "file", name }, text, horizon);
     },
     [run, horizon],
+  );
+
+  const loadFile = useCallback(
+    async (file: File) => loadText(file.name, await file.text()),
+    [loadText],
+  );
+
+  const fail = useCallback((e: unknown) => {
+    setError(message(e));
+    setStatus("error");
+  }, []);
+
+  const refreshRecent = useCallback(() => {
+    files?.recent().then(setRecent, () => setRecent([]));
+  }, [files]);
+  useEffect(refreshRecent, [refreshRecent]);
+
+  const openFeed = useCallback(
+    async (feed: OpenedFeed) => {
+      refreshRecent();
+      await loadText(feed.name, feed.json);
+    },
+    [refreshRecent, loadText],
+  );
+
+  // Dropped files arrive as events from the shell. Subscribe once; the ref
+  // always holds the current `openFeed`.
+  const openRef = useRef(openFeed);
+  useEffect(() => {
+    openRef.current = openFeed;
+  }, [openFeed]);
+  useEffect(
+    () =>
+      files?.onDrop({
+        opened: (feed) => void openRef.current(feed),
+        error: fail,
+        hover: setDragging,
+      }),
+    [files, fail],
   );
 
   // Open on a demo so there is something to look at.
@@ -140,6 +180,14 @@ export function App({ engine: given }: { engine?: Engine }) {
         onSeed={setSeed}
         onDemo={() => void runDemo(mode, seed, horizon)}
         onFile={(f) => void loadFile(f)}
+        onPick={
+          files &&
+          (() => void files.pick().then((feed) => feed && openFeed(feed), fail))
+        }
+        recent={recent}
+        onRecent={
+          files && ((path) => void files.openRecent(path).then(openFeed, fail))
+        }
       />
       {error && (
         <div className="banner" role="alert">
