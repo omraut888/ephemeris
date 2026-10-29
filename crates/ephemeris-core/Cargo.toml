@@ -11,6 +11,9 @@ serde = ["dep:serde"]
 # ephemeris-wasm's tests enable it, to check web/src/schema.gen.ts for drift
 # (docs/phase2-design.md §3); no shipped build compiles it.
 ts = ["serde", "dep:ts-rs"]
+# JSON text in, JSON text out: the one entry point every shell calls (WASM,
+# desktop), so they all emit the same bytes (docs/phase4-design.md §2).
+json = ["serde", "dep:serde_json"]
 
 [dependencies]
 nalgebra = { version = "0.35", default-features = false, features = ["libm"] }
@@ -21,6 +24,8 @@ rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
 rand_distr = "0.6"
 serde = { version = "1", features = ["derive"], optional = true }
+# Only with `json`; already in the graph through the CLI and WASM crates.
+serde_json = { version = "1", features = ["float_roundtrip"], optional = true }
 ts-rs = { version = "12", optional = true }
 
 [dev-dependencies]

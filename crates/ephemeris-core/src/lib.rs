@@ -10,6 +10,8 @@ pub mod calendar;
 pub mod change;
 pub mod error;
 pub mod forecast;
+#[cfg(feature = "json")]
+pub mod json;
 pub mod kalman;
 pub mod linalg;
 pub mod metrics;
