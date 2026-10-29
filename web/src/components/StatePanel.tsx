@@ -2,16 +2,19 @@
 // detected pay schedule, the named bills, and any regime changes.
 
 import { cadence, longDate, money, ordinal, shortDate, signedMoney } from "../format";
-import type { BillReport, Estimate, ForecastReport } from "../schema.gen";
+import type { BillReport, Estimate, ForecastReport, SpendRange } from "../schema.gen";
 
 function Stat({
   label,
   e,
   unit = "",
+  range,
 }: {
   label: string;
   e: Estimate;
   unit?: string;
+  /** Replaces ±2σ when the forecast floors this quantity. */
+  range?: SpendRange;
 }) {
   return (
     <div className="stat">
@@ -21,7 +24,9 @@ function Stat({
         <span className="dim">{unit}</span>
       </span>
       <span className="range num">
-        ±2σ {money(e.low_2sd)} to {money(e.high_2sd)}
+        {range
+          ? `range ${money(range.low)} to ${money(range.high)} · floored at ${money(range.floor)}`
+          : `±2σ ${money(e.low_2sd)} to ${money(e.high_2sd)}`}
       </span>
     </div>
   );
@@ -62,7 +67,12 @@ export function StatePanel({ report }: { report: ForecastReport }) {
       <section className="section">
         <div className="label">State · as of {longDate(report.as_of)}</div>
         <Stat label="Balance" e={report.balance} />
-        <Stat label="Spend rate" e={report.spend_rate} unit="/day" />
+        <Stat
+          label="Spend rate"
+          e={report.spend_rate}
+          unit="/day"
+          range={report.spend_rate_range}
+        />
         <Stat label="Paycheck" e={report.expected_paycheck} />
         <p className="dim" style={{ fontSize: 12, marginBottom: 0 }}>
           Settled through {longDate(report.settled_through)}; later days still hold pending amounts.
