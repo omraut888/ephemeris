@@ -168,6 +168,10 @@ pub struct SynthConfig {
     pub initial: TrueState,
     /// Daily random-walk variance of `c`.
     pub q_c: f64,
+    /// If set, the true `c` reflects at this floor, as the forecast's does
+    /// with a spend floor (design §7). Reflection draws nothing, so a floor
+    /// the walk never reaches leaves the data unchanged.
+    pub c_floor: Option<f64>,
     /// Daily random-walk variance of `m`.
     pub q_m: f64,
     pub spend: SpendModel,
@@ -247,6 +251,7 @@ impl SynthConfig {
                 m: 2400.0,
             },
             q_c: 0.25,
+            c_floor: None,
             q_m: 25.0,
             spend: SpendModel::Gaussian { sigma: 40.0 },
             weekday_factors: [1.0; 7],
@@ -295,6 +300,9 @@ impl SynthConfig {
             || self.start_day.checked_sub(MAX_DAYS as Day).is_none()
         {
             return Err(E("start_day too close to the edge of the Day range"));
+        }
+        if self.c_floor.is_some_and(|f| !finite(f)) {
+            return Err(E("c_floor must be finite"));
         }
         let s = self.initial;
         if !(finite(s.b) && finite(s.c) && finite(s.m)) {
@@ -550,6 +558,11 @@ pub fn generate(cfg: &SynthConfig, seed: u64) -> Result<SynthRun, EngineError> {
         }
 
         state.c += normal(&mut state_rng, 0.0, cfg.q_c.sqrt());
+        if let Some(floor) = cfg.c_floor
+            && state.c < floor
+        {
+            state.c = 2.0 * floor - state.c;
+        }
         state.m += normal(&mut state_rng, 0.0, cfg.q_m.sqrt());
 
         if paydays.get(next_payday) == Some(&day) {
@@ -852,6 +865,41 @@ mod tests {
                 assert_eq!(x.state.b.to_bits(), y.state.b.to_bits());
             }
         }
+    }
+
+    #[test]
+    fn c_floor_reflects_the_truth_and_draws_nothing() {
+        // c starts at 1 with step sd 2: unfloored it goes negative quickly.
+        let base = SynthConfig {
+            n_days: 200,
+            q_c: 4.0,
+            initial: TrueState {
+                c: 1.0,
+                ..SynthConfig::model_matched(MON).initial
+            },
+            ..SynthConfig::model_matched(MON)
+        };
+        let free = generate(&base, 3).unwrap();
+        assert!(free.truth.iter().any(|t| t.state.c < 0.0));
+        let floored = generate(
+            &SynthConfig {
+                c_floor: Some(0.0),
+                ..base.clone()
+            },
+            3,
+        )
+        .unwrap();
+        assert!(floored.truth.iter().all(|t| t.state.c >= 0.0));
+        // Same draws: until the first crossing the two runs agree exactly.
+        let first = free.truth.iter().position(|t| t.state.c < 0.0).unwrap();
+        assert_eq!(free.truth[..first], floored.truth[..first]);
+        // A floor the walk never reaches changes nothing at all.
+        let cfg = SynthConfig::realistic(MON);
+        let far = SynthConfig {
+            c_floor: Some(-1e9),
+            ..cfg.clone()
+        };
+        assert_eq!(generate(&cfg, 5).unwrap(), generate(&far, 5).unwrap());
     }
 
     #[test]

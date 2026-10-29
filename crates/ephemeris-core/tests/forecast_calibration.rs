@@ -35,9 +35,11 @@ use ephemeris_core::Day;
 use ephemeris_core::calendar::PaySchedule;
 use ephemeris_core::forecast::{ForecastConfig, ForecastModel, forecast};
 use ephemeris_core::metrics::{crps_gaussian, crps_quantiles, midpoint_levels};
+use ephemeris_core::model::IDX_C;
 use ephemeris_core::schedule::{Schedule, detect_schedule};
-use ephemeris_core::synth::{SynthConfig, generate};
+use ephemeris_core::synth::{SynthConfig, TrueState, generate};
 use ephemeris_core::tracker::{Tracker, TrackerConfig};
+use ephemeris_core::truncated::TruncatedNormal;
 use ephemeris_core::{FlowKind, Transaction, TxnStatus};
 
 /// 2024-01-01.
@@ -226,8 +228,16 @@ fn schedule_aware(
     }
 }
 
-/// `tallies[method][horizon]`.
-fn evaluate(cfg: &SynthConfig, tcfg: TrackerConfig, seeds: u64) -> Vec<Vec<Tally>> {
+/// `tallies[method][horizon]`, and the mean share of the estimate's `c`
+/// Gaussian below $0 at the forecast origins (how much a spend floor at 0
+/// has to act on). `tweak` adjusts each forecast's config.
+fn evaluate(
+    cfg: &SynthConfig,
+    tcfg: TrackerConfig,
+    seeds: u64,
+    tweak: impl Fn(&mut ForecastConfig),
+) -> (Vec<Vec<Tally>>, f64) {
+    let mut below = 0.0;
     let mut tallies = vec![vec![Tally::default(); HORIZONS.len()]; METHODS.len()];
     let model = ForecastModel::from_tracker(&tcfg);
     let levels: Vec<f64> = INTERVALS
@@ -254,11 +264,18 @@ fn evaluate(cfg: &SynthConfig, tcfg: TrackerConfig, seeds: u64) -> Vec<Vec<Tally
 
             let est = tracker.estimate().unwrap();
             let schedule = detect_schedule(&snap);
-            let fcfg = ForecastConfig {
+            let mut fcfg = ForecastConfig {
                 n_paths: PATHS,
                 levels: levels.clone(),
                 ..ForecastConfig::new(90, seed * 10 + o as u64)
             };
+            tweak(&mut fcfg);
+            below += TruncatedNormal {
+                mean: est.x[IDX_C],
+                sd: est.p[(IDX_C, IDX_C)].sqrt(),
+                floor: 0.0,
+            }
+            .mass_below();
             let cone = forecast(est, &schedule, &model, &fcfg).unwrap();
             for (hi, &h) in HORIZONS.iter().enumerate() {
                 let day = k + h;
@@ -277,7 +294,7 @@ fn evaluate(cfg: &SynthConfig, tcfg: TrackerConfig, seeds: u64) -> Vec<Vec<Tally
             }
         }
     }
-    tallies
+    (tallies, below / (seeds as usize * ORIGINS.len()) as f64)
 }
 
 fn print_table(title: &str, tallies: &[Vec<Tally>]) {
@@ -287,9 +304,10 @@ fn print_table(title: &str, tallies: &[Vec<Tally>]) {
         "  {:<16} {:>4}  {:>9} {:>9} {:>9}  {:>6} {:>6} {:>6} {:>6}  {:>10}",
         "method", "h", "RMSE", "MAE", "CRPS", "50%", "80%", "90%", "95%", "90% width"
     );
-    for (m, name) in METHODS.iter().enumerate() {
+    // The first `tallies.len()` methods, in METHODS order.
+    for (row, name) in tallies.iter().zip(METHODS) {
         for (hi, h) in HORIZONS.iter().enumerate() {
-            let t = &tallies[m][hi];
+            let t = &row[hi];
             let intervals = if t.n_bounded == 0 {
                 format!("{:>6} {:>6} {:>6} {:>6}  {:>10}", "-", "-", "-", "-", "-")
             } else {
@@ -319,15 +337,17 @@ const SEEDS: u64 = 100;
 #[test]
 #[ignore = "100-seed forecast sweep; run scripts/test-full.sh"]
 fn forecast_calibration() {
-    let realistic = evaluate(
+    let (realistic, _) = evaluate(
         &SynthConfig::realistic(START),
         TrackerConfig::new(START),
         SEEDS,
+        |_| {},
     );
-    let matched_default = evaluate(
+    let (matched_default, _) = evaluate(
         &SynthConfig::model_matched(START),
         TrackerConfig::new(START),
         SEEDS,
+        |_| {},
     );
     // The model has no jumps, so the strict check runs the filter on its own
     // assumptions: no regime-change detection. With detection on, false
@@ -335,7 +355,12 @@ fn forecast_calibration() {
     let mut no_detection = TrackerConfig::new(START);
     no_detection.spend_change = None;
     no_detection.income_change = None;
-    let matched = evaluate(&SynthConfig::model_matched(START), no_detection, SEEDS);
+    let (matched, _) = evaluate(
+        &SynthConfig::model_matched(START),
+        no_detection,
+        SEEDS,
+        |_| {},
+    );
     print_table(
         "REALISTIC (model mismatch; reported, not asserted)",
         &realistic,
@@ -354,6 +379,56 @@ fn forecast_calibration() {
     // little (design §6), so that run gets a looser 8-point bound.
     assert_coverage("no regime detection", &matched, 0.05);
     assert_coverage("default tracker", &matched_default, 0.08);
+}
+
+/// A user who spends little: true `c` starts at `c0` $/day and reflects at
+/// $0, so the estimate's Gaussian often reaches below zero.
+fn low_spender(base: SynthConfig, c0: f64) -> SynthConfig {
+    SynthConfig {
+        initial: TrueState {
+            c: c0,
+            ..base.initial
+        },
+        c_floor: Some(0.0),
+        ..base
+    }
+}
+
+/// Where the spend floor binds (design §7): the same low-spending data
+/// forecast without and with the floor. Reported for review, not asserted.
+#[test]
+#[ignore = "spend-floor sweep; run with --ignored --nocapture"]
+fn spend_floor_sweep() {
+    let mut no_detection = TrackerConfig::new(START);
+    no_detection.spend_change = None;
+    no_detection.income_change = None;
+    let cases = [
+        (
+            "model-matched, true c from $5/day, no regime detection",
+            low_spender(SynthConfig::model_matched(START), 5.0),
+            no_detection,
+        ),
+        (
+            "model-matched, true c from $5/day, default tracker",
+            low_spender(SynthConfig::model_matched(START), 5.0),
+            TrackerConfig::new(START),
+        ),
+        (
+            "realistic, true c from $10/day, default tracker",
+            low_spender(SynthConfig::realistic(START), 10.0),
+            TrackerConfig::new(START),
+        ),
+    ];
+    for (name, cfg, tcfg) in cases {
+        let (off, below) = evaluate(&cfg, tcfg, SEEDS, |f| f.spend_floor = None);
+        let (on, _) = evaluate(&cfg, tcfg, SEEDS, |f| f.spend_floor = Some(0.0));
+        println!(
+            "\n##### {name}: mean share of the c Gaussian below $0 at origins: {:.1}%",
+            100.0 * below
+        );
+        print_table(&format!("{name}, floor OFF"), &off[..1]);
+        print_table(&format!("{name}, floor ON"), &on[..1]);
+    }
 }
 
 /// Every MC interval within `tol` of nominal. Forecasts from the same seed
@@ -377,7 +452,12 @@ fn assert_coverage(label: &str, tallies: &[Vec<Tally>], tol: f64) {
 /// Fast smoke test: one seed through the whole pipeline.
 #[test]
 fn pipeline_smoke() {
-    let tallies = evaluate(&SynthConfig::realistic(START), TrackerConfig::new(START), 1);
+    let (tallies, _) = evaluate(
+        &SynthConfig::realistic(START),
+        TrackerConfig::new(START),
+        1,
+        |_| {},
+    );
     for row in &tallies {
         for t in row {
             assert_eq!(t.n, ORIGINS.len());
