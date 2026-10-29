@@ -25,9 +25,11 @@ function Stat({
       </span>
       <span className="range num">
         {range
-          ? `range ${money(range.low)} to ${money(range.high)} · floored at ${money(range.floor)}`
+          ? `range ${money(range.low)} to ${money(range.high)}`
           : `±2σ ${money(e.low_2sd)} to ${money(e.high_2sd)}`}
       </span>
+      {/* Its own line: with the range it overflows the 330px panel. */}
+      {range && <span className="range num">floored at {money(range.floor)}</span>}
     </div>
   );
 }

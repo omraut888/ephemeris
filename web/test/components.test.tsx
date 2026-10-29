@@ -43,7 +43,8 @@ describe("StatePanel", () => {
   it("shows the floored spend range in place of ±2σ when the report has one", () => {
     const range = { floor: 0, low: 8.939911, high: 139.598602, below_floor: 0.0314 };
     render(<StatePanel report={{ ...REPORT, spend_rate_range: range }} />);
-    expect(screen.getByText("range $8.94 to $139.60 · floored at $0.00")).toBeTruthy();
+    expect(screen.getByText("range $8.94 to $139.60")).toBeTruthy();
+    expect(screen.getByText("floored at $0.00")).toBeTruthy();
     // The balance keeps its ±2σ.
     expect(screen.getAllByText(/^±2σ/)).toHaveLength(2);
   });
