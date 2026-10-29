@@ -24,6 +24,9 @@ const HORIZONS = [30, 90, 180] as const;
 const PATHS = 2000;
 /** Forecast seed: fixed, so the same feed always draws the same cone. */
 const FORECAST_SEED = 0;
+/** A horizon change waits this long for the next before it forecasts, so
+ * arrowing through the select runs one forecast, not one per step. */
+export const INPUT_DEBOUNCE_MS = 150;
 
 interface Loaded {
   source: Source;
@@ -57,9 +60,13 @@ export function App({ engine: given }: { engine?: Engine }) {
 
   // Only the latest request may update the screen.
   const latest = useRef(0);
+  // A debounced run not yet started; any run that starts replaces it.
+  const debounced = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(debounced.current), []);
 
   const run = useCallback(
     async (source: Source, feedJson: string | Promise<string>, h: number) => {
+      clearTimeout(debounced.current);
       const ticket = ++latest.current;
       setStatus("loading");
       try {
@@ -154,7 +161,12 @@ export function App({ engine: given }: { engine?: Engine }) {
                 onChange={(e) => {
                   const h = Number(e.target.value);
                   setHorizon(h);
-                  void run(data.source, data.feedJson, h);
+                  setStatus("loading");
+                  clearTimeout(debounced.current);
+                  debounced.current = setTimeout(
+                    () => void run(data.source, data.feedJson, h),
+                    INPUT_DEBOUNCE_MS,
+                  );
                 }}
               >
                 {HORIZONS.map((h) => (

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { App, DEFAULT_VIEW } from "../src/App";
+import { App, DEFAULT_VIEW, INPUT_DEBOUNCE_MS } from "../src/App";
 import { AffordQuery } from "../src/components/AffordQuery";
 import { ConeChart, bandIndex } from "../src/components/ConeChart";
 import { Risk } from "../src/components/Risk";
@@ -192,6 +192,23 @@ describe("App", () => {
 
     await user.selectOptions(screen.getByLabelText("Horizon"), "30");
     expect(await screen.findByText(/Forecast · 30 days/)).toBeTruthy();
+  });
+
+  it("runs one forecast for a burst of horizon changes, not one per change", async () => {
+    const forecast = vi.fn(directEngine.forecast);
+    render(<App engine={{ ...directEngine, forecast }} />);
+    await screen.findByTestId("cone");
+    const before = forecast.mock.calls.length;
+
+    const select = screen.getByLabelText("Horizon");
+    const changes = [30, 180, 90, 30, 180, 90, 30, 180, 90, 180];
+    for (const h of changes) fireEvent.change(select, { target: { value: String(h) } });
+
+    expect(await screen.findByText(/Forecast · 180 days/)).toBeTruthy();
+    // Nothing left over fires later.
+    await act(() => new Promise((r) => setTimeout(r, 2 * INPUT_DEBOUNCE_MS)));
+    expect(forecast.mock.calls.length - before).toBe(1);
+    expect(forecast.mock.calls.at(-1)?.[1].horizon_days).toBe(180);
   });
 
   it("loads a feed file and reports a bad one", async () => {
