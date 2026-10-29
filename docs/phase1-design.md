@@ -827,9 +827,12 @@ strict ±5-point check (`tests/forecast_calibration.rs`) now runs with
 detection off, the model's own assumptions. The default tracker is asserted
 separately within ±8 points.
 
-## 7. Proposal: the negative spend-rate band (not implemented)
+## 7. The negative spend-rate band: a spend floor
 
-Status: proposed 2026-10-29 for review. Nothing below is built yet.
+Status: built 2026-10-29 behind `ForecastConfig::spend_floor`, **off by
+default** until the measurements below are reviewed. Turning it on changes
+every path, so the golden files are regenerated in the same change.
+The proposal is kept as written; see "Measured" for what held up.
 
 ### The problem
 
@@ -909,7 +912,9 @@ have not been measured yet.
   | 5th percentile of `c₀` | $7.76 | $16.37 |
 
   - **Median balance** drops by about $18 at day 7, $79 at day 30 and $237
-    at day 90.
+    at day 90. *(Wrong: this applies the mean shift of `c` to the median.
+    The median of truncated `c` moves by only $1.42/day, so about $128 at
+    day 90. Measured: $115.)*
   - **Upper (95%) quantile at day 90** drops by up to about $770. That
     figure is `90 × (16.37 − 7.76)` and assumes `c` dominates the spread;
     daily noise and lumps make the real drop smaller.
@@ -934,6 +939,69 @@ have not been measured yet.
    within ±5 points.
 3. **Sandbox.** Re-run it and record the new band and cone in
    `docs/sandbox-comparison.md`.
+
+### As built
+
+- **Sampling, not clamping.** Each path's starting `c` is drawn from its
+  Gaussian conditioned on `c ≥ floor`, by inverse CDF (`truncated.rs`:
+  `libm` erfc, AS241 quantile). One uniform per path, exact in any tail.
+  A clamp would pile the excluded mass on `c = floor`, where those paths
+  would spend nothing. Rejection sampling gives the same distribution,
+  but with a variable number of draws and no bound on the loop.
+- **Correlation kept.** `P` is factored in the order `(c, b, m)`, so `c₀`
+  depends on the first normal draw alone. Truncating that draw leaves
+  `(b, m)` exactly Gaussian given `c₀`.
+- **Random walk.** The step reflects at the floor (`c ← 2·floor − c`),
+  with no extra draw.
+- **Report.** `spend_rate_range` (`docs/forecast-schema.md`). The CLI and
+  the app show it in place of ±2σ when present.
+- **Generator.** `SynthConfig::c_floor` reflects the true `c` the same way.
+
+### Measured (2026-10-29; floor on vs off, same seeds)
+
+**Existing sweeps (100 seeds, 300 forecasts per cell).** The floor never
+binds here, so every change is Monte Carlo noise from the redrawn paths.
+The asserted ±5 and ±8 point coverage checks pass with the floor on. The
+largest changes are below; the full before/after tables are in the
+review notes.
+
+| sweep | h | CRPS off → on | 90% coverage off → on |
+|---|---|---|---|
+| realistic | 90 | 560.44 → 561.56 | 89.0 → 88.7 |
+| model-matched, default tracker | 7 | 217.04 → 217.79 | 91.0 → 89.7 |
+| model-matched, no detection | 90 | 420.89 → 421.80 | 92.0 → 91.7 |
+
+**Where it binds** (`spend_floor_sweep`: low spenders, true `c` floored
+at 0). On average 19% of the estimate's `c` Gaussian sits below $0 at
+the forecast origins in model-matched runs, and 2.8% in realistic runs.
+
+| case | h | CRPS off → on | RMSE off → on | 90% cov. off → on | 90% width off → on |
+|---|---|---|---|---|---|
+| matched, $5/day, no detection | 30 | 208.92 → 203.86 | 390.6 → 383.5 | 93.0 → 93.0 | 1345 → 1306 |
+| matched, $5/day, no detection | 90 | 414.56 → 384.77 | 735.3 → 686.3 | 91.7 → 92.7 | 2705 → 2526 |
+| matched, $5/day, default | 90 | 416.90 → 388.70 | 737.2 → 692.2 | 91.7 → 92.7 | 2749 → 2553 |
+| realistic, $10/day, default | 90 | 317.40 → 313.36 | 554.5 → 550.7 | 94.0 → 92.0 | 2277 → 2237 |
+
+On the 90-day horizon the floor cuts CRPS by 7% (model-matched) and the
+90% band by 7%, while coverage stays within ±5 points of nominal. At 7
+days nothing changes beyond noise.
+
+**Regime sweep.** All changes are within noise (50 seeds, so coverage
+moves in 2-point steps). The exception is the one place the floor should
+act: after a detected halving of spending (the covariance jump widens
+`c`), the 14-day 90% width drops from 1476 to 1330 at the same 48%
+coverage.
+
+**Plaid sandbox** (2000 paths, seed 0):
+
+| | floor off | floor on |
+|---|---|---|
+| spend band | −$5.04 to $139.11 (±2σ) | $8.94 to $139.59 |
+| share of `c` Gaussian below $0 | 3.14% | (removed) |
+| median balance, day 7 / 30 / 90 | $749.25 / $1,594.91 / $4,892.77 | $735.74 / $1,585.24 / $4,777.77 |
+| 95% balance, day 90 | $10,634.77 | $9,797.83 (−$837) |
+| 5% balance, day 90 | −$913.70 | −$882.07 |
+| P(below $0 at some point by day 90) | 44.75% | 46.70% |
 
 ## Decisions (resolved 2026-10-19)
 
