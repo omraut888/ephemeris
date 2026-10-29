@@ -7,6 +7,42 @@ not a single number. One Rust core, shipped to iOS, Android, Web, and Desktop.
 Status: Phase 1 (core engine, CLI) complete; Phase 2 (web, via WASM) in
 progress. Full spec: docs/spec.html
 
+![The web app on the Plaid sandbox feed: the forecast cone, the chance of
+going below $0, the estimated state, and two "can I afford it" answers](docs/img/sandbox-desktop-dark-daily.png)
+
+*The web app on the Plaid sandbox feed. That feed is Plaid's synthetic test
+data with a fake, static balance, so the 47% chance of going below $0 shows
+what the feature looks like, not anything about a real account.*
+
+## Screenshots
+
+Taken with `node scripts/screenshots.mjs --build`. "Demo" is the engine's
+own synthetic generator (realistic mode, seed 7); "sandbox" is the Plaid
+sandbox feed, synthetic test data with a fake static balance. Neither is a
+real account, and the risk figures only demonstrate the feature.
+
+![Demo data, desktop, dark: a healthy synthetic account with the
+payday-and-rent sawtooth and under 1% risk](docs/img/demo-desktop-dark-daily.png)
+
+*Demo data: a synthetic account that stays well above $0, with the
+payday-and-rent sawtooth.*
+
+![Sandbox data, desktop, light: the pay-cycle lows view with the partial
+first and last cycles hatched](docs/img/sandbox-desktop-light-lows.png)
+
+*Sandbox data, pay-cycle lows view, light mode. The hatched cycles at each
+end are partial.*
+
+<p>
+  <img src="docs/img/demo-phone-light-daily.png" width="260"
+       alt="Demo data at 390px phone width, light mode, daily view">
+  <img src="docs/img/sandbox-phone-dark-lows.png" width="260"
+       alt="Sandbox data at 390px phone width, dark mode, pay-cycle lows view">
+</p>
+
+*At 390px phone width: demo data in light mode (daily view) and sandbox data
+in dark mode (pay-cycle lows).*
+
 ## Known gaps
 
 Phase 1 is done, with these gaps stated plainly. Details and measurements
