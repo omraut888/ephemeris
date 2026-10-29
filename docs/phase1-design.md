@@ -827,6 +827,114 @@ strict ±5-point check (`tests/forecast_calibration.rs`) now runs with
 detection off, the model's own assumptions. The default tracker is asserted
 separately within ±8 points.
 
+## 7. Proposal: the negative spend-rate band (not implemented)
+
+Status: proposed 2026-10-29 for review. Nothing below is built yet.
+
+### The problem
+
+`c` is one coordinate of a linear-Gaussian state, so its marginal is
+`N(ĉ, P_cc)` and nothing stops it going below zero. After its three regime
+changes, the Plaid sandbox has `ĉ = $67.04/day` with `σ_c = $36.04`. The
+state panel then prints "±2σ −$5.04 to $139.11", and 3.1% of the Monte
+Carlo paths (`Φ(−1.86)`) start out *earning* money every day. That causes
+two problems:
+
+- **Display.** A negative lower bound reads as "you might be earning",
+  when it really means "very unsure".
+- **Forecast.** Those paths climb steadily, so they sit at the top of the
+  cone and pull up its upper quantiles. They also slightly lower the
+  chance of dipping below $0.
+
+### Options
+
+**A. Log space: track `ℓ = log c` instead of `c`.** Rejected.
+- `b_k = b_{k−1} − exp(ℓ) + …` is nonlinear, so the tracker becomes an
+  EKF/UKF. That gives up the exact linear filter and the NEES/ANEES
+  consistency gates in §5, which assume it.
+- It makes `c ≤ 0` impossible, not just unlikely. But net discretionary
+  flow can be an inflow (refunds, reimbursements), which is why the README
+  calls this "not impossible".
+- It changes the model everywhere, not only near zero. The model-matched
+  generator has additive Gaussian `c`, so a log model would be
+  misspecified against it. The ±5-point calibration check would then
+  measure the misspecification rather than the filter, and the generator
+  would have to change too.
+- The noise adaptation (§3) and the regime detector (§6) work on additive
+  innovations in `c`, and both would need rework.
+
+**B. Truncate at a floor, at the outputs only.** Recommended.
+- The tracker stays exactly as it is: linear, unconstrained, with the same
+  NEES/NIS behavior. The constraint is prior knowledge applied where the
+  estimate is used.
+- **Floor.** Add `ForecastModel::c_floor: Option<f64>`, default `Some(0.0)`.
+  `None` keeps today's behavior for a user whose discretionary flow really
+  is a net inflow.
+- **Monte Carlo start.** Draw `c₀` from `N(ĉ, P_cc)` truncated to
+  `c ≥ floor`, by inverse CDF. Then draw `(b₀, m₀)` from their Gaussian
+  conditional on that `c₀`, which keeps the b–c correlation exact. Drawing
+  the full vector and rejecting would change the RNG draw count per path.
+- **Monte Carlo steps.** Reflect the random-walk step at the floor
+  (`c ← 2·floor − c` when `c < floor`). Reflection keeps the step variance
+  and needs no extra draw.
+- **Report.** Add `spend_rate.low`/`high`: the truncated distribution's
+  2.275% and 97.725% quantiles, the same coverage as ±2σ. Compute them in
+  the core with the existing `libm`, so no new crate is needed. The app
+  labels them "95% range" instead of ±2σ. `mean` and `sd` stay the
+  filter's. The change is additive, so the schema version stays 1.
+
+### Calibration impact
+
+These are hand computations from the closed-form truncated normal. They
+have not been measured yet.
+
+- **Existing sweeps: no material change.** The synthetic truth starts at
+  `c = $60/day` and walks with `q_c = 0.25`, so its spread after a year is
+  about $9.50. The tracker's `c` RMSE is $4.67 (model-matched) and $6.44
+  (realistic). Mass below zero is about 10⁻¹⁰ at most, so the floor
+  essentially never binds. The ±5-point (detector off) and ±8-point
+  (default) coverage checks should move only by Monte Carlo noise.
+- **That noise exists because every path changes.** Splitting the `x₀`
+  draw into "c first, then (b, m) given c" changes how the normal draws
+  map to states, even when the floor is inactive. The golden files in
+  `crates/ephemeris-wasm/tests/golden/` and the CLI's printed numbers will
+  change and must be regenerated. The byte-identity proof (native = WASM)
+  still holds.
+- **Where the floor binds (sandbox numbers):**
+
+  | | now | truncated |
+  |---|---|---|
+  | `c` band | −$5.04 to $139.11 | $8.94 to $139.60 |
+  | mean `c` | $67.04/day | $69.67/day (+$2.63) |
+  | 5th percentile of `c₀` | $7.76 | $16.37 |
+
+  - **Median balance** drops by about $18 at day 7, $79 at day 30 and $237
+    at day 90.
+  - **Upper (95%) quantile at day 90** drops by up to about $770. That
+    figure is `90 × (16.37 − 7.76)` and assumes `c` dominates the spread;
+    daily noise and lumps make the real drop smaller.
+  - **Lower tail** barely moves.
+  - **P(below $0)** rises slightly; the headline currently shows 45%.
+- **Effect on accuracy.** Low ĉ/σ_c happens right after a regime change
+  and on short histories. That is the "first week after a regime change is
+  overconfident" gap, but on the upper side. Truncation narrows the upper
+  side only, and only by removing paths that can't happen if spending is
+  really ≥ 0. So it should improve calibration there, not hurt it.
+
+### How to measure it before merging
+
+1. **Existing sweeps.** Run both sweeps (`scripts/test-full.sh
+   --nocapture`) with the floor on and off. Coverage and CRPS should agree
+   within Monte Carlo noise.
+2. **A new sweep where the floor binds.** Model-matched, with
+   `initial.c = $10/day`, a short warm-up so `σ_c` stays large, and the
+   generator's truth also floored at 0 (otherwise the truth itself goes
+   negative). Compare 90% coverage and CRPS at 7/30/90 days, floor on vs
+   off. Expected: floor-off over-covers on the upper side; floor-on is
+   within ±5 points.
+3. **Sandbox.** Re-run it and record the new band and cone in
+   `docs/sandbox-comparison.md`.
+
 ## Decisions (resolved 2026-10-19)
 
 1. **Accounts:** checking and savings only. Own-account transfers net to zero
