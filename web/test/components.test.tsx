@@ -7,7 +7,7 @@ import { AffordQuery } from "../src/components/AffordQuery";
 import { ConeChart, bandIndex } from "../src/components/ConeChart";
 import { Risk } from "../src/components/Risk";
 import { StatePanel } from "../src/components/StatePanel";
-import { money, percent } from "../src/format";
+import { longDate, money, percent } from "../src/format";
 import { directEngine } from "../src/wasm/client";
 import * as engine from "../src/wasm/engine";
 import { FEED_JSON, REPORT, LOW_REPORT, reportWithoutIncome } from "./fixtures";
@@ -140,8 +140,13 @@ describe("AffordQuery", () => {
     expect(run).toHaveBeenCalledWith(FEED_JSON, { ...options, targets: [3000] });
     // The same numbers the engine reports for that target and day.
     const expected = engine.forecast(FEED_JSON, { ...options, targets: [3000] }).forecast.targets[0]!;
-    expect(answer.textContent).toContain(percent(expected.at_least_on_day[19]!));
-    expect(answer.textContent).toContain(percent(expected.reached_by[19]!));
+    const onDay = screen.getByTestId("afford-on-day");
+    const byDay = screen.getByTestId("afford-by-day");
+    expect(onDay.textContent).toContain(`On ${longDate(date)}`);
+    expect(onDay.textContent).toContain(percent(expected.at_least_on_day[19]!));
+    expect(byDay.textContent).toContain(`At any point through ${longDate(date)}`);
+    expect(byDay.textContent).toContain(percent(expected.reached_by[19]!));
+    expect(answer.textContent).toContain("Why they differ");
   });
 
   it("explains a date outside the forecast", async () => {

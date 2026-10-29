@@ -460,10 +460,29 @@ button.primary {
 }
 
 .answer {
-  display: flex;
-  gap: 28px;
   margin-top: 14px;
-  flex-wrap: wrap;
+}
+
+.answer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.answer-card {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.answer-card .label {
+  color: var(--text-dim);
+}
+
+.answer .why {
+  margin: 10px 0 0;
+  font-size: 12px;
 }
 
 .answer .big {

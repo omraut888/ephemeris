@@ -85,7 +85,7 @@ export function AffordQuery({ feedJson, options, report, run }: Props) {
           />
         </label>
         <label>
-          <span className="dim"> by </span>
+          <span className="dim"> date </span>
           <input
             type="date"
             min={first}
@@ -106,16 +106,28 @@ export function AffordQuery({ feedJson, options, report, run }: Props) {
       )}
       {answer && !error && (
         <div className="answer" data-testid="afford-answer">
-          <div>
-            <div className="big num">{percent(answer.onDay)}</div>
-            <div className="dim">
-              chance of at least {money(answer.amount)} on {longDate(answer.date)}
+          <div className="answer-grid">
+            <div className="answer-card" data-testid="afford-on-day">
+              <div className="label">On {longDate(answer.date)}</div>
+              <div className="big num">{percent(answer.onDay)}</div>
+              <div className="dim">
+                chance of at least {money(answer.amount)} at the end of that day
+              </div>
+            </div>
+            <div className="answer-card" data-testid="afford-by-day">
+              <div className="label">At any point through {longDate(answer.date)}</div>
+              <div className="big num">{percent(answer.reachedBy)}</div>
+              <div className="dim">
+                chance of at least {money(answer.amount)} at the end of some day from today
+                through then
+              </div>
             </div>
           </div>
-          <div>
-            <div className="big num">{percent(answer.reachedBy)}</div>
-            <div className="dim">chance of reaching it on some day by then</div>
-          </div>
+          <p className="why dim">
+            Why they differ: the balance swings, so a paycheck can lift it past{" "}
+            {money(answer.amount)} for a few days before bills pull it back under; the
+            second number is never the lower one.
+          </p>
         </div>
       )}
     </section>
