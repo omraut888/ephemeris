@@ -11,6 +11,7 @@
   --text-dim: #8a93a6;
   --text-faint: #5b6478;
   --accent: #6ea8fe;
+  --on-accent: #0a0c10;
   --band-outer: rgba(110, 168, 254, 0.16);
   --band-inner: rgba(110, 168, 254, 0.34);
   --median: #dbe7ff;
@@ -34,6 +35,7 @@
     --text-dim: #545d70;
     --text-faint: #8a93a6;
     --accent: #2f6fe0;
+    --on-accent: #ffffff;
     --band-outer: rgba(47, 111, 224, 0.12);
     --band-inner: rgba(47, 111, 224, 0.28);
     --median: #1c3f86;
@@ -108,16 +110,18 @@ select:focus-visible {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0a0c10;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
 /* Layout */
 
+/* Desktop: one screen. The chart takes whatever height the right column
+   has left, and the state panel scrolls on its own. */
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .header {
@@ -181,6 +185,7 @@ button.primary {
 
 .main {
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
   gap: 1px;
@@ -189,16 +194,12 @@ button.primary {
 
 .main > * {
   background: var(--bg);
-}
-
-@media (max-width: 820px) {
-  .main {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .panel {
-  padding: 18px 20px;
+  padding: 16px 20px;
 }
 
 .section + .section {
@@ -272,7 +273,7 @@ button.primary {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px 0;
+  padding: 12px 20px 0;
   flex-wrap: wrap;
 }
 
@@ -297,14 +298,18 @@ button.primary {
 }
 
 .chart {
-  padding: 8px 12px 4px;
+  margin: 8px 12px 4px;
   position: relative;
+  flex: 1;
+  min-height: 220px;
+  /* The SVG is sized from this box; keep it from feeding back. */
+  overflow: hidden;
 }
 
 .chart svg {
+  position: absolute;
+  inset: 0;
   display: block;
-  width: 100%;
-  height: auto;
 }
 
 .chart .grid line {
@@ -444,7 +449,7 @@ button.primary {
 
 .afford {
   border-top: 1px solid var(--line);
-  padding: 16px 20px 20px;
+  padding: 12px 20px 16px;
 }
 
 .afford form {
@@ -517,4 +522,67 @@ button.primary {
   place-items: center;
   min-height: 320px;
   color: var(--text-dim);
+}
+
+/* Phone and narrow windows: one column in page flow, the forecast first. */
+@media (max-width: 820px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .main > * {
+    overflow-y: visible;
+  }
+
+  .right {
+    order: -1;
+  }
+
+  .chart {
+    flex: none;
+    height: 260px;
+  }
+
+  .header {
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .controls {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .controls select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .controls input[type="number"] {
+    width: 56px;
+  }
+
+  .panel,
+  .afford {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .chart-head {
+    padding: 12px 16px 0;
+  }
+
+  .legend {
+    padding: 0 16px 10px;
+  }
+
+  .risk {
+    margin: 10px 16px 0;
+  }
 }

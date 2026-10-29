@@ -6,19 +6,35 @@
 // Everything plotted is a number from the report; this file only maps
 // values and day indices to pixels.
 
-import { useId, useMemo, useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { PointerEvent, RefObject } from "react";
 
 import { longDate, money, moneyAxis, shortDate } from "../format";
 import type { ForecastReport } from "../schema.gen";
 
 export type ConeView = "raw" | "lows";
 
-const W = 960;
-const H = 340;
+/** Drawing size before the container is measured (and in jsdom). */
+const DEFAULT_SIZE = { w: 960, h: 340 };
+const MIN_H = 220;
 const PAD = { left: 76, right: 16, top: 14, bottom: 28 };
-const PLOT_W = W - PAD.left - PAD.right;
-const PLOT_H = H - PAD.top - PAD.bottom;
+
+/** The element's content box, so the SVG draws at real pixels and its
+ * 11px labels stay 11px at any width. */
+function useSize(ref: RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry?.contentRect;
+      if (r && r.width > 0) setSize({ w: Math.round(r.width), h: Math.max(MIN_H, Math.round(r.height)) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
 
 /** Which entries of `levels` are the outer band, inner band and median. */
 export interface BandIndex {
@@ -69,6 +85,10 @@ export function ConeChart({ report, view }: Props) {
   const idx = bandIndex(levels);
   const n = days.length;
   const svgRef = useRef<SVGSVGElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { w: W, h: H } = useSize(boxRef);
+  const PLOT_W = W - PAD.left - PAD.right;
+  const PLOT_H = H - PAD.top - PAD.bottom;
   const [hover, setHover] = useState<number | null>(null);
   const hatchId = `hatch-${useId().replace(/:/g, "")}`;
 
@@ -97,12 +117,12 @@ export function ConeChart({ report, view }: Props) {
   const x = (i: number) => PAD.left + ((i + 1) / n) * PLOT_W;
   const y = (v: number) => PAD.top + ((yMax - v) / (yMax - yMin)) * PLOT_H;
 
-  const step = tickStep(yMax - yMin, 5);
+  const step = tickStep(yMax - yMin, Math.min(8, Math.max(3, Math.round(PLOT_H / 60))));
   const yTicks: number[] = [];
   for (let t = Math.ceil(yMin / step) * step; t <= yMax; t += step) yTicks.push(t);
   const xTicks = days
     .map((d, i) => ({ d, i }))
-    .filter(({ i }) => i % Math.max(1, Math.round(n / 6)) === 0);
+    .filter(({ i }) => i % Math.max(1, Math.round(n / Math.max(2, Math.floor(PLOT_W / 90)))) === 0);
 
   const area = (upper: number, lower: number) => {
     const top = days.map((d, i) => `${x(i)},${y(d.quantiles[upper] ?? 0)}`);
@@ -146,10 +166,12 @@ export function ConeChart({ report, view }: Props) {
   const crossesZero = yMin < 0 && yMax > 0;
 
   return (
-    <div className="chart">
+    <div className="chart" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
         role="img"
         aria-label={summary}
         data-testid="cone"
@@ -172,7 +194,7 @@ export function ConeChart({ report, view }: Props) {
             </g>
           ))}
           {xTicks.map(({ d, i }) => (
-            <text key={d.date} x={x(i)} y={H - 8} textAnchor="middle">
+            <text key={d.date} x={x(i)} y={H - 8} textAnchor={x(i) > W - PAD.right - 24 ? "end" : "middle"}>
               {shortDate(d.date)}
             </text>
           ))}
