@@ -1,0 +1,890 @@
+[
+  {
+    "schema_version": 1,
+    "as_of": "2026-10-21",
+    "settled_through": "2026-10-20",
+    "balance": {
+      "mean": 421.38,
+      "sd": 10.5,
+      "low_2sd": 400.38,
+      "high_2sd": 442.38
+    },
+    "spend_rate": {
+      "mean": 67.04,
+      "sd": 10.5,
+      "low_2sd": 46.040000000000006,
+      "high_2sd": 88.04
+    },
+    "spend_rate_range": {
+      "floor": 0.0,
+      "low": 8.94,
+      "high": 139.59,
+      "below_floor": 0.03125
+    },
+    "expected_paycheck": {
+      "mean": 810.0,
+      "sd": 10.5,
+      "low_2sd": 789.0,
+      "high_2sd": 831.0
+    },
+    "income": {
+      "name": "Payroll",
+      "cadence": {
+        "kind": "weekly",
+        "anchor": "2026-10-02"
+      },
+      "last_paid_nominal": "2026-10-16",
+      "next_scheduled": "2026-10-23",
+      "offset_probabilities": [
+        0.0625,
+        0.125,
+        0.625,
+        0.125,
+        0.0625
+      ],
+      "fit_cost": 3
+    },
+    "bills": [
+      {
+        "stream": 1,
+        "name": "Bill 1",
+        "amount": -12.65,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "none"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 2,
+        "name": "Bill 2",
+        "amount": -25.3,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "previous_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 3,
+        "name": "Bill 3",
+        "amount": -37.95,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "next_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 9,
+        "name": null,
+        "amount": 0.12,
+        "period_days": 14,
+        "monthly_on": null,
+        "last_charged": "2026-10-14",
+        "next_due": "2026-10-28"
+      }
+    ],
+    "regime_changes": [
+      {
+        "date": "2026-09-24",
+        "settled": true,
+        "channel": "spend",
+        "shift": 19.5
+      },
+      {
+        "date": "2026-09-24",
+        "settled": false,
+        "channel": "income",
+        "shift": 19.5
+      }
+    ],
+    "forecast": {
+      "horizon_days": 2,
+      "paths": 100,
+      "seed": 11,
+      "levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ],
+      "days": [
+        {
+          "date": "2026-10-22",
+          "quantiles": [
+            200.0,
+            324.5,
+            400.0,
+            475.5,
+            600.0
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "quantiles": [
+            950.25,
+            1074.75,
+            1150.25,
+            1225.75,
+            1350.25
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "amount": 0.0,
+          "at_least_on_day": [
+            0.875,
+            0.9375
+          ],
+          "reached_by": [
+            0.875,
+            0.96875
+          ],
+          "below_by": [
+            0.125,
+            0.15625
+          ]
+        }
+      ],
+      "cycle_lows": {
+        "basis": "paycheck",
+        "cycles": [
+          {
+            "start": "2026-10-22",
+            "end": "2026-10-22",
+            "partial": true,
+            "quantiles": [
+              150.0,
+              274.5,
+              350.0,
+              425.5,
+              550.0
+            ]
+          },
+          {
+            "start": "2026-10-23",
+            "end": "2026-10-23",
+            "partial": false,
+            "quantiles": [
+              800.0,
+              924.5,
+              1000.0,
+              1075.5,
+              1200.0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema_version": 1,
+    "as_of": "2026-10-21",
+    "settled_through": "2026-10-20",
+    "balance": {
+      "mean": 421.38,
+      "sd": 10.5,
+      "low_2sd": 400.38,
+      "high_2sd": 442.38
+    },
+    "spend_rate": {
+      "mean": 67.04,
+      "sd": 10.5,
+      "low_2sd": 46.040000000000006,
+      "high_2sd": 88.04
+    },
+    "spend_rate_range": {
+      "floor": 0.0,
+      "low": 8.94,
+      "high": 139.59,
+      "below_floor": 0.03125
+    },
+    "expected_paycheck": {
+      "mean": 810.0,
+      "sd": 10.5,
+      "low_2sd": 789.0,
+      "high_2sd": 831.0
+    },
+    "income": {
+      "name": "Payroll",
+      "cadence": {
+        "kind": "biweekly",
+        "anchor": "2026-10-09"
+      },
+      "last_paid_nominal": "2026-10-16",
+      "next_scheduled": "2026-10-23",
+      "offset_probabilities": [
+        0.0625,
+        0.125,
+        0.625,
+        0.125,
+        0.0625
+      ],
+      "fit_cost": 3
+    },
+    "bills": [
+      {
+        "stream": 1,
+        "name": "Bill 1",
+        "amount": -12.65,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "none"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 2,
+        "name": "Bill 2",
+        "amount": -25.3,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "previous_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 3,
+        "name": "Bill 3",
+        "amount": -37.95,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "next_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 9,
+        "name": null,
+        "amount": 0.12,
+        "period_days": 14,
+        "monthly_on": null,
+        "last_charged": "2026-10-14",
+        "next_due": "2026-10-28"
+      }
+    ],
+    "regime_changes": [
+      {
+        "date": "2026-09-24",
+        "settled": true,
+        "channel": "spend",
+        "shift": 19.5
+      },
+      {
+        "date": "2026-09-24",
+        "settled": false,
+        "channel": "income",
+        "shift": 19.5
+      }
+    ],
+    "forecast": {
+      "horizon_days": 2,
+      "paths": 100,
+      "seed": 11,
+      "levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ],
+      "days": [
+        {
+          "date": "2026-10-22",
+          "quantiles": [
+            200.0,
+            324.5,
+            400.0,
+            475.5,
+            600.0
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "quantiles": [
+            950.25,
+            1074.75,
+            1150.25,
+            1225.75,
+            1350.25
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "amount": 0.0,
+          "at_least_on_day": [
+            0.875,
+            0.9375
+          ],
+          "reached_by": [
+            0.875,
+            0.96875
+          ],
+          "below_by": [
+            0.125,
+            0.15625
+          ]
+        }
+      ],
+      "cycle_lows": {
+        "basis": "week",
+        "cycles": [
+          {
+            "start": "2026-10-22",
+            "end": "2026-10-22",
+            "partial": true,
+            "quantiles": [
+              150.0,
+              274.5,
+              350.0,
+              425.5,
+              550.0
+            ]
+          },
+          {
+            "start": "2026-10-23",
+            "end": "2026-10-23",
+            "partial": false,
+            "quantiles": [
+              800.0,
+              924.5,
+              1000.0,
+              1075.5,
+              1200.0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema_version": 1,
+    "as_of": "2026-10-21",
+    "settled_through": "2026-10-20",
+    "balance": {
+      "mean": 421.38,
+      "sd": 10.5,
+      "low_2sd": 400.38,
+      "high_2sd": 442.38
+    },
+    "spend_rate": {
+      "mean": 67.04,
+      "sd": 10.5,
+      "low_2sd": 46.040000000000006,
+      "high_2sd": 88.04
+    },
+    "spend_rate_range": {
+      "floor": 0.0,
+      "low": 8.94,
+      "high": 139.59,
+      "below_floor": 0.03125
+    },
+    "expected_paycheck": {
+      "mean": 810.0,
+      "sd": 10.5,
+      "low_2sd": 789.0,
+      "high_2sd": 831.0
+    },
+    "income": {
+      "name": "Payroll",
+      "cadence": {
+        "kind": "semi_monthly",
+        "days": [
+          1,
+          15
+        ]
+      },
+      "last_paid_nominal": "2026-10-16",
+      "next_scheduled": "2026-10-23",
+      "offset_probabilities": [
+        0.0625,
+        0.125,
+        0.625,
+        0.125,
+        0.0625
+      ],
+      "fit_cost": 3
+    },
+    "bills": [
+      {
+        "stream": 1,
+        "name": "Bill 1",
+        "amount": -12.65,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "none"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 2,
+        "name": "Bill 2",
+        "amount": -25.3,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "previous_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 3,
+        "name": "Bill 3",
+        "amount": -37.95,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "next_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 9,
+        "name": null,
+        "amount": 0.12,
+        "period_days": 14,
+        "monthly_on": null,
+        "last_charged": "2026-10-14",
+        "next_due": "2026-10-28"
+      }
+    ],
+    "regime_changes": [
+      {
+        "date": "2026-09-24",
+        "settled": true,
+        "channel": "spend",
+        "shift": 19.5
+      },
+      {
+        "date": "2026-09-24",
+        "settled": false,
+        "channel": "income",
+        "shift": 19.5
+      }
+    ],
+    "forecast": {
+      "horizon_days": 2,
+      "paths": 100,
+      "seed": 11,
+      "levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ],
+      "days": [
+        {
+          "date": "2026-10-22",
+          "quantiles": [
+            200.0,
+            324.5,
+            400.0,
+            475.5,
+            600.0
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "quantiles": [
+            950.25,
+            1074.75,
+            1150.25,
+            1225.75,
+            1350.25
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "amount": 0.0,
+          "at_least_on_day": [
+            0.875,
+            0.9375
+          ],
+          "reached_by": [
+            0.875,
+            0.96875
+          ],
+          "below_by": [
+            0.125,
+            0.15625
+          ]
+        }
+      ],
+      "cycle_lows": {
+        "basis": "paycheck",
+        "cycles": [
+          {
+            "start": "2026-10-22",
+            "end": "2026-10-22",
+            "partial": true,
+            "quantiles": [
+              150.0,
+              274.5,
+              350.0,
+              425.5,
+              550.0
+            ]
+          },
+          {
+            "start": "2026-10-23",
+            "end": "2026-10-23",
+            "partial": false,
+            "quantiles": [
+              800.0,
+              924.5,
+              1000.0,
+              1075.5,
+              1200.0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema_version": 1,
+    "as_of": "2026-10-21",
+    "settled_through": "2026-10-20",
+    "balance": {
+      "mean": 421.38,
+      "sd": 10.5,
+      "low_2sd": 400.38,
+      "high_2sd": 442.38
+    },
+    "spend_rate": {
+      "mean": 67.04,
+      "sd": 10.5,
+      "low_2sd": 46.040000000000006,
+      "high_2sd": 88.04
+    },
+    "spend_rate_range": {
+      "floor": 0.0,
+      "low": 8.94,
+      "high": 139.59,
+      "below_floor": 0.03125
+    },
+    "expected_paycheck": {
+      "mean": 810.0,
+      "sd": 10.5,
+      "low_2sd": 789.0,
+      "high_2sd": 831.0
+    },
+    "income": {
+      "name": "Payroll",
+      "cadence": {
+        "kind": "monthly",
+        "day": 28
+      },
+      "last_paid_nominal": "2026-10-16",
+      "next_scheduled": "2026-10-23",
+      "offset_probabilities": [
+        0.0625,
+        0.125,
+        0.625,
+        0.125,
+        0.0625
+      ],
+      "fit_cost": 3
+    },
+    "bills": [
+      {
+        "stream": 1,
+        "name": "Bill 1",
+        "amount": -12.65,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "none"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 2,
+        "name": "Bill 2",
+        "amount": -25.3,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "previous_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 3,
+        "name": "Bill 3",
+        "amount": -37.95,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "next_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 9,
+        "name": null,
+        "amount": 0.12,
+        "period_days": 14,
+        "monthly_on": null,
+        "last_charged": "2026-10-14",
+        "next_due": "2026-10-28"
+      }
+    ],
+    "regime_changes": [
+      {
+        "date": "2026-09-24",
+        "settled": true,
+        "channel": "spend",
+        "shift": 19.5
+      },
+      {
+        "date": "2026-09-24",
+        "settled": false,
+        "channel": "income",
+        "shift": 19.5
+      }
+    ],
+    "forecast": {
+      "horizon_days": 2,
+      "paths": 100,
+      "seed": 11,
+      "levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ],
+      "days": [
+        {
+          "date": "2026-10-22",
+          "quantiles": [
+            200.0,
+            324.5,
+            400.0,
+            475.5,
+            600.0
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "quantiles": [
+            950.25,
+            1074.75,
+            1150.25,
+            1225.75,
+            1350.25
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "amount": 0.0,
+          "at_least_on_day": [
+            0.875,
+            0.9375
+          ],
+          "reached_by": [
+            0.875,
+            0.96875
+          ],
+          "below_by": [
+            0.125,
+            0.15625
+          ]
+        }
+      ],
+      "cycle_lows": {
+        "basis": "week",
+        "cycles": [
+          {
+            "start": "2026-10-22",
+            "end": "2026-10-22",
+            "partial": true,
+            "quantiles": [
+              150.0,
+              274.5,
+              350.0,
+              425.5,
+              550.0
+            ]
+          },
+          {
+            "start": "2026-10-23",
+            "end": "2026-10-23",
+            "partial": false,
+            "quantiles": [
+              800.0,
+              924.5,
+              1000.0,
+              1075.5,
+              1200.0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema_version": 1,
+    "as_of": "2026-10-21",
+    "settled_through": "2026-10-20",
+    "balance": {
+      "mean": 421.38,
+      "sd": 10.5,
+      "low_2sd": 400.38,
+      "high_2sd": 442.38
+    },
+    "spend_rate": {
+      "mean": 67.04,
+      "sd": 10.5,
+      "low_2sd": 46.040000000000006,
+      "high_2sd": 88.04
+    },
+    "expected_paycheck": {
+      "mean": 810.0,
+      "sd": 10.5,
+      "low_2sd": 789.0,
+      "high_2sd": 831.0
+    },
+    "income": null,
+    "bills": [
+      {
+        "stream": 1,
+        "name": "Bill 1",
+        "amount": -12.65,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "none"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 2,
+        "name": "Bill 2",
+        "amount": -25.3,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "previous_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 3,
+        "name": "Bill 3",
+        "amount": -37.95,
+        "period_days": 30,
+        "monthly_on": {
+          "day": 21,
+          "shift": "next_business_day"
+        },
+        "last_charged": "2026-09-21",
+        "next_due": "2026-11-21"
+      },
+      {
+        "stream": 9,
+        "name": null,
+        "amount": 0.12,
+        "period_days": 14,
+        "monthly_on": null,
+        "last_charged": "2026-10-14",
+        "next_due": "2026-10-28"
+      }
+    ],
+    "regime_changes": [
+      {
+        "date": "2026-09-24",
+        "settled": true,
+        "channel": "spend",
+        "shift": 19.5
+      },
+      {
+        "date": "2026-09-24",
+        "settled": false,
+        "channel": "income",
+        "shift": 19.5
+      }
+    ],
+    "forecast": {
+      "horizon_days": 2,
+      "paths": 100,
+      "seed": 11,
+      "levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ],
+      "days": [
+        {
+          "date": "2026-10-22",
+          "quantiles": [
+            200.0,
+            324.5,
+            400.0,
+            475.5,
+            600.0
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "quantiles": [
+            950.25,
+            1074.75,
+            1150.25,
+            1225.75,
+            1350.25
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "amount": 0.0,
+          "at_least_on_day": [
+            0.875,
+            0.9375
+          ],
+          "reached_by": [
+            0.875,
+            0.96875
+          ],
+          "below_by": [
+            0.125,
+            0.15625
+          ]
+        }
+      ],
+      "cycle_lows": null
+    }
+  }
+]

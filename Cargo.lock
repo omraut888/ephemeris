@@ -871,6 +871,7 @@ name = "ephemeris-wasm"
 version = "0.1.0"
 dependencies = [
  "ephemeris-core",
+ "serde_json",
  "ts-rs",
  "wasm-bindgen",
  "wasm-bindgen-test",
