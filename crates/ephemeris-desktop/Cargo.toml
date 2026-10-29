@@ -1,0 +1,32 @@
+[package]
+name = "ephemeris-desktop"
+version = "0.1.0"
+edition = "2024"
+description = "The EPHEMERIS desktop app: the web UI in Tauri, the engine native"
+publish = false
+
+[lib]
+name = "ephemeris_desktop"
+
+[[bin]]
+name = "ephemeris-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+# Tauri's build script: config, capabilities and icons (docs/phase4-design.md §5).
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# `json`: the same entry points as the WASM build, so the same bytes.
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
+# Command payloads and recent.json. Both already in the graph.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The shell.
+tauri = { version = "2.12", features = [] }
+# The native open dialog, called from Rust only.
+tauri-plugin-dialog = "2.8"
+
+[dev-dependencies]
+# Calls the commands through Tauri's IPC layer for the golden test.
+tauri = { version = "2.12", features = ["test"] }
