@@ -17,6 +17,15 @@ cargo clippy -p ephemeris-desktop --all-targets -- -D warnings
 # exported functions, and its lints (docs/phase3-design.md §1).
 cargo test -p ephemeris-ffi
 cargo clippy -p ephemeris-ffi --all-targets -- -D warnings
+# The iOS engine package on this Mac: the golden files through the FFI, the
+# Swift schema drift test, formatting and lanes (docs/phase3-design.md §6).
+# Needs Xcode; skipped without it.
+if xcrun --find xcodebuild >/dev/null 2>&1; then
+  scripts/build-ios.sh --sim-only
+  swift test --package-path ios/EphemerisKit --scratch-path ios/build/swiftpm
+else
+  echo "SKIPPED iOS package tests: Xcode not found" >&2
+fi
 # The web app: builds the WASM package, then runs Vitest. Needs its npm
 # dependencies installed once (cd web && npm ci).
 if [ -d web/node_modules ]; then
