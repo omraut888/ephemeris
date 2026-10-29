@@ -172,7 +172,12 @@ export function ConeChart({ report, view }: Props) {
           ))}
         </g>
         {crossesZero && (
-          <line className="zero" x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} />
+          <g className="zero" data-testid="zero-line">
+            <line x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} />
+            <text x={W - PAD.right - 4} y={y(0) - 5} textAnchor="end">
+              $0
+            </text>
+          </g>
         )}
         <line className="today" x1={x(-1)} x2={x(-1)} y1={PAD.top} y2={H - PAD.bottom} />
 

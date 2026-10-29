@@ -9,6 +9,7 @@ import { AffordQuery } from "./components/AffordQuery";
 import { ConeChart } from "./components/ConeChart";
 import type { ConeView } from "./components/ConeChart";
 import { Header } from "./components/Header";
+import { OVERDRAWN_TARGET, Risk } from "./components/Risk";
 import type { Source, Status } from "./components/Header";
 import { StatePanel } from "./components/StatePanel";
 import { workerEngine } from "./wasm/client";
@@ -48,6 +49,8 @@ export function App({ engine: given }: { engine?: Engine }) {
       horizon_days: h,
       paths: PATHS,
       seed: FORECAST_SEED,
+      // Gives the report its P(below $0 on some day) curve for the headline.
+      targets: [OVERDRAWN_TARGET],
     }),
     [],
   );
@@ -177,6 +180,7 @@ export function App({ engine: given }: { engine?: Engine }) {
                 </button>
               </div>
             </div>
+            <Risk report={data.report} />
             <ConeChart report={data.report} view={view} />
             <div className="legend">
               <span>

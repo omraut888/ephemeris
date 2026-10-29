@@ -5,11 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { App, DEFAULT_VIEW } from "../src/App";
 import { AffordQuery } from "../src/components/AffordQuery";
 import { ConeChart, bandIndex } from "../src/components/ConeChart";
+import { Risk } from "../src/components/Risk";
 import { StatePanel } from "../src/components/StatePanel";
 import { money, percent } from "../src/format";
 import { directEngine } from "../src/wasm/client";
 import * as engine from "../src/wasm/engine";
-import { FEED_JSON, REPORT, reportWithoutIncome } from "./fixtures";
+import { FEED_JSON, REPORT, LOW_REPORT, reportWithoutIncome } from "./fixtures";
 
 describe("StatePanel", () => {
   it("shows the estimate, the schedule and the named bills", () => {
@@ -33,7 +34,35 @@ describe("StatePanel", () => {
   });
 });
 
+describe("Risk", () => {
+  it("headlines the engine's P(below $0 on some day) over the horizon", () => {
+    render(<Risk report={LOW_REPORT} />);
+    const p = LOW_REPORT.forecast.targets[0]!.below_by.at(-1)!;
+    expect(p).toBeGreaterThan(0.05);
+    const risk = screen.getByTestId("risk");
+    expect(risk.textContent).toContain(percent(p));
+    expect(risk.textContent).toContain("below $0 at any point through");
+  });
+
+  it("renders nothing for a report without the $0 target", () => {
+    const { container } = render(
+      <Risk report={{ ...REPORT, forecast: { ...REPORT.forecast, targets: [] } }} />,
+    );
+    expect(container.textContent).toBe("");
+  });
+});
+
 describe("ConeChart", () => {
+  it("draws the $0 line in both views when $0 is in range", () => {
+    for (const view of ["raw", "lows"] as const) {
+      const { unmount } = render(<ConeChart report={LOW_REPORT} view={view} />);
+      expect(screen.getByTestId("zero-line")).toBeTruthy();
+      unmount();
+    }
+    render(<ConeChart report={REPORT} view="raw" />);
+    expect(screen.queryByTestId("zero-line")).toBeNull();
+  });
+
   it("picks the bands from the report's levels", () => {
     expect(bandIndex([0.05, 0.25, 0.5, 0.75, 0.95])).toEqual({ lo: 0, qlo: 1, mid: 2, qhi: 3, hi: 4 });
     // 0.9 is nearer 0.75 than 0.5 is.
@@ -118,6 +147,9 @@ describe("App", () => {
     render(<App engine={directEngine} />);
     await screen.findByTestId("cone");
     expect(screen.getByTestId("cone").getAttribute("data-view")).toBe(DEFAULT_VIEW);
+    expect(DEFAULT_VIEW).toBe("raw");
+    // The headline risk is shown above the chart in both views.
+    expect(screen.getByTestId("risk").textContent).toMatch(/below \$0 at any point/);
     await waitFor(() =>
       expect(screen.getByTestId("source").textContent).toContain("demo · realistic · seed 7"),
     );
@@ -125,6 +157,7 @@ describe("App", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Pay-cycle lows" }));
     expect(screen.getByTestId("cone").getAttribute("data-view")).toBe("lows");
+    expect(screen.getByTestId("risk")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Daily" }));
     expect(screen.getByTestId("cone").getAttribute("data-view")).toBe("raw");
 
