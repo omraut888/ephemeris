@@ -31,6 +31,30 @@ function billCadence(b: BillReport): string {
   return b.monthly_on ? `monthly on the ${ordinal(b.monthly_on.day)}` : `every ${b.period_days} days`;
 }
 
+/** Detected streams of one direction; the engine signs amounts (inflow +). */
+function RecurringList({ title, bills }: { title: "In" | "Out"; bills: BillReport[] }) {
+  if (bills.length === 0) return null;
+  const flow = title === "In" ? "inflow" : "outflow";
+  return (
+    <>
+      <div className="sublabel">{title}</div>
+      <ul className="list" aria-label={`Recurring ${flow}s`}>
+        {bills.map((b) => (
+          <li key={b.stream} className={flow}>
+            <span>
+              {b.name ?? `Stream ${b.stream}`}
+              <span className="sub">
+                {billCadence(b)} · next {shortDate(b.next_due)}
+              </span>
+            </span>
+            <span className="num amount">{signedMoney(b.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export function StatePanel({ report }: { report: ForecastReport }) {
   const inc = report.income;
   return (
@@ -65,23 +89,14 @@ export function StatePanel({ report }: { report: ForecastReport }) {
       </section>
 
       <section className="section">
-        <div className="label">Bills</div>
+        <div className="label">Recurring</div>
         {report.bills.length === 0 ? (
-          <p className="dim">No recurring bills detected.</p>
+          <p className="dim">No recurring streams detected.</p>
         ) : (
-          <ul className="list">
-            {report.bills.map((b) => (
-              <li key={b.stream}>
-                <span>
-                  {b.name ?? `Stream ${b.stream}`}
-                  <span className="sub">
-                    {billCadence(b)} · next {shortDate(b.next_due)}
-                  </span>
-                </span>
-                <span className="num">{money(b.amount)}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <RecurringList title="In" bills={report.bills.filter((b) => b.amount > 0)} />
+            <RecurringList title="Out" bills={report.bills.filter((b) => b.amount <= 0)} />
+          </>
         )}
       </section>
 

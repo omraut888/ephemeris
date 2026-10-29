@@ -28,6 +28,18 @@ describe("StatePanel", () => {
     }
   });
 
+  it("lists recurring inflows apart from outflows, signed", () => {
+    const interest = { ...REPORT.bills[0]!, stream: 99, name: "Interest payment", amount: 0.12 };
+    render(<StatePanel report={{ ...REPORT, bills: [...REPORT.bills, interest] }} />);
+    expect(screen.getByText("Recurring")).toBeTruthy();
+    const ins = screen.getByRole("list", { name: "Recurring inflows" });
+    expect(within(ins).getByText("Interest payment")).toBeTruthy();
+    expect(within(ins).getByText("+$0.12")).toBeTruthy();
+    const outs = screen.getByRole("list", { name: "Recurring outflows" });
+    expect(within(outs).queryByText("Interest payment")).toBeNull();
+    expect(within(outs).getByText("-$1,500.00")).toBeTruthy();
+  });
+
   it("says so when there is no income", () => {
     render(<StatePanel report={reportWithoutIncome()} />);
     expect(screen.getByText(/No regular income detected/)).toBeTruthy();
