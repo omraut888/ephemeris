@@ -167,9 +167,11 @@ cycles are calendar weeks from the forecast start, and the report says so
 (`cycle_lows.basis`: `"paycheck"` or `"week"`). A partial last cycle is
 included and marked `partial`.
 
-The toggle is in the chart header. The default view is left open for the
-product owner. Until then the app opens on the raw cone, because that is
-what the CLI shows and what the calibration tests measure.
+The toggle is in the chart header. The app opens on the raw (Daily) cone,
+what the CLI shows and what the calibration tests measure. *Decided by the
+product owner, 2026-10-29.* Above the chart, in both views, the app
+headlines the chance of dipping below $0 on any day of the horizon
+(`below_by` for target 0, §1).
 
 ### The chart
 
@@ -252,6 +254,6 @@ web/
 ## 6. Out of scope for Phase 2
 
 Persisting feeds in the browser, live Plaid Link, editing data, multiple
-accounts views, mobile layout polish beyond "usable at phone width",
-choosing the default cone view (product decision), a Web Worker unless
-measured necessary.
+accounts views, mobile layout polish beyond "usable at phone width"
+(checked at 390 px, dark and light, with headless Chrome), a Web Worker
+unless measured necessary.

@@ -16,8 +16,8 @@ import { workerEngine } from "./wasm/client";
 import type { Engine } from "./wasm/client";
 import type { ForecastOptions, ForecastReport, SimMode } from "./schema.gen";
 
-/** The cone view the app opens on. The default is a product decision still
- * to be made (docs/phase2-design.md §4); raw matches the CLI. */
+/** The cone view the app opens on: Daily, decided by the product owner
+ * (docs/phase2-design.md §4). It matches the CLI. */
 export const DEFAULT_VIEW: ConeView = "raw";
 
 const HORIZONS = [30, 90, 180] as const;
