@@ -12,12 +12,13 @@ progress. Full spec: docs/spec.html
 Phase 1 is done, with these gaps stated plainly. Details and measurements
 are in docs/phase1-design.md and docs/sandbox-comparison.md.
 
-- **The spend-rate band can go negative.** The state is Gaussian, so a wide
-  `c` gives a ±2σ band such as −$5 to $139/day (the Plaid sandbox after its
-  regime changes). Net discretionary flow can be an inflow, so this is not
-  impossible, but for most people it means "very unsure", not "earning".
-  The cone itself is fine: it samples the same Gaussian. A truncated or
-  log-scale model for `c` is not planned yet.
+- **The spend rate is floored at $0/day in the forecast.** The filter's `c`
+  is Gaussian, so a wide estimate reaches below zero (the Plaid sandbox
+  after its regime changes: ±2σ −$5 to $139/day). The forecast samples `c`
+  truncated at $0 and reports that range instead ($8.94 to $139.59). A
+  user whose discretionary flow really is a net inflow is mis-forecast;
+  `ForecastConfig::spend_floor = None` restores the plain Gaussian.
+  Measurements: docs/phase1-design.md §7.
 - **Irregular income is not income.** Income is the largest *regular*
   inflow, found by fitting a pay schedule. Gig income, commissions, or a
   one-off wages deposit are treated as unexplained inflows (lumps), so the

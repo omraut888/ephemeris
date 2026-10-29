@@ -797,6 +797,8 @@ mod tests {
             }],
         };
         let mut cfg = ForecastConfig::new(10, 4);
+        // Unfloored first; the floored report is checked below.
+        cfg.spend_floor = None;
         cfg.n_paths = 50;
         cfg.targets = vec![900.0];
         let model = ForecastModel { q_c: 0.0, q_m: 0.0 };

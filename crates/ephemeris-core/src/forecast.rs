@@ -122,12 +122,12 @@ pub struct ForecastConfig {
     pub targets: Vec<f64>,
     pub lumps: LumpPrior,
     /// Lower bound on the spend rate `c` in the simulation ($/day), or `None`
-    /// for the untruncated Gaussian (design §7).
+    /// for the untruncated Gaussian (design §7). Default `Some(0.0)`.
     pub spend_floor: Option<f64>,
 }
 
 impl ForecastConfig {
-    /// 2000 paths, 5/25/50/75/95% bands, no targets.
+    /// 2000 paths, 5/25/50/75/95% bands, no targets, spend floored at $0.
     pub fn new(horizon_days: u32, seed: u64) -> Self {
         Self {
             horizon_days,
@@ -136,7 +136,7 @@ impl ForecastConfig {
             levels: vec![0.05, 0.25, 0.5, 0.75, 0.95],
             targets: Vec::new(),
             lumps: LumpPrior::default(),
-            spend_floor: None,
+            spend_floor: Some(0.0),
         }
     }
 

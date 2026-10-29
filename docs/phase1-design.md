@@ -829,10 +829,11 @@ separately within ±8 points.
 
 ## 7. The negative spend-rate band: a spend floor
 
-Status: built 2026-10-29 behind `ForecastConfig::spend_floor`, **off by
-default** until the measurements below are reviewed. Turning it on changes
-every path, so the golden files are regenerated in the same change.
-The proposal is kept as written; see "Measured" for what held up.
+Status: built 2026-10-29 as `ForecastConfig::spend_floor`, **on by default
+at $0** since the measurements below were reviewed and approved
+(2026-10-29). Turning it on changed every path, so the golden files were
+regenerated. The proposal is kept as written; see "Measured" for what held
+up.
 
 ### The problem
 
