@@ -6,7 +6,7 @@
 // Everything plotted is a number from the report; this file only maps
 // values and day indices to pixels.
 
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 
 import { longDate, money, moneyAxis, shortDate } from "../format";
@@ -70,6 +70,7 @@ export function ConeChart({ report, view }: Props) {
   const n = days.length;
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const hatchId = `hatch-${useId().replace(/:/g, "")}`;
 
   // Day index of each date, so a cycle can be placed on the day axis.
   const dayIndex = useMemo(() => new Map(days.map((d, i) => [d.date, i])), [days]);
@@ -156,6 +157,11 @@ export function ConeChart({ report, view }: Props) {
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
+        <defs>
+          <pattern id={hatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line className="hatch" x1="0" y1="0" x2="0" y2="6" />
+          </pattern>
+        </defs>
         <g className="grid axis">
           {yTicks.map((t) => (
             <g key={t}>
@@ -212,6 +218,19 @@ export function ConeChart({ report, view }: Props) {
                   y1={y(c.quantiles[idx.mid] ?? 0)}
                   y2={y(c.quantiles[idx.mid] ?? 0)}
                 />
+                {/* Cut by today or the horizon end: its low covers only the
+                    days shown, not a whole pay cycle. */}
+                {c.partial && (
+                  <rect
+                    className="partial-mark"
+                    data-testid="partial-mark"
+                    fill={`url(#${hatchId})`}
+                    x={x0}
+                    width={x1 - x0}
+                    y={y(c.quantiles[idx.hi] ?? 0)}
+                    height={y(c.quantiles[idx.lo] ?? 0) - y(c.quantiles[idx.hi] ?? 0)}
+                  />
+                )}
               </g>
             ))}
           </g>
@@ -247,7 +266,7 @@ export function ConeChart({ report, view }: Props) {
             <>
               <div className="label">
                 Lowest, {shortDate(hoverCycle.start)} – {shortDate(hoverCycle.end)}
-                {hoverCycle.partial ? " (partial)" : ""}
+                {hoverCycle.partial ? " (partial cycle)" : ""}
               </div>
               {levels.map((l, k) => (
                 <div className="row" key={l}>

@@ -98,7 +98,10 @@ describe("ConeChart", () => {
     expect(drawn).toHaveLength(cycles.length);
     cycles.forEach((c, i) => {
       expect(drawn[i]!.classList.contains("partial")).toBe(c.partial);
+      // Partial cycles carry a visible hatched, dashed mark; whole ones don't.
+      expect(drawn[i]!.querySelector("[data-testid=partial-mark]") !== null).toBe(c.partial);
     });
+    expect(cycles.some((c) => c.partial)).toBe(true);
     expect(screen.queryByTestId("raw-bands")).toBeNull();
   });
 

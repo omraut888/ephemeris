@@ -195,6 +195,12 @@ export function App({ engine: given }: { engine?: Engine }) {
                 <i style={{ background: "var(--median)", height: 2 }} />
                 median
               </span>
+              {view === "lows" && data.report.forecast.cycle_lows?.cycles.some((c) => c.partial) && (
+                <span>
+                  <i className="hatched" />
+                  partial cycle: cut by today or the horizon end
+                </span>
+              )}
               <span>
                 {view === "raw"
                   ? "End-of-day balance, each day."

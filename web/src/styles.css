@@ -378,7 +378,24 @@ button.primary {
 }
 
 .partial {
-  opacity: 0.55;
+  opacity: 0.75;
+}
+
+.partial-mark {
+  stroke: var(--text-dim);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.hatch {
+  stroke: var(--text-dim);
+  stroke-width: 1.2;
+  opacity: 0.6;
+}
+
+.legend i.hatched {
+  background: repeating-linear-gradient(45deg, var(--text-dim) 0 1px, transparent 1px 4px);
+  outline: 1px dashed var(--text-dim);
 }
 
 .now-marker {
