@@ -171,7 +171,12 @@ at_least_on_day: Array<number>,
 /**
  * Probability that it is at least `amount` on some day so far.
  */
-reached_by: Array<number>, };
+reached_by: Array<number>, 
+/**
+ * Probability that it is below `amount` on some day so far (with
+ * `amount` 0: the chance of going overdrawn). Empty in older reports.
+ */
+below_by: Array<number>, };
 
 export type CycleLowsReport = { basis: CycleBasisReport, 
 /**

@@ -493,8 +493,8 @@ panics on bad input.
   component and its weight soften this. A smoothed bootstrap (jittered
   resamples) is the next step if calibration shows it.
 - **Outputs:** per-day quantiles at configurable levels (default
-  5/25/50/75/95%), `P(b_D ≥ X)` and `P(b ≥ X on some day ≤ D)` for each
-  configured target X.
+  5/25/50/75/95%), `P(b_D ≥ X)`, `P(b ≥ X on some day ≤ D)` and
+  `P(b < X on some day ≤ D)` for each configured target X.
 
 ### Recurrence detection (`schedule.rs`)
 

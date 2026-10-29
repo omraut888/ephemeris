@@ -364,6 +364,10 @@ pub struct TargetReport {
     pub at_least_on_day: Vec<f64>,
     /// Probability that it is at least `amount` on some day so far.
     pub reached_by: Vec<f64>,
+    /// Probability that it is below `amount` on some day so far (with
+    /// `amount` 0: the chance of going overdrawn). Empty in older reports.
+    #[serde(default)]
+    pub below_by: Vec<f64>,
 }
 
 /// How [`CycleLowsReport::cycles`] were cut.
@@ -561,6 +565,7 @@ impl ForecastReport {
                         amount: t.amount,
                         at_least_on_day: t.on_day().to_vec(),
                         reached_by: t.reached_by().to_vec(),
+                        below_by: t.below_by().to_vec(),
                     })
                     .collect(),
                 cycle_lows: Some(CycleLowsReport {
@@ -820,6 +825,7 @@ mod tests {
             target.reached_by[9],
             cone.prob_reached_by(0, t0 + 10).unwrap()
         );
+        assert_eq!(target.below_by[9], cone.prob_below_by(0, t0 + 10).unwrap());
         let lows = r.forecast.cycle_lows.as_ref().unwrap();
         assert_eq!(lows.basis, CycleBasisReport::Paycheck);
         assert_eq!(lows.cycles.len(), cone.cycle_lows().len());

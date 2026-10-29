@@ -113,7 +113,7 @@ Each transaction:
       { "date": "2024-12-31", "quantiles": [4012.5, 4081.9, 4118.0, 4155.3, 4220.8] }
     ],
     "targets": [
-      { "amount": 5000.0, "at_least_on_day": [0.0], "reached_by": [0.0] }
+      { "amount": 5000.0, "at_least_on_day": [0.0], "reached_by": [0.0], "below_by": [1.0] }
     ],
     "cycle_lows": {
       "basis": "paycheck",
@@ -177,7 +177,7 @@ a forecast.
 | `levels` | numbers | Quantile levels in (0, 1), ascending. |
 | `days[]` | array | One entry per day from `as_of + 1` through `as_of + horizon_days`, in order. `quantiles[i]` is the end-of-day balance at `levels[i]`, non-decreasing in `i`. |
 
-| `targets[]` | array | One entry per requested target balance (the `targets` forecast option), else empty. `at_least_on_day[i]` = P(balance ≥ `amount` at the end of `days[i]`); `reached_by[i]` = P(balance ≥ `amount` at the end of some day up to `days[i]`). Missing in older reports; read as empty. |
+| `targets[]` | array | One entry per requested target balance (the `targets` forecast option), else empty. `at_least_on_day[i]` = P(balance ≥ `amount` at the end of `days[i]`); `reached_by[i]` = P(balance ≥ `amount` at the end of some day up to `days[i]`); `below_by[i]` = P(balance < `amount` at the end of some day up to `days[i]`), so with `amount` 0 the chance of going overdrawn. "Some day" counts from the estimate's day (`as_of`), as for `reached_by`. Missing in older reports (and `below_by` in reports from before it existed); read as empty. |
 | `cycle_lows` | object or null | Pay-cycle lows; always written, null only in older reports. `basis` is `"paycheck"` (cycles start on each detected payday, nominal date moved to the previous business day) or `"week"` (no income detected: 7-day cycles from the first forecast day). `cycles[]` tile the horizon in order. Each has `start`, `end` (inclusive), `partial` (cut short by the forecast's start or end), and `quantiles[i]`: the `levels[i]` quantile, across paths, of **each path's lowest end-of-day balance in the cycle**. |
 
 #### `regime_changes[]` entry

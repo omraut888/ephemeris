@@ -155,12 +155,13 @@ impl ForecastConfig {
     }
 }
 
-/// `P(b ≥ amount)` per forecast day.
+/// `P(b ≥ amount)` per forecast day, and the two first-passage curves.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCurve {
     pub amount: f64,
     on_day: Vec<f64>,
     reached_by: Vec<f64>,
+    below_by: Vec<f64>,
 }
 
 /// How the pay cycles of [`Cone::cycle_lows`] were cut.
@@ -240,6 +241,13 @@ impl Cone {
         Some(self.targets.get(t)?.reached_by[self.index(day)?])
     }
 
+    /// `P(b < X on some day from now through `day`)` for target `t`: with
+    /// X = 0, the chance of going overdrawn. Not `1 − prob_reached_by`: a
+    /// path can be on both sides of X on different days.
+    pub fn prob_below_by(&self, t: usize, day: Day) -> Option<f64> {
+        Some(self.targets.get(t)?.below_by[self.index(day)?])
+    }
+
     pub fn cycle_basis(&self) -> CycleBasis {
         self.cycle_basis
     }
@@ -259,6 +267,11 @@ impl TargetCurve {
     /// `P(b ≥ amount on some day so far)`, in day order.
     pub fn reached_by(&self) -> &[f64] {
         &self.reached_by
+    }
+
+    /// `P(b < amount on some day so far)`, in day order.
+    pub fn below_by(&self) -> &[f64] {
+        &self.below_by
     }
 }
 
@@ -326,6 +339,9 @@ pub fn forecast(
     let mut reached_by = vec![Vec::with_capacity(h_max); t];
     let mut reached = vec![false; n * t];
     let mut reached_count = vec![0u32; t];
+    let mut below_by = vec![Vec::with_capacity(h_max); t];
+    let mut below = vec![false; n * t];
+    let mut below_count = vec![0u32; t];
     let mut sorted = vec![0.0; n];
     let (cycle_basis, cycles) = pay_cycles(schedule, est.day, cfg.horizon_days);
     let mut cycle = 0;
@@ -342,11 +358,15 @@ pub fn forecast(
                         reached[i * t + k] = true;
                         reached_count[k] += 1;
                     }
+                } else if !below[i * t + k] {
+                    below[i * t + k] = true;
+                    below_count[k] += 1;
                 }
             }
             if h > 0 {
                 on_day[k].push(f64::from(at_least) / n as f64);
                 reached_by[k].push(f64::from(reached_count[k]) / n as f64);
+                below_by[k].push(f64::from(below_count[k]) / n as f64);
             }
         }
         if h > 0 {
@@ -385,11 +405,12 @@ pub fn forecast(
         targets: cfg
             .targets
             .iter()
-            .zip(on_day.into_iter().zip(reached_by))
-            .map(|(&amount, (on_day, reached_by))| TargetCurve {
+            .zip(on_day.into_iter().zip(reached_by).zip(below_by))
+            .map(|(&amount, ((on_day, reached_by), below_by))| TargetCurve {
                 amount,
                 on_day,
                 reached_by,
+                below_by,
             })
             .collect(),
         cycle_basis,
@@ -713,7 +734,7 @@ mod tests {
     fn zero_noise_path_by_hand() {
         let cfg = no_lumps(ForecastConfig {
             n_paths: 3,
-            targets: vec![1500.0],
+            targets: vec![1500.0, 0.0],
             ..ForecastConfig::new(30, 1)
         });
         let cone = forecast(&quiet_estimate(), &exact_schedule(), &STILL, &cfg).unwrap();
@@ -735,6 +756,14 @@ mod tests {
         assert_eq!(cone.prob_reached_by(0, ymd(2024, 6, 28)), Some(1.0));
         assert_eq!(cone.prob_at_least_on(0, ymd(2024, 6, 28)), Some(1.0));
         assert_eq!(cone.prob_at_least_on(0, ymd(2024, 6, 30)), Some(1.0));
+        // It starts at 1000, so it is below 1500 from the first day.
+        assert_eq!(cone.prob_below_by(0, ymd(2024, 6, 1)), Some(1.0));
+        // Target 0: first below it June 5 (750 − 900 = −150), and it stays
+        // "has been below" after the paycheck lifts it back up on June 14.
+        assert_eq!(cone.prob_below_by(1, ymd(2024, 6, 4)), Some(0.0));
+        assert_eq!(cone.prob_below_by(1, ymd(2024, 6, 5)), Some(1.0));
+        assert_eq!(cone.prob_at_least_on(1, ymd(2024, 6, 14)), Some(1.0));
+        assert_eq!(cone.prob_below_by(1, ymd(2024, 6, 30)), Some(1.0));
         assert_eq!(cone.band(t0()), None);
         assert_eq!(cone.band(t0() + 31), None);
     }
@@ -972,16 +1001,21 @@ mod tests {
             ..ForecastConfig::new(90, 6)
         };
         let cone = forecast(&noisy_estimate(30.0), &exact_schedule(), &model, &cfg).unwrap();
-        let mut prev = [0.0; 2];
+        let mut prev = [(0.0, 0.0); 2];
         for h in 1..=90 {
             let day = t0() + h;
             let band = cone.band(day).unwrap();
             assert!(band.windows(2).all(|w| w[0] <= w[1]));
-            for (t, p) in prev.iter_mut().enumerate() {
+            for (t, (p_reached, p_below)) in prev.iter_mut().enumerate() {
                 let r = cone.prob_reached_by(t, day).unwrap();
-                assert!(r >= *p && (0.0..=1.0).contains(&r));
-                assert!(cone.prob_at_least_on(t, day).unwrap() <= r);
-                *p = r;
+                assert!(r >= *p_reached && (0.0..=1.0).contains(&r));
+                let on = cone.prob_at_least_on(t, day).unwrap();
+                assert!(on <= r);
+                let d = cone.prob_below_by(t, day).unwrap();
+                assert!(d >= *p_below && (0.0..=1.0).contains(&d));
+                // Below X today means it has been below X by today.
+                assert!(1.0 - on <= d + 1e-12);
+                (*p_reached, *p_below) = (r, d);
             }
         }
     }

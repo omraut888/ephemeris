@@ -55,6 +55,10 @@ from the additions below.
    `at_least_on_day[i]` = P(b ≥ X on day i), and `reached_by[i]` = P(b ≥ X
    on some day ≤ i). These are the existing `Cone::prob_at_least_on` and
    `Cone::prob_reached_by`, serialized parallel to `forecast.days`.
+   *Added later:* `below_by[i]` = P(b < X on some day ≤ i)
+   (`Cone::prob_below_by`), counted in the same pass. The app's headline
+   risk is `below_by` for X = 0 on the last day. It cannot be derived from
+   the other two curves, because a path can be on both sides of X.
 3. **Pay-cycle lows** (`forecast.cycle_lows`): see §4. Always present.
 
 `docs/forecast-schema.md` documents all three.
