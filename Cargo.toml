@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-# The desktop crate compiles Tauri (hundreds of crates); keep it out of a
-# plain `cargo build`/`test`/`clippy`. Build it with `-p ephemeris-desktop`
-# (docs/phase4-design.md §4).
+# The desktop crate compiles Tauri (hundreds of crates), and the FFI crate
+# UniFFI; keep both out of a plain `cargo build`/`test`/`clippy`. Build them
+# with `-p` (docs/phase4-design.md §4, docs/phase3-design.md §1).
 default-members = [
     "crates/ephemeris-core",
     "crates/ephemeris-cli",

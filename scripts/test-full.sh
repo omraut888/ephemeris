@@ -13,6 +13,10 @@ wasm-pack test --node --release crates/ephemeris-wasm
 # lints (docs/phase4-design.md §4).
 cargo test -p ephemeris-desktop --lib
 cargo clippy -p ephemeris-desktop --all-targets -- -D warnings
+# The iOS FFI crate, also not a default member: the golden files through its
+# exported functions, and its lints (docs/phase3-design.md §1).
+cargo test -p ephemeris-ffi
+cargo clippy -p ephemeris-ffi --all-targets -- -D warnings
 # The web app: builds the WASM package, then runs Vitest. Needs its npm
 # dependencies installed once (cd web && npm ci).
 if [ -d web/node_modules ]; then

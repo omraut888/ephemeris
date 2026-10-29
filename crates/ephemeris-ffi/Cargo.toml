@@ -1,0 +1,28 @@
+[package]
+name = "ephemeris-ffi"
+version = "0.1.0"
+edition = "2024"
+description = "UniFFI bindings for ephemeris-core: JSON in, JSON out, for the iOS app"
+publish = false
+
+[lib]
+name = "ephemeris_ffi"
+# staticlib: linked into the iOS app (docs/phase3-design.md §2). cdylib: what
+# uniffi-bindgen reads the interface from. lib: the Rust tests.
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+# The bindings generator's CLI (clap and friends), only for
+# scripts/build-ios.sh; never compiled into the libraries.
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+# `json`: the same entry points as the WASM and desktop builds.
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
+# Generates the C ABI and the Swift bindings (docs/phase3-design.md §1).
+uniffi = "0.32"
