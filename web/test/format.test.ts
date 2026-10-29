@@ -1,17 +1,21 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { cadence, longDate, money, moneyCompact, ordinal, percent, shortDate, signedMoney } from "../src/format";
+import { cadence, longDate, money, moneyAxis, ordinal, percent, shortDate, signedMoney } from "../src/format";
 
 describe("format", () => {
   it("formats money", () => {
-    expect(money(1234.56)).toBe("$1,235");
-    expect(money(1234.56, true)).toBe("$1,234.56");
-    expect(money(-48.2)).toBe("-$48");
-    expect(money(-0.001, true)).toBe("$0.00");
-    expect(signedMoney(31.2)).toBe("+$31");
-    expect(signedMoney(-97.6)).toBe("-$98");
-    expect(moneyCompact(4600)).toBe("$4.6K");
+    expect(money(1234.56)).toBe("$1,234.56");
+    expect(money(-48.2)).toBe("-$48.20");
+    expect(money(-0.001)).toBe("$0.00");
+    // The demo balance: really $21,966.9998, so ".00" is not a rounding artifact.
+    expect(money(21966.99978818912)).toBe("$21,967.00");
+    expect(money(21966.99)).toBe("$21,966.99");
+    expect(signedMoney(31.2)).toBe("+$31.20");
+    expect(signedMoney(-97.6)).toBe("-$97.60");
+    expect(moneyAxis(28000)).toBe("$28,000");
+    expect(moneyAxis(-500)).toBe("-$500");
+    expect(moneyAxis(-0)).toBe("$0");
   });
 
   it("never prints a probability as certain", () => {

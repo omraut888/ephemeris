@@ -15,10 +15,10 @@ describe("StatePanel", () => {
   it("shows the estimate, the schedule and the named bills", () => {
     render(<StatePanel report={REPORT} />);
     const panel = screen.getByRole("complementary", { name: "Current state" });
-    expect(within(panel).getByText(money(REPORT.balance.mean, true))).toBeTruthy();
+    expect(within(panel).getByText(money(REPORT.balance.mean))).toBeTruthy();
     expect(
       within(panel).getByText(
-        `±2σ ${money(REPORT.balance.low_2sd, true)} to ${money(REPORT.balance.high_2sd, true)}`,
+        `±2σ ${money(REPORT.balance.low_2sd)} to ${money(REPORT.balance.high_2sd)}`,
       ),
     ).toBeTruthy();
     expect(within(panel).getByText("Payroll")).toBeTruthy();

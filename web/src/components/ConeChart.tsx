@@ -9,14 +9,14 @@
 import { useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 
-import { longDate, money, moneyCompact, shortDate } from "../format";
+import { longDate, money, moneyAxis, shortDate } from "../format";
 import type { ForecastReport } from "../schema.gen";
 
 export type ConeView = "raw" | "lows";
 
 const W = 960;
 const H = 340;
-const PAD = { left: 64, right: 16, top: 14, bottom: 28 };
+const PAD = { left: 76, right: 16, top: 14, bottom: 28 };
 const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
 
@@ -161,7 +161,7 @@ export function ConeChart({ report, view }: Props) {
             <g key={t}>
               <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} />
               <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end">
-                {moneyCompact(t)}
+                {moneyAxis(t)}
               </text>
             </g>
           ))}

@@ -3,40 +3,39 @@
 
 import type { IsoDate, PayCadence } from "./schema.gen";
 
-const wholeDollars = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
+// One rule for money. Every amount in text (balances, ±2σ, paychecks,
+// bills, tooltips, the afford query) shows cents: `$21,967.00` is printed
+// only when the value really is within half a cent of it. Chart axes show
+// whole dollars, since their ticks are round numbers chosen for the scale.
 const cents = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-const compact = new Intl.NumberFormat("en-US", {
+const wholeDollars = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
+  maximumFractionDigits: 0,
 });
 
-/** `$1,234` (or `$1,234.56` with `withCents`); `-$48` for negatives. */
-export function money(x: number, withCents = false): string {
-  const s = (withCents ? cents : wholeDollars).format(x);
-  // Intl renders −0 as "-$0"; a balance of zero has no sign.
-  return s === "-$0" || s === "-$0.00" ? s.slice(1) : s;
+// Intl renders −0 as "-$0"; a zero amount has no sign.
+const unsignedZero = (s: string) => (s === "-$0" || s === "-$0.00" ? s.slice(1) : s);
+
+/** `$1,234.56`; `-$48.20` for negatives. */
+export function money(x: number): string {
+  return unsignedZero(cents.format(x));
 }
 
-/** `+$31` or `-$97`: a change, always signed. */
+/** `+$31.20` or `-$97.60`: a change, always signed. */
 export function signedMoney(x: number): string {
   const s = money(Math.abs(x));
   return x < 0 ? `-${s}` : `+${s}`;
 }
 
-/** `$4.6K`, for axis labels. */
-export function moneyCompact(x: number): string {
-  return compact.format(x);
+/** `$28,000`: whole dollars, for chart axis ticks only. */
+export function moneyAxis(x: number): string {
+  return unsignedZero(wholeDollars.format(x));
 }
 
 /** `61%`; extremes as `<1%` and `>99%` so 0 and 1 never look certain. */
