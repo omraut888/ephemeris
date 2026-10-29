@@ -64,7 +64,8 @@ export function App({ engine: given }: { engine?: Engine }) {
       setStatus("loading");
       try {
         const json = await feedJson;
-        const report = await engine.forecast(json, options(h));
+        // One lane: a burst of changes computes only the newest.
+        const report = await engine.forecast(json, options(h), "cone");
         if (ticket !== latest.current) return;
         setData({ source, feedJson: json, report });
         setError(null);
