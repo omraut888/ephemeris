@@ -27,6 +27,15 @@
 //! above its balance on any day, so every quantile of the minima is at or
 //! below the lowest daily quantile in the cycle (a test checks this).
 //!
+//! **Spend floor** ([`ForecastConfig::spend_floor`], design §7). The filter's
+//! `c` is Gaussian and can sit below zero, which would have a path earn money
+//! every day. With a floor, `c₀` is drawn from its Gaussian conditioned on
+//! `c₀ ≥ floor` (inverse CDF, [`TruncatedNormal`]) and the random walk
+//! reflects at the floor. The draw is done with `P` factored in the order
+//! `(c, b, m)`, so truncating `c`'s normal draw leaves `(b, m)` exactly
+//! Gaussian given `c₀`: the b–c correlation is kept. Without a floor the
+//! draw is the plain `x̂ + L·z`.
+//!
 //! **Memory and determinism.** The simulation runs day-major over `N` small
 //! path states (O(N) memory, no per-day allocation). Randomness is
 //! counter-based: path `i` on step `h` uses its own ChaCha8 segment
@@ -34,7 +43,7 @@
 //! on `N`, on loop order, or on how many draws other steps consumed.
 
 use nalgebra::{Cholesky, Matrix3, Vector3};
-use rand::{RngExt, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rand_distr::{ChiSquared, Distribution, Exp, StandardNormal};
 
@@ -45,6 +54,7 @@ use crate::linalg::is_psd;
 use crate::model::{IDX_B, IDX_C, IDX_M};
 use crate::schedule::{BillStream, OffsetDist, Schedule};
 use crate::tracker::{StateEstimate, TrackerConfig};
+use crate::truncated::{TruncatedNormal, open01};
 use crate::types::Day;
 
 /// Words reserved per (path, step) segment of the ChaCha stream.
@@ -111,6 +121,9 @@ pub struct ForecastConfig {
     /// Balance thresholds X for `P(b ≥ X)` queries.
     pub targets: Vec<f64>,
     pub lumps: LumpPrior,
+    /// Lower bound on the spend rate `c` in the simulation ($/day), or `None`
+    /// for the untruncated Gaussian (design §7).
+    pub spend_floor: Option<f64>,
 }
 
 impl ForecastConfig {
@@ -123,6 +136,7 @@ impl ForecastConfig {
             levels: vec![0.05, 0.25, 0.5, 0.75, 0.95],
             targets: Vec::new(),
             lumps: LumpPrior::default(),
+            spend_floor: None,
         }
     }
 
@@ -139,6 +153,9 @@ impl ForecastConfig {
         }
         if !self.targets.iter().all(|t| t.is_finite()) {
             return Err(E("targets must be finite"));
+        }
+        if self.spend_floor.is_some_and(|f| !f.is_finite()) {
+            return Err(E("spend_floor must be finite"));
         }
         let l = self.lumps;
         if !((0.0..=1.0).contains(&l.rate)
@@ -443,6 +460,9 @@ struct Simulator<'a> {
     horizon: u32,
     x: Vector3<f64>,
     chol: Matrix3<f64>,
+    /// With a spend floor: the floor, and the Cholesky factor of `P` in the
+    /// order `(c, b, m)`.
+    floor: Option<(f64, Matrix3<f64>)>,
     spend: VarianceEstimate,
     income: VarianceEstimate,
     q_c_sd: f64,
@@ -505,6 +525,10 @@ impl<'a> Simulator<'a> {
             horizon: cfg.horizon_days,
             x: est.x,
             chol: chol_with_jitter(&est.p)?,
+            floor: match cfg.spend_floor {
+                Some(f) => Some((f, chol_with_jitter(&permute(&est.p, C_FIRST))?)),
+                None => None,
+            },
             spend: est.spend_var,
             income: est.income_var,
             q_c_sd: model.q_c.sqrt(),
@@ -557,8 +581,32 @@ impl<'a> Simulator<'a> {
 
     fn init_path(&self, i: usize, bill_next: &mut [Day]) -> PathState {
         let mut rng = self.rng(i, 0);
-        let z = Vector3::new(normal(&mut rng), normal(&mut rng), normal(&mut rng));
-        let x0 = self.x + self.chol * z;
+        let x0 = match self.floor {
+            None => {
+                let z = Vector3::new(normal(&mut rng), normal(&mut rng), normal(&mut rng));
+                self.x + self.chol * z
+            }
+            Some((floor, l)) => {
+                // In (c, b, m) order, c' = ĉ + L₀₀·z₀ depends on z₀ alone, so
+                // c' ≥ floor ⇔ z₀ ≥ (floor − ĉ)/L₀₀; z₁, z₂ stay standard.
+                let c_hat = self.x[IDX_C];
+                let z0 = if l[(0, 0)] > 0.0 {
+                    TruncatedNormal {
+                        mean: 0.0,
+                        sd: 1.0,
+                        floor: (floor - c_hat) / l[(0, 0)],
+                    }
+                    .quantile(open01(rng.next_u64()))
+                } else {
+                    0.0
+                };
+                let z = Vector3::new(z0, normal(&mut rng), normal(&mut rng));
+                let mut x0 = permute_back(&(permute_vec(&self.x, C_FIRST) + l * z), C_FIRST);
+                // Only binds when c has no variance and ĉ is below the floor.
+                x0[IDX_C] = x0[IDX_C].max(floor);
+                x0
+            }
+        };
         let spend_sd = draw_variance(self.spend, &mut rng).sqrt();
         let income_sd = draw_variance(self.income, &mut rng).sqrt();
         for (next, bill) in bill_next.iter_mut().zip(self.bills) {
@@ -601,6 +649,11 @@ impl<'a> Simulator<'a> {
         let mut rng = self.rng(i, h);
         let mut flow = -p.c + p.spend_sd * normal(&mut rng);
         p.c += self.q_c_sd * normal(&mut rng);
+        if let Some((floor, _)) = self.floor
+            && p.c < floor
+        {
+            p.c = 2.0 * floor - p.c;
+        }
         p.m += self.q_m_sd * normal(&mut rng);
 
         if rng.random_bool(self.lump_rate) {
@@ -662,6 +715,27 @@ fn validate_estimate(est: &StateEstimate) -> Result<(), EngineError> {
 
 /// Lower Cholesky factor of a PSD matrix, adding a small diagonal jitter if
 /// it is only semidefinite.
+/// State indices in the order `(c, b, m)`: `c` first, for the spend floor.
+const C_FIRST: [usize; 3] = [IDX_C, IDX_B, IDX_M];
+
+/// `P` reordered so that entry `(i, j)` is `p[(order[i], order[j])]`.
+fn permute(p: &Matrix3<f64>, order: [usize; 3]) -> Matrix3<f64> {
+    Matrix3::from_fn(|i, j| p[(order[i], order[j])])
+}
+
+fn permute_vec(x: &Vector3<f64>, order: [usize; 3]) -> Vector3<f64> {
+    Vector3::from_fn(|i, _| x[order[i]])
+}
+
+/// The inverse of [`permute_vec`].
+fn permute_back(y: &Vector3<f64>, order: [usize; 3]) -> Vector3<f64> {
+    let mut x = Vector3::zeros();
+    for (i, &k) in order.iter().enumerate() {
+        x[k] = y[i];
+    }
+    x
+}
+
 fn chol_with_jitter(p: &Matrix3<f64>) -> Result<Matrix3<f64>, EngineError> {
     let scale = p.iter().fold(1.0_f64, |m, v| m.max(v.abs()));
     for eps in [0.0, 1e-12, 1e-9, 1e-6] {
@@ -1018,6 +1092,125 @@ mod tests {
                 (*p_reached, *p_below) = (r, d);
             }
         }
+    }
+
+    fn no_schedule() -> Schedule {
+        Schedule {
+            income: None,
+            bills: Vec::new(),
+        }
+    }
+
+    /// `c ~ N(10, 20²)`, nothing else random, one day: `b₁ = 1000 − c₀`.
+    fn spend_only_estimate() -> StateEstimate {
+        StateEstimate {
+            p: Matrix3::from_diagonal(&Vector3::new(0.0, 400.0, 0.0)),
+            x: Vector3::new(1000.0, 10.0, 2000.0),
+            ..quiet_estimate()
+        }
+    }
+
+    fn day_one_band(floor: Option<f64>, levels: Vec<f64>) -> Vec<f64> {
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 20_000,
+            levels,
+            spend_floor: floor,
+            ..ForecastConfig::new(1, 3)
+        });
+        let cone = forecast(&spend_only_estimate(), &no_schedule(), &STILL, &cfg).unwrap();
+        cone.band(t0() + 1).unwrap().to_vec()
+    }
+
+    #[test]
+    fn spend_floor_samples_the_truncated_normal() {
+        // N(10, 20²) truncated at 0 (31% of the mass is below): its 5/50/95%
+        // points are 1.920, 17.937 and 46.349 (computed separately), so
+        // b₁ = 1000 − c₀ has 95/50/5% points 998.080, 982.063, 953.651.
+        let band = day_one_band(Some(0.0), vec![0.05, 0.5, 0.95, 0.999_999]);
+        assert!((band[0] - 953.651).abs() < 1.0, "{band:?}");
+        assert!((band[1] - 982.063).abs() < 0.6, "{band:?}");
+        assert!((band[2] - 998.080).abs() < 0.3, "{band:?}");
+        // No path spends a negative amount, so none ends above 1000.
+        assert!(band[3] <= 1000.0);
+        // Without the floor, the Gaussian's 95% point of b₁ is
+        // 1000 − (10 − 1.645·20) = 1022.9: those paths earn money.
+        let plain = day_one_band(None, vec![0.95]);
+        assert!((plain[0] - 1022.9).abs() < 1.0, "{plain:?}");
+    }
+
+    #[test]
+    fn spend_floor_keeps_the_balance_correlation() {
+        // b and c perfectly correlated (b̂ = 100, ĉ = 0, both variance 1):
+        // b₀ = 100 + (c₀ − 0), so b₁ = b₀ − c₀ = 100 on every path. Half the
+        // c mass is below the floor; drawing c alone, without b given c,
+        // would scatter b₁.
+        let est = StateEstimate {
+            x: Vector3::new(100.0, 0.0, 2000.0),
+            p: Matrix3::new(1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+            ..quiet_estimate()
+        };
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 500,
+            spend_floor: Some(0.0),
+            ..ForecastConfig::new(1, 4)
+        });
+        let cone = forecast(&est, &no_schedule(), &STILL, &cfg).unwrap();
+        let band = cone.band(t0() + 1).unwrap();
+        // Up to the Cholesky jitter (1e-12 relative) on a singular P.
+        assert!(band.iter().all(|&q| (q - 100.0).abs() < 1e-4), "{band:?}");
+    }
+
+    #[test]
+    fn spend_floor_reflects_the_random_walk() {
+        // c starts at exactly 0.5 and walks with step sd 1. With the floor
+        // every path spends ≥ 0 each day, so each path's balance, and hence
+        // every quantile, never rises. Without it, half the walks go
+        // negative and the upper quantiles climb.
+        let est = StateEstimate {
+            x: Vector3::new(1000.0, 0.5, 2000.0),
+            ..quiet_estimate()
+        };
+        let model = ForecastModel { q_c: 1.0, q_m: 0.0 };
+        let run = |floor| {
+            let cfg = no_lumps(ForecastConfig {
+                n_paths: 400,
+                spend_floor: floor,
+                ..ForecastConfig::new(60, 5)
+            });
+            forecast(&est, &no_schedule(), &model, &cfg).unwrap()
+        };
+        let rises = |cone: &Cone| {
+            (1..60).any(|h| {
+                let (a, b) = (
+                    cone.band(t0() + h).unwrap(),
+                    cone.band(t0() + h + 1).unwrap(),
+                );
+                a.iter().zip(b).any(|(x, y)| y > x)
+            })
+        };
+        assert!(!rises(&run(Some(0.0))));
+        assert!(rises(&run(None)));
+    }
+
+    #[test]
+    fn spend_floor_must_be_finite() {
+        let cfg = ForecastConfig {
+            spend_floor: Some(f64::NAN),
+            ..ForecastConfig::new(5, 1)
+        };
+        assert!(forecast(&quiet_estimate(), &no_schedule(), &STILL, &cfg).is_err());
+    }
+
+    #[test]
+    fn permutation_round_trips() {
+        let x = Vector3::new(1.0, 2.0, 3.0);
+        assert_eq!(permute_vec(&x, C_FIRST), Vector3::new(2.0, 1.0, 3.0));
+        assert_eq!(permute_back(&permute_vec(&x, C_FIRST), C_FIRST), x);
+        let p = Matrix3::new(1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 6.0);
+        let q = permute(&p, C_FIRST);
+        assert_eq!(q[(0, 0)], p[(IDX_C, IDX_C)]);
+        assert_eq!(q[(0, 1)], p[(IDX_C, IDX_B)]);
+        assert_eq!(q[(2, 2)], p[(IDX_M, IDX_M)]);
     }
 
     #[test]
