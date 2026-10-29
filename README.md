@@ -4,8 +4,8 @@ A personal financial trajectory engine. It estimates your true financial state
 with a Kalman filter and projects it forward as a Monte Carlo probability cone,
 not a single number. One Rust core, shipped to iOS, Android, Web, and Desktop.
 
-Status: Phase 1 (core engine, CLI) complete; Phase 2 (web, via WASM) in
-progress. Full spec: docs/spec.html
+Status: Phase 1 (core engine, CLI) complete; Phase 2 (web, via WASM) and
+Phase 4a (macOS desktop app, via Tauri) in progress. Full spec: docs/spec.html
 
 ![The web app on the Plaid sandbox feed: the forecast cone, the chance of
 going below $0, the estimated state, and two "can I afford it" answers](docs/img/sandbox-desktop-dark-daily.png)
@@ -13,6 +13,19 @@ going below $0, the estimated state, and two "can I afford it" answers](docs/img
 *The web app on the Plaid sandbox feed. That feed is Plaid's synthetic test
 data with a fake, static balance, so the 47% chance of going below $0 shows
 what the feature looks like, not anything about a real account.*
+
+## Desktop app (macOS)
+
+The web UI in a Tauri window, with the engine running natively instead of
+in WASM (docs/phase4-design.md). Needs Rust, Node, and `wasm-pack` (used
+for type-checking the shared UI).
+
+```sh
+cd web && npm ci
+npm run tauri -- dev                    # dev window, reloads on changes
+npm run tauri -- build --bundles app    # unsigned release .app
+open ../target/release/bundle/macos/EPHEMERIS.app
+```
 
 ## Screenshots
 

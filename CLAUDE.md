@@ -12,7 +12,9 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
 - The core compiles to WASM (crates/ephemeris-wasm) and a Vite + React +
   TypeScript app in web/ draws the cone. Design: docs/phase2-design.md.
 - All math stays in Rust. TypeScript only loads data, calls WASM, and draws.
-- Mobile and desktop are still later phases.
+- Phase 4a, the desktop app, is in progress: crates/ephemeris-desktop
+  (Tauri v2) runs the engine natively behind the same UI. Design:
+  docs/phase4-design.md. Mobile (Phase 3) and sync (Phase 4b) come later.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
@@ -20,7 +22,10 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   It will later compile to WASM and UniFFI bindings, so keep it portable.
 - crates/ephemeris-cli: thin wrapper for loading data, calling core, and printing results.
 - crates/ephemeris-wasm: wasm-bindgen wrapper; JSON in, JSON out, same schema as the CLI.
-- web/: the browser app. Its TypeScript schema types are checked against Rust.
+- crates/ephemeris-desktop: the Tauri app. It is not a default workspace
+  member, so use `-p ephemeris-desktop` (scripts/test-full.sh does this).
+- web/: the browser app, and with `--mode desktop` the desktop app's UI. Its
+  TypeScript schema types are checked against Rust.
 
 ## Rules
 - Use f64 throughout. Treat covariance matrices as symmetric PSD and test for it.
