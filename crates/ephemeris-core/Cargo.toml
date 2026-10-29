@@ -14,6 +14,9 @@ ts = ["serde", "dep:ts-rs"]
 
 [dependencies]
 nalgebra = { version = "0.35", default-features = false, features = ["libm"] }
+# Pure-Rust erfc/log/sqrt for the truncated normal, bit-identical natively and
+# in WASM. Already in the graph through nalgebra and rand_distr.
+libm = "0.2.16"
 rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
 rand_distr = "0.6"
