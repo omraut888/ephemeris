@@ -24,6 +24,7 @@ use crate::forecast::{Cone, CycleBasis, ForecastConfig};
 use crate::model::{IDX_B, IDX_C, IDX_M};
 use crate::schedule::{DayShift, Schedule};
 use crate::tracker::{IngestReport, StateEstimate};
+use crate::truncated::TruncatedNormal;
 use crate::types::{AccountId, Channel, Day, FlowKind, StreamId, Transaction, TxnId, TxnStatus};
 
 /// Version of both [`Feed`] and [`ForecastReport`].
@@ -228,6 +229,39 @@ impl Feed {
 /// Nearest cent. `+ 0.0` turns a rounded `-0.0` into `0.0`.
 fn cents(x: f64) -> f64 {
     (x * 100.0).round() / 100.0 + 0.0
+}
+
+/// The spend rate's Gaussian `N(mean, sd²)` truncated below at `floor`:
+/// its 2.275% and 97.725% points, the coverage of ±2σ, so they equal
+/// `low_2sd`/`high_2sd` whenever the floor is far below.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SpendRange {
+    pub floor: f64,
+    pub low: f64,
+    pub high: f64,
+    /// Share of the untruncated Gaussian below the floor, i.e. how much the
+    /// floor changed.
+    pub below_floor: f64,
+}
+
+impl SpendRange {
+    /// Two-sided tail of ±2σ: Φ(−2).
+    const TAIL: f64 = 0.022_750_131_948_179_21;
+
+    pub fn new(mean: f64, var: f64, floor: f64) -> Self {
+        let t = TruncatedNormal {
+            mean,
+            sd: var.max(0.0).sqrt(),
+            floor,
+        };
+        Self {
+            floor,
+            low: t.quantile(Self::TAIL),
+            high: t.quantile(1.0 - Self::TAIL),
+            below_floor: t.mass_below(),
+        }
+    }
 }
 
 /// A scalar estimate with its ±2σ range.
@@ -481,6 +515,11 @@ pub struct ForecastReport {
     pub balance: Estimate,
     /// Discretionary spend rate `c`, $/day, outflow positive.
     pub spend_rate: Estimate,
+    /// The spend rate as the forecast samples it, when it has a floor
+    /// (design §7). Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub spend_rate_range: Option<SpendRange>,
     /// Expected primary paycheck `m`.
     pub expected_paycheck: Estimate,
     pub income: Option<IncomeReport>,
@@ -548,6 +587,9 @@ impl ForecastReport {
             settled_through: Date(est.settled_through),
             balance: state(IDX_B),
             spend_rate: state(IDX_C),
+            spend_rate_range: cfg
+                .spend_floor
+                .map(|f| SpendRange::new(est.x[IDX_C], est.p[(IDX_C, IDX_C)], f)),
             expected_paycheck: state(IDX_M),
             income,
             bills,
@@ -592,6 +634,22 @@ impl ForecastReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spend_range_by_hand() {
+        // Floor far below: exactly the ±2σ band.
+        let e = Estimate::from_variance(60.0, 25.0);
+        let r = SpendRange::new(60.0, 25.0, 0.0);
+        assert!((r.low - e.low_2sd).abs() < 1e-9 && (r.high - e.high_2sd).abs() < 1e-9);
+        assert!(r.below_floor < 1e-30);
+        // The sandbox (ĉ = 67.04, σ = 36.0375): −$5.04..$139.11 becomes
+        // $8.94..$139.60, with 3.14% of the Gaussian below $0 (design §7).
+        let r = SpendRange::new(67.04, 36.0375 * 36.0375, 0.0);
+        // (At exactly Φ(−2) = 0.0227501…, not the rounded 0.02275.)
+        assert!((r.low - 8.939_911_05).abs() < 1e-6, "{r:?}");
+        assert!((r.high - 139.598_602_06).abs() < 1e-6, "{r:?}");
+        assert!((r.below_floor - 0.031_422_647_9).abs() < 1e-9);
+    }
     use crate::adaptive::VarianceEstimate;
     use crate::forecast::{ForecastModel, forecast};
     use crate::schedule::{BillStream, OffsetDist, PayTiming};
@@ -809,6 +867,23 @@ mod tests {
             }],
         };
         let r = ForecastReport::new(&feed, &est, &ingest, &schedule, &cone, &cfg);
+        // No floor: no range, and the field is not written at all.
+        assert_eq!(r.spend_rate_range, None);
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains("spend_rate_range"));
+        assert_eq!(serde_json::from_str::<ForecastReport>(&json).unwrap(), r);
+        // With a floor: the range of the estimate's c, round-tripped.
+        let floored = ForecastConfig {
+            spend_floor: Some(0.0),
+            ..cfg.clone()
+        };
+        let rf = ForecastReport::new(&feed, &est, &ingest, &schedule, &cone, &floored);
+        assert_eq!(
+            rf.spend_rate_range,
+            Some(SpendRange::new(est.x[IDX_C], est.p[(IDX_C, IDX_C)], 0.0))
+        );
+        let json = serde_json::to_string(&rf).unwrap();
+        assert_eq!(serde_json::from_str::<ForecastReport>(&json).unwrap(), rf);
         assert_eq!(
             r.regime_changes,
             [RegimeChange {

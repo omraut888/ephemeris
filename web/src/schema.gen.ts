@@ -50,6 +50,11 @@ balance: Estimate,
  */
 spend_rate: Estimate, 
 /**
+ * The spend rate as the forecast samples it, when it has a floor
+ * (design §7). Absent otherwise.
+ */
+spend_rate_range?: SpendRange, 
+/**
  * Expected primary paycheck `m`.
  */
 expected_paycheck: Estimate, income: IncomeReport | null, bills: Array<BillReport>, 
@@ -59,6 +64,13 @@ expected_paycheck: Estimate, income: IncomeReport | null, bills: Array<BillRepor
 regime_changes: Array<RegimeChange>, forecast: ConeReport, };
 
 export type Estimate = { mean: number, sd: number, low_2sd: number, high_2sd: number, };
+
+export type SpendRange = { floor: number, low: number, high: number, 
+/**
+ * Share of the untruncated Gaussian below the floor, i.e. how much the
+ * floor changed.
+ */
+below_floor: number, };
 
 export type IncomeReport = { 
 /**

@@ -66,7 +66,19 @@ fn print_report(r: &ForecastReport) {
         );
     };
     row("Balance", &r.balance, "");
-    row("Spend rate", &r.spend_rate, "/day");
+    match &r.spend_rate_range {
+        // The range the forecast samples, not the Gaussian's ±2σ.
+        Some(s) => println!(
+            "  {:<12} {:>12}{:<5}  range {} to {} (floored at {})",
+            "Spend rate",
+            money(r.spend_rate.mean),
+            "/day",
+            money(s.low),
+            money(s.high),
+            money(s.floor)
+        ),
+        None => row("Spend rate", &r.spend_rate, "/day"),
+    }
     row("Paycheck", &r.expected_paycheck, "");
     if !r.regime_changes.is_empty() {
         println!("\n  Regime changes detected (the cone widens until the filter relearns):");

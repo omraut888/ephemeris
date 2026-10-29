@@ -134,6 +134,7 @@ Each transaction:
 | `settled_through` | date | Last day whose records are all final. Later days still hold pending amounts. |
 | `balance` | estimate | True balance `b`, including pending-amount uncertainty. |
 | `spend_rate` | estimate | Discretionary spend rate `c`, in $/day, **outflow positive**. |
+| `spend_rate_range` | object, optional | Present only when the forecast floors the spend rate (phase1-design §7). `{floor, low, high, below_floor}`: `c`'s Gaussian truncated below at `floor`, its 2.275% and 97.725% points (the coverage of ±2σ, so equal to `low_2sd`/`high_2sd` when the floor is far below), and `below_floor`, the share of the untruncated Gaussian below the floor. The cone samples exactly this distribution for each path's starting `c`. |
 | `expected_paycheck` | estimate | Expected primary paycheck `m`. |
 | `income` | object or null | Detected pay schedule. When it's null, the forecast includes no income. |
 | `bills[]` | array | Detected recurring bill streams. |

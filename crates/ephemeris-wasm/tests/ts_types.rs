@@ -13,7 +13,7 @@ use ephemeris_core::schema::Date as IsoDate;
 use ephemeris_core::schema::{
     BillReport, ChangeChannel, ConeDay, ConeReport, CycleBasisReport, CycleLowReport,
     CycleLowsReport, Estimate, Feed, FeedTransaction, ForecastReport, IncomeReport, MonthlyOn,
-    PayCadence, RegimeChange, Shift, TargetReport,
+    PayCadence, RegimeChange, Shift, SpendRange, TargetReport,
 };
 use ephemeris_core::{FlowKind, TxnStatus};
 use ts_rs::{Config, TS};
@@ -39,6 +39,7 @@ fn generated() -> String {
         // Report (out).
         ForecastReport::decl(&cfg),
         Estimate::decl(&cfg),
+        SpendRange::decl(&cfg),
         IncomeReport::decl(&cfg),
         PayCadence::decl(&cfg),
         BillReport::decl(&cfg),
