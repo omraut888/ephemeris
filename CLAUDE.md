@@ -14,7 +14,10 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
 - All math stays in Rust. TypeScript only loads data, calls WASM, and draws.
 - Phase 4a, the desktop app, is in progress: crates/ephemeris-desktop
   (Tauri v2) runs the engine natively behind the same UI. Design:
-  docs/phase4-design.md. Mobile (Phase 3) and sync (Phase 4b) come later.
+  docs/phase4-design.md.
+- Phase 3a, the iOS app, is in progress: crates/ephemeris-ffi (UniFFI)
+  exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
+  docs/phase3-design.md. Android (3b) and sync (Phase 4b) come later.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
@@ -24,6 +27,14 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
 - crates/ephemeris-wasm: wasm-bindgen wrapper; JSON in, JSON out, same schema as the CLI.
 - crates/ephemeris-desktop: the Tauri app. It is not a default workspace
   member, so use `-p ephemeris-desktop` (scripts/test-full.sh does this).
+- crates/ephemeris-ffi: UniFFI exports for Swift, JSON in and out like the
+  WASM crate. Not a default member either; scripts/build-ios.sh builds the
+  XCFramework from it.
+- ios/: the Swift package EphemerisKit (Codable schema types with a drift
+  test against Rust, the engine client, the app model) and the SwiftUI app
+  (XcodeGen, ios/project.yml). `swift test --package-path ios/EphemerisKit`
+  runs on the Mac; scripts/test-ios.sh runs the simulator. The simulator
+  saturates this 8 GB Mac for minutes after a boot, so run it alone.
 - web/: the browser app, and with `--mode desktop` the desktop app's UI. Its
   TypeScript schema types are checked against Rust.
 
