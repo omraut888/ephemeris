@@ -4,8 +4,9 @@ A personal financial trajectory engine. It estimates your true financial state
 with a Kalman filter and projects it forward as a Monte Carlo probability cone,
 not a single number. One Rust core, shipped to iOS, Android, Web, and Desktop.
 
-Status: Phase 1 (core engine, CLI) complete; Phase 2 (web, via WASM) and
-Phase 4a (macOS desktop app, via Tauri) in progress. Full spec: docs/spec.html
+Status: Phase 1 (core engine, CLI) complete; Phase 2 (web, via WASM),
+Phase 3a (iOS app, via UniFFI) and Phase 4a (macOS desktop app, via Tauri)
+in progress. Full spec: docs/spec.html
 
 ![The web app on the Plaid sandbox feed: the forecast cone, the chance of
 going below $0, the estimated state, and two "can I afford it" answers](docs/img/sandbox-desktop-dark-daily.png)
@@ -26,6 +27,36 @@ npm run tauri -- dev                    # dev window, reloads on changes
 npm run tauri -- build --bundles app    # unsigned release .app
 open ../target/release/bundle/macos/EPHEMERIS.app
 ```
+
+## iOS app
+
+A SwiftUI app with the engine linked in natively through UniFFI
+(docs/phase3-design.md); simulator only for now, unsigned. Needs Xcode with
+an iOS simulator runtime, XcodeGen, and the Rust iOS targets
+(`rustup target add aarch64-apple-ios aarch64-apple-ios-sim`).
+
+```sh
+scripts/build-ios.sh --sim-only            # engine → ios/EphemerisKit/EphemerisFFI.xcframework
+swift test --package-path ios/EphemerisKit # golden, drift and app-model tests, on the Mac
+scripts/test-ios.sh                        # the same tests in the simulator, then launches the app
+xcodegen generate --spec ios/project.yml && open ios/Ephemeris.xcodeproj
+```
+
+<p>
+  <img src="docs/img/ios-demo-dark-daily.png" width="240"
+       alt="iOS app, demo data, dark mode, daily view: under 1% risk">
+  <img src="docs/img/ios-sandbox-dark-daily.png" width="240"
+       alt="iOS app, Plaid sandbox feed, dark mode, daily view: 47% risk">
+  <img src="docs/img/ios-sandbox-light-lows.png" width="240"
+       alt="iOS app, Plaid sandbox feed, light mode, pay-cycle lows view">
+</p>
+
+*The iOS app in the simulator, taken with `scripts/ios-screenshots.sh`:
+demo data (dark, daily), then the Plaid sandbox feed (dark, daily; light,
+pay-cycle lows). The simulator's only iPhone model is a foldable, so these
+are its cover screen, with the status bar down the right edge. As above, the
+sandbox feed is synthetic test data with a fake static balance: the 47% shows
+the feature, not a finding.*
 
 ## Screenshots
 
