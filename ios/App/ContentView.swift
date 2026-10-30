@@ -67,9 +67,10 @@ struct ContentView: View {
         .task { await start() }
         #if DEBUG
         .onChange(of: model.status) { _, status in
-            // A line for scripts/ios-screenshots.sh to wait for.
-            if status == .ready { print("EPHEMERIS ready: \(model.source?.label ?? "")") }
-            if status == .error { print("EPHEMERIS error: \(model.error ?? "")") }
+            // Lines for scripts/test-ios.sh to wait for, on stderr: unbuffered,
+            // so they arrive even when the console is a pipe.
+            if status == .ready { log("EPHEMERIS ready: \(model.source?.label ?? "")") }
+            if status == .error { log("EPHEMERIS error: \(model.error ?? "")") }
         }
         #endif
     }
@@ -143,3 +144,9 @@ struct DemoSettings: View {
         }
     }
 }
+
+#if DEBUG
+private func log(_ line: String) {
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+}
+#endif
