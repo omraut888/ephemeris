@@ -428,8 +428,8 @@ below.
 | Simulator device "EPHEMERIS iPhone" | 2.9 GB | see below | 1–2 GB, a 20–40 s boot |
 | `scripts/ios-screenshots.sh`, the README set of three | three PNGs, 0.3–0.4 MB each | 4–7 min | — |
 
-**The simulator is the expensive part on 8 GB.** `bootstatus` reports a
-device booted within a minute or so, but for minutes after a boot the
+**The simulator is the expensive part on 8 GB.** Even after `bootstatus`
+reports the device booted, for minutes the
 simulator's own services keep the machine saturated (load average 75–166
 measured). During that time an app launch is slow:
 
