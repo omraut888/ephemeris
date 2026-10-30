@@ -409,3 +409,96 @@ Each step is a small commit:
    which I will ask about first because of its size.
 7. The screenshot script and the README shots; docs "As built"; README
    and CLAUDE.md.
+
+## 10. As built
+
+Built 2026-10-29 and 2026-10-30, as designed in §1–6 with the deviations
+below.
+
+### Measured (this machine, M3, 8 GB)
+
+| Item | Disk | Time | Estimate (§8) |
+|---|---|---|---|
+| iOS 27.1 simulator runtime | 7.3 GB | downloaded separately | 8–10 GB |
+| `ephemeris-ffi`, three slices, release | 192–203 MB per slice in `target/` | 42 s cold (`build-ios.sh`); under 1 s when unchanged | 0.4–0.6 GB, 1–2 min |
+| XCFramework | 29 MB | seconds | 30–60 MB |
+| `swift test` on the Mac (19 tests) | 128 MB in `ios/build/swiftpm` | 19 s cold | — |
+| App build, simulator, Debug | 224 MB DerivedData; `Ephemeris.app` 2.8 MB | 147 s cold, 37 s incremental | 0.5–1 GB, 1–2 min |
+| `scripts/test-ios.sh` (19 tests in the simulator, then the launch check) | — | 3 min 19 s on a quiet Mac | — |
+| Simulator device "EPHEMERIS iPhone" | 2.9 GB | see below | 1–2 GB, a 20–40 s boot |
+| `scripts/ios-screenshots.sh`, the README set of three | three PNGs, 0.3–0.4 MB each | 4–7 min | — |
+
+**The simulator is the expensive part on 8 GB.** `bootstatus` reports a
+device booted within a minute or so, but for minutes after a boot the
+simulator's own services keep the machine saturated (load average 75–166
+measured). During that time an app launch is slow:
+
+- first launch after a boot, until the app's "EPHEMERIS ready" line:
+  **214 s**;
+- a second launch on the same booted device, load still above 100:
+  **85 s**;
+- on a quiet Mac with the device just booted by `xcodebuild test`: well
+  within the scripts' wait.
+
+So the scripts wait up to `LAUNCH_TIMEOUT` seconds (default 300) rather
+than the original 60. One run failed at 60 s; with 300 s, `test-ios.sh`
+passed (19/19, app ready). A run also failed once with "Mach error -308
+(ipc/mig) server died" while the simulator runtime was being re-registered
+at the end of its download; after that the device showed as unavailable
+until CoreSimulator picked the runtime up again. Neither was an app
+failure.
+
+### Deviations from the design
+
+- **The XCFramework lives in the package,**
+  `ios/EphemerisKit/EphemerisFFI.xcframework`, not in `ios/build`.
+  SwiftPM requires a `binaryTarget` path inside the package directory. It
+  is gitignored there, as are `Sources/EphemerisKit/Generated` and the
+  copied `Tests/EphemerisKitTests/Golden`.
+- **`AppModel` is in `EphemerisKit`, not the app target,** and so are
+  `Reading.swift` (band indices, the headline risk, the afford answer)
+  and their tests. That way `swift test` covers the model on the Mac in
+  seconds. As a result there is no `EphemerisTests` app test target
+  (§5): the scheme's test action runs `EphemerisKitTests`, which holds
+  the model tests the design gave that target.
+- **`EngineClient` is a `@MainActor` class, not an actor.** It only
+  hands out tickets and awaits the engine; `FFIEngine` runs each call
+  with `Task.detached`, so the work is off the main thread either way.
+- **Two golden input files, not one:** `simulate-options.json` and
+  `forecast-options.json` in `crates/ephemeris-wasm/tests/golden/`.
+  Each is passed to the engine as it is, without a wrapper to unpack.
+- **Colors are in code** (`Theme.swift`, a light and a dark value per
+  token from the web palette), not the asset catalog, which holds only the
+  app icon.
+- **The device type.** The only iPhone the iOS 27.1 runtime supports is
+  "iPhone Duo", a foldable. `ios-device.sh` picks the first iPhone the
+  newest runtime supports, and `DEVICE_TYPE` overrides that. On this
+  device:
+  - the app draws on the cover screen (1398×2034), while the inner panel
+    (2007×2853) stays black;
+  - a plain `simctl io screenshot` takes the inner panel. So
+    `ios-screenshots.sh` captures every display with a framebuffer and
+    keeps the largest PNG.
+- **`x86_64` is excluded** from simulator builds
+  (`EXCLUDED_ARCHS[sdk=iphonesimulator*]`): the XCFramework has only an
+  arm64 simulator slice.
+- **Launch checks rely on log lines.** In Debug builds the app writes
+  "EPHEMERIS ready: <source>" or "EPHEMERIS error: …" to stderr, which
+  `simctl launch --console` passes through. `print` was not used because
+  stdout is buffered when piped. The app runs only as long as that console
+  launcher, so the scripts keep it running until the screenshot is taken.
+- **Screenshots wait for the screen to settle.** Under load the screen can
+  trail the ready line by seconds, so a fixed sleep caught the loading
+  spinner once. The script retakes the shot until two frames 2 s apart
+  are identical. Repeated runs give byte-identical PNGs.
+
+### Not verified here
+
+- **A device build.** The device slice is built (without `--sim-only`)
+  and linked into the XCFramework, but nothing has been signed or run on
+  a phone.
+- **Interaction by hand:** the Files picker, the chart's drag-to-inspect,
+  the afford query, and changing the horizon. Their logic is covered by
+  the model tests with a fake engine (afford, debounce, errors, file size
+  and JSON checks). The screens were checked only as the screenshots show
+  them: the headline, the cone in both views, both appearances.
