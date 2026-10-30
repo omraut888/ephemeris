@@ -10,7 +10,9 @@
 # Uses one dedicated simulator, "EPHEMERIS iPhone", created on first run as
 # the first iPhone model the newest iOS runtime supports (DEVICE_TYPE
 # overrides it), and shuts it down afterwards unless
-# KEEP_BOOTED=1. Needs Xcode and an installed iOS simulator runtime
+# KEEP_BOOTED=1. The app gets LAUNCH_TIMEOUT seconds (default 300) to log:
+# on an 8 GB Mac the simulator keeps the machine saturated for minutes after
+# a boot, and a launch measured 214 s cold and 85 s warm. Needs Xcode and an installed iOS simulator runtime
 # (`xcodebuild -downloadPlatform iOS`).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,6 +20,7 @@ cd "$(dirname "$0")/.."
 DEVICE_NAME="EPHEMERIS iPhone"
 DERIVED=ios/build/DerivedData
 APP=$DERIVED/Build/Products/Debug-iphonesimulator/Ephemeris.app
+LAUNCH_TIMEOUT=${LAUNCH_TIMEOUT:-300}
 BUNDLE_ID=dev.ephemeris.ios
 
 read -r runtime default_type < <(xcrun simctl list runtimes available -j | python3 -c '
@@ -61,14 +64,14 @@ xcrun simctl install "$udid" "$APP"
 log=$(mktemp)
 xcrun simctl launch --console --terminate-running-process "$udid" "$BUNDLE_ID" >"$log" 2>&1 &
 launcher=$!
-for _ in $(seq 1 120); do
+for _ in $(seq 1 $((LAUNCH_TIMEOUT * 2))); do
   grep -q "EPHEMERIS \(ready\|error\)" "$log" && break
   sleep 0.5
 done
 kill "$launcher" 2>/dev/null || true
 xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
 if grep -q "EPHEMERIS error" "$log" || ! grep -q "EPHEMERIS ready" "$log"; then
-  echo "the app did not reach a forecast:" >&2
+  echo "the app did not reach a forecast within ${LAUNCH_TIMEOUT}s:" >&2
   cat "$log" >&2
   rm -f "$log"
   exit 1
