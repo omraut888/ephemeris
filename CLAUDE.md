@@ -17,7 +17,9 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   docs/phase4-design.md.
 - Phase 3a, the iOS app, is in progress: crates/ephemeris-ffi (UniFFI)
   exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
-  docs/phase3-design.md. Android (3b) and sync (Phase 4b) come later.
+  docs/phase3-design.md. Android (3b) comes later.
+- Phase 4b, sync between the apps, is designed but not approved or built:
+  docs/phase4b-design.md.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
