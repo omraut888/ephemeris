@@ -922,6 +922,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ephemeris-core",
+ "ephemeris-sync",
  "serde",
  "serde_json",
 ]
@@ -958,6 +959,13 @@ version = "0.1.0"
 dependencies = [
  "ephemeris-core",
  "uniffi",
+]
+
+[[package]]
+name = "ephemeris-sync"
+version = "0.1.0"
+dependencies = [
+ "ephemeris-core",
 ]
 
 [[package]]

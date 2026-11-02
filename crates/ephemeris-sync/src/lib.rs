@@ -1,0 +1,12 @@
+//! EPHEMERIS sync: the state every device shares, and the feed built from it
+//! (docs/phase4b-design.md).
+//!
+//! Pure, like the engine: no I/O, no clock, no randomness. Shells pass in
+//! bytes, the time and nonces, and get bytes and JSON back.
+
+#![forbid(unsafe_code)]
+
+pub mod bank;
+pub mod tag;
+
+pub use bank::{AccountSnapshot, BankRecord, Category};

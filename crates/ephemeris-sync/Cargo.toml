@@ -1,0 +1,8 @@
+[package]
+name = "ephemeris-sync"
+version = "0.1.0"
+edition = "2024"
+description = "Sync state for EPHEMERIS: bank records, user edits, merge, and the feed built from them (docs/phase4b-design.md)."
+
+[dependencies]
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
