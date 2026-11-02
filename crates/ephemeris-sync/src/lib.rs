@@ -8,6 +8,7 @@
 
 pub mod bank;
 pub mod edits;
+pub mod envelope;
 pub mod hlc;
 pub mod ingest;
 pub mod lww;

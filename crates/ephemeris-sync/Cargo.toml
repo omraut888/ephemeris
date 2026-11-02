@@ -9,6 +9,10 @@ ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["s
 # The state's canonical encoding. Both are already linked by every shell.
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# Sealed sync files (design §3.3): the standard RustCrypto AEAD, measured at
+# +12 kB of WASM (§2.2). Its own `unsafe` is behind audited SIMD backends;
+# this crate stays `forbid(unsafe_code)`.
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 # Seeded random states for the lattice-law tests and the multi-replica
