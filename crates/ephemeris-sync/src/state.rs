@@ -75,6 +75,10 @@ pub struct SyncState {
     pub records: BTreeMap<String, Lww<RecordVersion>>,
     /// Account snapshots by the bank's account id.
     pub accounts: BTreeMap<String, Lww<AccountSnapshot>>,
+    /// The one device allowed to fetch from the bank (design §1.4). The
+    /// first fetch claims it; [`crate::edits::Edit::TakeFetcher`] hands it over.
+    #[serde(default)]
+    pub fetcher: Option<Lww<ReplicaId>>,
     pub fetched: Option<Fetched>,
     /// The days fetched history has covered.
     pub coverage: DayIntervals,
@@ -94,6 +98,7 @@ impl Default for SyncState {
             clocks: BTreeMap::new(),
             records: BTreeMap::new(),
             accounts: BTreeMap::new(),
+            fetcher: None,
             fetched: None,
             coverage: DayIntervals::default(),
             overrides: BTreeMap::new(),
@@ -155,6 +160,11 @@ impl SyncState {
         }
         join_map(&mut self.records, &other.records)?;
         join_map(&mut self.accounts, &other.accounts)?;
+        match (&mut self.fetcher, &other.fetcher) {
+            (Some(mine), Some(theirs)) => mine.join(theirs)?,
+            (mine @ None, theirs) => *mine = theirs.clone(),
+            (Some(_), None) => {}
+        }
         self.fetched = self.fetched.max(other.fetched);
         self.coverage.join(&other.coverage);
         join_map(&mut self.overrides, &other.overrides)?;
@@ -205,6 +215,9 @@ impl SyncState {
             if v.value.current.is_some_and(|c| !c.is_finite()) {
                 return Err(format!("account {id:?} has a non-finite balance"));
             }
+        }
+        if let Some(f) = &self.fetcher {
+            issued(&f.at, "fetcher")?;
         }
         if let Some(f) = &self.fetched {
             issued(&f.at, "fetch")?;
@@ -326,6 +339,9 @@ pub(crate) mod tests {
                         at,
                     };
                     s.fetched = s.fetched.max(Some(f));
+                    if rng.random_bool(0.5) {
+                        s.fetcher = Some(Lww::new(at, replica));
+                    }
                 }
                 _ => {
                     let a = rng.random_range(0..30);

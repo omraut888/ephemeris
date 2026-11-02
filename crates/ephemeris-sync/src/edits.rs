@@ -33,6 +33,9 @@ pub enum Edit {
         setting: Setting,
         value: u64,
     },
+    /// Make the editing device the one that fetches from the bank (design
+    /// §1.4), e.g. after moving to a new Mac. The latest handover wins.
+    TakeFetcher,
     AddQuery {
         query: SavedQuery,
     },
@@ -103,6 +106,9 @@ impl SyncState {
             }
             Edit::DeleteQuery { id } => {
                 self.queries.insert(id.clone(), Lww::new(at, None));
+            }
+            Edit::TakeFetcher => {
+                self.fetcher = Some(Lww::new(at, replica));
             }
         }
         Ok(None)

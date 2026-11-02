@@ -289,6 +289,7 @@ fn register(state: &SyncState, key: &str) -> String {
         "s:" => {
             serde_json::to_string(&state.settings[&serde_json::from_str::<Setting>(k).unwrap()])
         }
+        "f:" => serde_json::to_string(&state.fetcher),
         _ => serde_json::to_string(&state.queries[k]),
     }
     .unwrap()
@@ -383,10 +384,14 @@ struct World {
     edits: Vec<EditRecord>,
     /// True time in ms.
     time: i64,
+    /// The step at which replica 1 takes the fetcher role from replica 0.
+    handover_at: Option<usize>,
+    /// Fetches the one-fetcher rule refused.
+    refused: usize,
 }
 
 impl World {
-    fn new(seed: u64, n: usize, fetchers: usize) -> World {
+    fn new(seed: u64, n: usize, fetchers: Fetchers) -> World {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let bank = Bank::new(&mut rng);
         let replicas = (0..n)
@@ -394,11 +399,15 @@ impl World {
                 id: rng.random::<u64>() | 1, // never 0, distinct in practice
                 state: SyncState::new(),
                 skew: SKEWS[rng.random_range(0..SKEWS.len())],
-                fetcher: i < fetchers,
+                fetcher: i == 0,
                 cursor: None,
                 seen: BTreeSet::new(),
             })
             .collect();
+        let handover_at = match fetchers {
+            Fetchers::One => None,
+            Fetchers::Handover => Some(rng.random_range(50..350)),
+        };
         World {
             rng,
             bank,
@@ -406,7 +415,15 @@ impl World {
             files: vec![Vec::new(); n],
             edits: Vec::new(),
             time: 1_790_000_000_000,
+            handover_at,
+            refused: 0,
         }
+    }
+
+    /// The fetcher the (converged) state names.
+    fn fetcher(&self) -> usize {
+        let id = self.replicas[0].state.fetcher.as_ref().unwrap().value;
+        self.replicas.iter().position(|r| r.id == id).unwrap()
     }
 
     fn now(&self, i: usize) -> u64 {
@@ -415,7 +432,7 @@ impl World {
 
     /// A delta fetch from this fetcher's cursor (complete the first time),
     /// or a complete fetch when `complete`.
-    fn fetch(&mut self, i: usize, complete: bool) {
+    fn fetch(&mut self, i: usize, complete: bool) -> bool {
         let since = if complete {
             None
         } else {
@@ -424,8 +441,43 @@ impl World {
         let batch = self.bank.fetch(since);
         let now = self.now(i);
         let r = &mut self.replicas[i];
-        r.state.ingest(&batch, r.id, now).unwrap();
-        r.cursor = Some((self.bank.log.len(), self.bank.today));
+        let claims = r.state.fetcher.is_none();
+        match r.state.ingest(&batch, r.id, now) {
+            Ok(_) => r.cursor = Some((self.bank.log.len(), self.bank.today)),
+            Err(e) => {
+                // Only the one-fetcher rule may refuse a fetch here.
+                assert!(e.contains("fetched by device"), "{e}");
+                self.refused += 1;
+                return false;
+            }
+        }
+        if claims {
+            // The first fetch claims the fetcher role: a write like an edit.
+            self.record_edit(i, "f:fetcher".into());
+        }
+        true
+    }
+
+    /// Note the write replica `i` just made to `key`, for the intent checks.
+    fn record_edit(&mut self, i: usize, key: String) {
+        let n = self.edits.len();
+        let r = &mut self.replicas[i];
+        self.edits.push(EditRecord {
+            stamp: r.state.clocks[&r.id],
+            register: register(&r.state, &key),
+            key,
+            deps: r.seen.clone(),
+        });
+        r.seen.insert(n);
+    }
+
+    /// Replica `i` takes the fetcher role over (design §1.4).
+    fn take_fetcher(&mut self, i: usize) {
+        let now = self.now(i);
+        let r = &mut self.replicas[i];
+        r.state.edit(&Edit::TakeFetcher, r.id, now).unwrap();
+        r.fetcher = true;
+        self.record_edit(i, "f:fetcher".into());
     }
 
     fn edit(&mut self, i: usize) {
@@ -493,14 +545,21 @@ impl World {
 
     fn run(&mut self, steps: usize) {
         let n = self.replicas.len();
-        // Each fetcher starts with a complete fetch.
-        self.fetch(0, false);
-        for _ in 0..steps {
+        // The first fetch is complete (no cursor yet) and claims the role.
+        assert!(self.fetch(0, false));
+        for step in 0..steps {
             self.time += self.rng.random_range(1..30_000);
+            if self.handover_at == Some(step) {
+                // Possibly before replica 1 has heard of replica 0's claim:
+                // then the two claims are concurrent and the stamps decide.
+                self.take_fetcher(1);
+            }
             let i = self.rng.random_range(0..n);
             match self.rng.random_range(0..100) {
                 0..=29 => self.bank.step(&mut self.rng),
-                30..=37 if self.replicas[i].fetcher => self.fetch(i, false),
+                30..=37 if self.replicas[i].fetcher => {
+                    self.fetch(i, false);
+                }
                 38..=54 => self.edit(i),
                 55..=69 => self.publish(i),
                 70..=97 => {
@@ -627,53 +686,62 @@ fn matches_the_bank(w: &World, seed: u64) {
 /// How the bank side is set up.
 #[derive(Clone, Copy, Debug)]
 enum Fetchers {
-    /// The approved setup (design §1.4): the Mac alone fetches. Its stamps
+    /// The approved setup (design §1.4): one device fetches. Its stamps
     /// rise with its own fetches, so the newest bank state always wins and
     /// an ordinary delta fetch suffices at the end.
     One,
-    /// Two fetchers with skewed clocks. Two concurrent fetches are ordered
-    /// by stamp, not by which saw the bank later (§1.3), so a stale version
-    /// can win until a *complete* fetch re-stamps everything (§1.4).
-    Two,
+    /// Replica 1 takes the fetcher role over at a random step (a new Mac).
+    /// Replica 0 keeps fetching until it hears of the handover, then is
+    /// refused. Fetches in that window are concurrent and ordered by stamp,
+    /// not by which saw the bank later (§1.3), so the new fetcher's first
+    /// fetch is complete (it has no cursor) and settles them; the final
+    /// fetch at the end is complete too.
+    Handover,
 }
 
-fn simulate(seed: u64, fetchers: Fetchers) -> (usize, usize) {
-    let n = match fetchers {
-        Fetchers::One => 1,
-        Fetchers::Two => 2,
-    };
-    let mut w = World::new(seed, 4, n);
+/// One run: (edits made, records synced, fetches refused).
+fn simulate(seed: u64, fetchers: Fetchers) -> (usize, usize, usize) {
+    let mut w = World::new(seed, 4, fetchers);
     w.run(400);
     // Quiescence: two rounds of all-to-all exchange.
     w.gossip();
     w.gossip();
-    let tag = format!("{fetchers:?} fetcher(s)");
+    let tag = format!("{fetchers:?}");
     all_identical(&w, seed, &format!("{tag}, after gossip"));
     intent_holds(&w, seed);
-    // A fetch after everything has been exchanged settles the bank side,
-    // then everyone hears of it.
-    match fetchers {
-        Fetchers::One => w.fetch(0, false),
-        Fetchers::Two => w.fetch(1, true),
+    // A fetch by the fetcher after everything has been exchanged settles
+    // the bank side, then everyone hears of it.
+    let f = w.fetcher();
+    let complete = matches!(fetchers, Fetchers::Handover);
+    assert!(w.fetch(f, complete), "seed {seed}: the fetcher was refused");
+    // Every other device is refused now that all agree on the fetcher.
+    for i in (0..w.replicas.len()).filter(|&i| i != f) {
+        assert!(!w.fetch(i, false), "seed {seed}: replica {i} fetched");
     }
     w.gossip();
     all_identical(&w, seed, &format!("{tag}, after the final fetch"));
     intent_holds(&w, seed);
     matches_the_bank(&w, seed);
-    (w.edits.len(), w.replicas[0].state.records.len())
+    (w.edits.len(), w.replicas[0].state.records.len(), w.refused)
 }
 
 fn many(seeds: std::ops::Range<u64>, fetchers: Fetchers) {
     let runs = seeds.end - seeds.start;
-    let (mut edits, mut records) = (0, 0);
+    let (mut edits, mut records, mut refused) = (0, 0, 0);
     for seed in seeds {
-        let (e, r) = simulate(seed, fetchers);
+        let (e, r, x) = simulate(seed, fetchers);
         edits += e;
         records += r;
+        refused += x;
     }
-    // The runs did real work: edits made and records synced.
+    // The runs did real work: edits made, records synced, and (beyond the
+    // checks at the end) the one-fetcher rule refusing fetches mid-run.
     assert!(edits as u64 > runs * 30, "{edits} edits");
     assert!(records as u64 > runs * 150, "{records} records");
+    let mid_run = refused as u64 - runs * 3;
+    if matches!(fetchers, Fetchers::Handover) {
+        assert!(mid_run > runs, "{mid_run} mid-run refusals");
+    }
 }
 
 #[test]
@@ -682,36 +750,15 @@ fn one_fetcher_converges_to_the_bank_with_delta_fetches() {
 }
 
 #[test]
-fn two_fetchers_converge_and_a_complete_fetch_settles_the_bank_side() {
-    many(0..100, Fetchers::Two);
-}
-
-/// Two fetchers whose last fetch is a delta: identical everywhere, but not
-/// necessarily the bank's latest. This pins down the limit stated in
-/// design §1.3 rather than leaving it a claim.
-#[test]
-fn two_fetchers_with_only_deltas_can_keep_a_stale_version() {
-    let stale = (0..40).any(|seed| {
-        let mut w = World::new(seed, 4, 2);
-        w.run(400);
-        w.gossip();
-        w.gossip();
-        all_identical(&w, seed, "deltas only");
-        w.fetch(1, false);
-        w.gossip();
-        all_identical(&w, seed, "deltas only, after the final fetch");
-        let (_, live) = w.replicas[0].state.live_records().unwrap();
-        live.len() != w.bank.records.len()
-            || live.iter().any(|r| w.bank.records.get(&r.id) != Some(*r))
-    });
-    assert!(stale, "expected some seed to show the two-fetcher limit");
+fn a_fetcher_handover_converges_and_the_old_fetcher_is_refused() {
+    many(0..100, Fetchers::Handover);
 }
 
 #[test]
 #[ignore = "soak: thousands of seeds; run with --ignored"]
 fn soak() {
     many(1_000..3_000, Fetchers::One);
-    many(1_000..3_000, Fetchers::Two);
+    many(1_000..3_000, Fetchers::Handover);
 }
 
 #[test]
@@ -719,5 +766,5 @@ fn soak() {
 fn one_seed() {
     let seed = std::env::var("SEED").expect("SEED").parse().unwrap();
     simulate(seed, Fetchers::One);
-    simulate(seed, Fetchers::Two);
+    simulate(seed, Fetchers::Handover);
 }

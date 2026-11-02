@@ -79,7 +79,20 @@ impl SyncState {
         now_ms: u64,
     ) -> Result<Hlc, String> {
         batch.validate()?;
+        if let Some(f) = &self.fetcher
+            && f.value != replica
+        {
+            return Err(format!(
+                "bank data for this sync state is fetched by device {:016x}, not this one \
+                 ({replica:016x}). Only one device may fetch, or an older bank state could \
+                 win (docs/phase4b-design.md §1.4). Hand the fetcher role to this device first.",
+                f.value
+            ));
+        }
         let at = self.stamp(replica, now_ms);
+        if self.fetcher.is_none() {
+            self.fetcher = Some(Lww::new(at, replica));
+        }
 
         if batch.complete {
             let fetched: BTreeSet<&str> = batch.records.iter().map(|r| r.id.as_str()).collect();
@@ -351,5 +364,129 @@ mod tests {
         assert!(s.ingest(&b, ME, 1).is_err());
         assert_eq!(s, SyncState::new());
         assert!(s.materialize().is_err());
+    }
+
+    const OTHER: ReplicaId = 9;
+
+    #[test]
+    fn the_first_fetch_claims_the_fetcher_role_and_others_are_refused() {
+        let mut mac = SyncState::new();
+        mac.ingest(&batch("2026-10-05", vec![], &[]), ME, 1)
+            .unwrap();
+        assert_eq!(mac.fetcher.as_ref().map(|f| f.value), Some(ME));
+
+        let mut laptop = SyncState::new();
+        laptop.merge(&mac).unwrap();
+        let before = laptop.clone();
+        let err = laptop
+            .ingest(
+                &batch("2026-10-06", vec![rec("a", -1.0, "2026-10-06")], &[]),
+                OTHER,
+                2,
+            )
+            .unwrap_err();
+        assert!(
+            err.contains("fetched by device 0000000000000007")
+                && err.contains("not this one (0000000000000009)")
+                && err.contains("Hand the fetcher role"),
+            "{err}"
+        );
+        assert_eq!(laptop, before, "a refused fetch changes nothing");
+        // The fetcher itself keeps fetching.
+        mac.ingest(&batch("2026-10-06", vec![], &[]), ME, 3)
+            .unwrap();
+    }
+
+    #[test]
+    fn the_role_can_be_handed_over_and_the_old_fetcher_is_then_refused() {
+        use crate::edits::Edit;
+        let mut old = SyncState::new();
+        old.ingest(&batch("2026-10-05", vec![], &[]), ME, 1)
+            .unwrap();
+        let mut new = old.clone();
+        new.edit(&Edit::TakeFetcher, OTHER, 2).unwrap();
+        new.ingest(&batch("2026-10-06", vec![], &[]), OTHER, 3)
+            .unwrap();
+        old.merge(&new).unwrap();
+        assert!(
+            old.ingest(&batch("2026-10-07", vec![], &[]), ME, 4)
+                .is_err()
+        );
+        assert_eq!(old.fetcher.as_ref().map(|f| f.value), Some(OTHER));
+    }
+
+    #[test]
+    fn concurrent_first_claims_settle_on_one_fetcher_everywhere() {
+        let (mut a, mut b) = (SyncState::new(), SyncState::new());
+        a.ingest(&batch("2026-10-05", vec![], &[]), ME, 1_000)
+            .unwrap();
+        b.ingest(&batch("2026-10-05", vec![], &[]), OTHER, 2_000)
+            .unwrap();
+        let a0 = a.clone();
+        a.merge(&b).unwrap();
+        b.merge(&a0).unwrap();
+        assert_eq!(a.to_json(), b.to_json());
+        // The later claim (larger stamp) holds the role; the other is refused.
+        assert_eq!(a.fetcher.as_ref().map(|f| f.value), Some(OTHER));
+        assert!(
+            a.ingest(&batch("2026-10-06", vec![], &[]), ME, 3_000)
+                .is_err()
+        );
+        b.ingest(&batch("2026-10-06", vec![], &[]), OTHER, 3_000)
+            .unwrap();
+    }
+
+    /// The limit design §1.3 states, pinned down: during a handover the old
+    /// fetcher, not yet aware of it and with a clock a day fast, fetches
+    /// an older bank state with a larger stamp than the new fetcher's
+    /// later delta. The stale version wins until a complete fetch.
+    #[test]
+    fn a_handover_window_can_leave_a_stale_version_until_a_complete_fetch() {
+        use crate::edits::Edit;
+        const DAY: u64 = 86_400_000;
+        let (old_id, new_id) = (ME, OTHER);
+        let mut old = SyncState::new();
+        let p = |amount| pending("p", amount, "2026-10-04");
+        old.ingest(
+            &batch("2026-10-04", vec![p(-10.0)], &[]),
+            old_id,
+            DAY + 1_000,
+        )
+        .unwrap();
+        let mut new = old.clone();
+        new.edit(&Edit::TakeFetcher, new_id, 2_000).unwrap();
+        // True order: the old Mac sees the tip (t = 3 s), then the bank
+        // cancels the charge and the new Mac sees that (t = 4 s).
+        old.ingest(
+            &batch("2026-10-05", vec![p(-12.0)], &[]),
+            old_id,
+            DAY + 3_000,
+        )
+        .unwrap();
+        new.ingest(&batch("2026-10-05", vec![], &["p"]), new_id, 4_000)
+            .unwrap();
+        new.merge(&old).unwrap();
+        assert_eq!(amounts(&new), vec![(-12.0, TxnStatus::Pending)], "stale");
+        // The old Mac is refused from now on, and a complete fetch by the
+        // new one settles the bank side.
+        old.merge(&new).unwrap();
+        assert!(
+            old.ingest(&batch("2026-10-05", vec![], &[]), old_id, DAY + 5_000)
+                .is_err()
+        );
+        let mut full = batch("2026-10-05", vec![], &[]);
+        full.complete = true;
+        new.ingest(&full, new_id, 5_000).unwrap();
+        assert!(amounts(&new).is_empty());
+    }
+
+    #[test]
+    fn states_written_before_the_fetcher_field_still_load() {
+        let mut s = SyncState::new();
+        s.ingest(&batch("2026-10-05", vec![], &[]), ME, 1).unwrap();
+        s.fetcher = None;
+        let old = s.to_json().replace(",\"fetcher\":null", "");
+        assert!(!old.contains("fetcher"));
+        assert_eq!(SyncState::from_json(&old).unwrap(), s);
     }
 }
