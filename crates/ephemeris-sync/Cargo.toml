@@ -6,3 +6,12 @@ description = "Sync state for EPHEMERIS: bank records, user edits, merge, and th
 
 [dependencies]
 ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
+# The state's canonical encoding. Both are already linked by every shell.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+# Seeded random states for the lattice-law tests and the multi-replica
+# simulation. Already in the graph through the core; no new crates.
+rand = { version = "0.10", default-features = false }
+rand_chacha = "0.10"

@@ -4,11 +4,13 @@
 
 use ephemeris_core::Day;
 use ephemeris_core::schema::Date;
+use serde::{Deserialize, Serialize};
 
 /// The bank's category for a record, in Plaid's `personal_finance_category`
 /// vocabulary. The bill and transfer rules read it (design §4.2: the one
 /// Plaid notion in this crate; another source would map into it).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Category {
     pub primary: String,
     pub detailed: String,
@@ -19,7 +21,8 @@ pub struct Category {
 /// `amount` is signed with **inflows positive** (the adapter flips Plaid's
 /// sign) and is kept exactly as reported, not rounded: the feed rounds to
 /// cents when it is built, as the CLI always has.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BankRecord {
     /// The bank's id (Plaid `transaction_id`). A pending record and the
     /// posted record that replaces it have different ids.
@@ -48,7 +51,8 @@ impl BankRecord {
 }
 
 /// One account as of a fetch.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountSnapshot {
     /// The bank's account id.
     pub id: String,

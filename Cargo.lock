@@ -966,6 +966,10 @@ name = "ephemeris-sync"
 version = "0.1.0"
 dependencies = [
  "ephemeris-core",
+ "rand",
+ "rand_chacha",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

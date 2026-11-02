@@ -7,6 +7,11 @@
 #![forbid(unsafe_code)]
 
 pub mod bank;
+pub mod hlc;
+pub mod lww;
+pub mod state;
 pub mod tag;
 
 pub use bank::{AccountSnapshot, BankRecord, Category};
+pub use hlc::{Hlc, ReplicaId};
+pub use state::SyncState;
