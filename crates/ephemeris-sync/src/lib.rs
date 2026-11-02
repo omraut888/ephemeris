@@ -8,6 +8,7 @@
 
 pub mod bank;
 pub mod hlc;
+pub mod ingest;
 pub mod lww;
 pub mod state;
 pub mod tag;
