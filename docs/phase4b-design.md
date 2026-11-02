@@ -805,6 +805,41 @@ Steps 1–6 of §6.2 are done, with no shell adapter yet.
   explained there).
 - **Two fetchers settle only on a complete fetch** (§1.3, §1.4). That
   makes one fetcher a rule. The finding came from the simulation.
+- **The one-fetcher rule is enforced** (after the checkpoint):
+  - `SyncState.fetcher` is an LWW register naming the fetching device.
+  - The first fetch claims it, and `Edit::TakeFetcher` (CLI
+    `ephemeris sync take-fetcher`) hands it over.
+  - An ingest from any other device is refused, with an error that names
+    both devices and how to take over. Concurrent first claims settle on
+    one device everywhere.
+  - Tests: unit tests for refusal (which changes nothing), handover and
+    concurrent claims. The simulation's second setup is now a handover:
+    the old fetcher keeps fetching until it hears of the handover, then
+    is refused.
+  - What remains is the window before the old fetcher hears of a
+    handover. There, the two-fetcher limit still applies until a complete
+    fetch (the new fetcher's first fetch is one). A unit test pins this
+    down.
+- **Future option: order bank versions by the bank's own sequence, not
+  the HLC.** Plaid's `/transactions/sync` advances one cursor per item, so
+  every fetch of an item observes the bank at a point in that cursor's
+  sequence. If each record version carried that position, a later
+  observation would win however the fetching devices' clocks were set.
+  That fixes the two-fetcher case properly, and the rule above could then
+  be relaxed. It is not done because Plaid documents cursors as opaque
+  strings with no defined order. The position would have to come from
+  something the integration controls, such as a fetch sequence number
+  kept with the access token, which a production Plaid server (§1.4)
+  would naturally hold.
+- **The CLI's replica file** (plaintext JSON: replica id + state) defaults
+  to `data/sync/replica.json` (`--state` changes it), and `data/sync/` is
+  gitignored. `sync init` and every save refuse a path git would track:
+  inside a work tree and not ignored, or already tracked. The check is
+  `git check-ignore` from the nearest folder that exists, and a test covers
+  the default, the repository root, a source folder, a tracked file and a
+  path outside the repository. During development every replica file was
+  written outside the repository (the session scratch folder), and none is
+  tracked (`git ls-files` shows no replica or `data/sync` path).
 - **The "afford default" setting is dropped.** The synced settings are
   horizon, paths and seed: the three `ForecastOptions` the shells
   already share.
