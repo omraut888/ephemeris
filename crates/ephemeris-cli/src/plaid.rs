@@ -144,14 +144,42 @@ fn parse_date(s: &str, t: &PlaidTxn) -> Result<Date, String> {
     Date::parse(s).ok_or_else(|| format!("transaction {} has invalid date {s:?}", t.transaction_id))
 }
 
-#[derive(Debug, Deserialize)]
-struct FetchMeta {
-    fetched_on: String,
+/// fetch_meta.json. Fetches made before incremental fetching existed have
+/// only `fetched_on` and count as full.
+#[derive(Debug, Default, Deserialize)]
+pub struct FetchMeta {
+    pub fetched_on: String,
+    /// `"full"` (from no cursor) or `"incremental"` (changes since the last fetch).
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub item_id: Option<String>,
+    /// This fetch's number for its item, and the previous fetch's.
+    #[serde(default)]
+    pub fetch_seq: Option<u64>,
+    #[serde(default)]
+    pub previous_seq: Option<u64>,
+    #[serde(default)]
+    pub previous_fetched_on: Option<String>,
+}
+
+impl FetchMeta {
+    pub fn incremental(&self) -> bool {
+        self.mode.as_deref() == Some("incremental")
+    }
 }
 
 /// `ephemeris import-plaid`: read the fetcher's raw files, write a feed.
 pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
-    let (sync, balances, today) = load(raw, today)?;
+    let (sync, balances, today, meta) = load(raw, today)?;
+    if meta.as_ref().is_some_and(FetchMeta::incremental) {
+        return Err(format!(
+            "{} holds an incremental fetch: only the changes since the last one, not a \
+             whole feed. Record it with `ephemeris sync import-plaid`, or fetch again with \
+             --full.",
+            raw.display()
+        ));
+    }
     let (feed, notes) = to_feed(&sync, &balances, today)?;
     write_json(out, &feed)?;
     print_summary(&feed, &notes, out);
@@ -160,7 +188,10 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
 
 /// The fetcher's raw files and the snapshot day (`today`, else the fetch
 /// date in fetch_meta.json).
-pub fn load(raw: &Path, today: Option<Day>) -> Result<(SyncFile, BalanceFile, Date), String> {
+pub fn load(
+    raw: &Path,
+    today: Option<Day>,
+) -> Result<(SyncFile, BalanceFile, Date, Option<FetchMeta>), String> {
     let sync: SyncFile = read_json(
         &raw.join("transactions_sync.json"),
         "/transactions/sync dump",
@@ -169,21 +200,24 @@ pub fn load(raw: &Path, today: Option<Day>) -> Result<(SyncFile, BalanceFile, Da
         &raw.join("accounts_balance.json"),
         "/accounts/balance/get dump",
     )?;
-    let today = match today {
-        Some(d) => Date(d),
-        None => {
-            let path = raw.join("fetch_meta.json");
-            let meta: FetchMeta = read_json(&path, "fetch metadata")?;
-            Date::parse(&meta.fetched_on).ok_or_else(|| {
-                format!(
-                    "{}: invalid fetched_on {:?}",
-                    path.display(),
-                    meta.fetched_on
-                )
-            })?
-        }
+    let path = raw.join("fetch_meta.json");
+    let meta: Option<FetchMeta> = if path.exists() || today.is_none() {
+        Some(read_json(&path, "fetch metadata")?)
+    } else {
+        None
     };
-    Ok((sync, balances, today))
+    let today = match (today, &meta) {
+        (Some(d), _) => Date(d),
+        (None, Some(meta)) => Date::parse(&meta.fetched_on).ok_or_else(|| {
+            format!(
+                "{}: invalid fetched_on {:?}",
+                path.display(),
+                meta.fetched_on
+            )
+        })?,
+        (None, None) => unreachable!("read above when today is None"),
+    };
+    Ok((sync, balances, today, meta))
 }
 
 /// The bank accounts in a balances dump.

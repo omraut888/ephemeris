@@ -6,7 +6,7 @@
 //! with the shell adapters (design §3).
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -31,6 +31,9 @@ pub struct ReplicaFile {
     /// 16 hex digits.
     pub replica: String,
     pub state: SyncState,
+    /// The Plaid fetch this replica imported last, on the fetcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plaid: Option<PlaidProgress>,
 }
 
 impl ReplicaFile {
@@ -148,21 +151,16 @@ pub fn init(path: &Path, replica: Option<&str>) -> Result<(), String> {
     let file = ReplicaFile {
         replica: format!("{id:016x}"),
         state: SyncState::new(),
+        plaid: None,
     };
     save(path, &file)?;
     println!("New replica {} in {}", file.replica, path.display());
     Ok(())
 }
 
-/// The Plaid dump as one fetch. The dump replays `/transactions/sync` from
-/// no cursor, so it is the bank's whole current set: a complete fetch whose
+/// A full Plaid dump as one fetch. It replays `/transactions/sync` from no
+/// cursor, so it is the bank's whole current set: a complete fetch whose
 /// window starts at its earliest record.
-pub fn plaid_batch(raw: &Path, today: Option<Day>) -> Result<FetchBatch, String> {
-    let (sync, balances, today) = plaid::load(raw, today)?;
-    fetch_batch(&sync, &balances, today)
-}
-
-/// [`plaid_batch`] without the file reading.
 pub fn fetch_batch(
     sync: &plaid::SyncFile,
     balances: &plaid::BalanceFile,
@@ -188,9 +186,120 @@ pub fn fetch_batch(
     })
 }
 
+/// An incremental Plaid dump (pages after the previous fetch's cursor) as
+/// one fetch: the records added or changed, and the ids removed, since the
+/// fetch made on `since`.
+pub fn delta_batch(
+    sync: &plaid::SyncFile,
+    balances: &plaid::BalanceFile,
+    today: Date,
+    since: Date,
+) -> Result<FetchBatch, String> {
+    let current = plaid::current_records(sync);
+    let removed: BTreeSet<String> = sync
+        .pages
+        .iter()
+        .flat_map(|p| &p.removed)
+        .map(|r| r.transaction_id.clone())
+        .filter(|id| !current.contains_key(id.as_str()))
+        .collect();
+    let records = current
+        .into_values()
+        .map(plaid::bank_record)
+        .collect::<Result<Vec<_>, _>>()?;
+    // A cursor stream covers the item's whole history: Plaid backfills
+    // older records through later deltas (seen live: a first fetch held 30
+    // days, and the next delta added two years). So a delta covers from its
+    // earliest record, not only from the last fetch.
+    let earliest = records
+        .iter()
+        .map(|r| r.authorized_date.unwrap_or(r.date))
+        .min()
+        .unwrap_or(today);
+    Ok(FetchBatch {
+        today,
+        window_start: since.min(earliest).min(today),
+        records,
+        removed: removed.into_iter().collect(),
+        accounts: plaid::account_snapshots(balances),
+        complete: false,
+    })
+}
+
+/// Which Plaid fetch this replica imported last (local to this device,
+/// never synced): a delta must follow it directly, or changes are lost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlaidProgress {
+    pub item_id: String,
+    pub seq: u64,
+}
+
+/// The batch for a dump, checked against what this replica imported before.
+/// Returns the progress to record once it is ingested.
+pub fn plaid_batch(
+    raw: &Path,
+    today: Option<Day>,
+    last: Option<&PlaidProgress>,
+) -> Result<(FetchBatch, Option<PlaidProgress>), String> {
+    let (sync, balances, today, meta) = plaid::load(raw, today)?;
+    let meta = meta.unwrap_or_default();
+    let progress = match (&meta.item_id, meta.fetch_seq) {
+        (Some(item_id), Some(seq)) => Some(PlaidProgress {
+            item_id: item_id.clone(),
+            seq,
+        }),
+        _ => None,
+    };
+    if let (Some(last), Some(item)) = (last, &meta.item_id)
+        && &last.item_id != item
+    {
+        return Err(format!(
+            "this fetch is from Plaid item {item}, but this replica holds item {}. Its \
+             records would sit beside the old item's; start a new sync state for a new item.",
+            last.item_id
+        ));
+    }
+    if !meta.incremental() {
+        return Ok((fetch_batch(&sync, &balances, today)?, progress));
+    }
+    let (Some(p), Some(prev), Some(prev_day)) = (
+        &progress,
+        meta.previous_seq,
+        meta.previous_fetched_on.as_deref(),
+    ) else {
+        return Err(
+            "an incremental fetch_meta.json needs item_id, fetch_seq, previous_seq \
+                    and previous_fetched_on"
+                .into(),
+        );
+    };
+    match last {
+        None => Err(format!(
+            "fetch {} of item {} holds only changes, and this replica has no earlier fetch \
+             of that item. Fetch again with --full first.",
+            p.seq, p.item_id
+        )),
+        Some(last) if last.seq >= p.seq => Err(format!(
+            "this replica already imported fetch {} (this is fetch {})",
+            last.seq, p.seq
+        )),
+        Some(last) if last.seq != prev => Err(format!(
+            "fetch {} follows fetch {prev}, but this replica last imported fetch {}: the \
+             changes in between would be lost. Fetch again with --full.",
+            p.seq, last.seq
+        )),
+        Some(_) => {
+            let since = Date::parse(prev_day)
+                .ok_or_else(|| format!("invalid previous_fetched_on {prev_day:?}"))?;
+            Ok((delta_batch(&sync, &balances, today, since)?, progress))
+        }
+    }
+}
+
 pub fn import_plaid(path: &Path, raw: &Path, today: Option<Day>) -> Result<(), String> {
     let mut file = load(path)?;
-    let batch = plaid_batch(raw, today)?;
+    let (batch, progress) = plaid_batch(raw, today, file.plaid.as_ref())?;
     let at = file
         .state
         .ingest(&batch, file.id()?, now_ms())
@@ -201,10 +310,19 @@ pub fn import_plaid(path: &Path, raw: &Path, today: Option<Day>) -> Result<(), S
                 e
             }
         })?;
+    if progress.is_some() {
+        file.plaid = progress;
+    }
     save(path, &file)?;
+    let what = match (&file.plaid, batch.complete) {
+        (Some(p), true) => format!("full fetch {} of item {}", p.seq, p.item_id),
+        (Some(p), false) => format!("incremental fetch {} of item {}", p.seq, p.item_id),
+        (None, _) => "fetch".into(),
+    };
     println!(
-        "Fetched {} records, {} accounts, {}..={}, stamped {at:?}",
+        "Recorded {what}: {} records, {} removed, {} accounts, {}..={}, stamped {at:?}",
         batch.records.len(),
+        batch.removed.len(),
         batch.accounts.len(),
         batch.window_start,
         batch.today
@@ -398,5 +516,135 @@ mod tests {
         // Outside any repository there is nothing to commit it to.
         let outside = std::env::temp_dir().join("ephemeris-replica-test.json");
         assert_eq!(ensure_untracked(&outside), Ok(()));
+    }
+
+    use serde_json::{Value, json};
+
+    fn txn(id: &str, amount: f64, date: &str, pending: bool) -> Value {
+        json!({
+            "transaction_id": id, "account_id": "chk", "amount": amount,
+            "iso_currency_code": "USD", "date": date, "authorized_date": date,
+            "pending": pending, "pending_transaction_id": null,
+            "merchant_name": "Shop", "name": "SHOP", "personal_finance_category": null
+        })
+    }
+
+    /// A fetch script dump in a fresh temp folder.
+    fn dump(name: &str, pages: Value, meta: Value) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("ephemeris-dump-{}-{name}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let write = |f: &str, v: Value| fs::write(dir.join(f), v.to_string()).unwrap();
+        write("transactions_sync.json", json!({ "pages": pages }));
+        write(
+            "accounts_balance.json",
+            json!({"accounts": [{"account_id": "chk", "type": "depository",
+                   "balances": {"current": 500.0, "iso_currency_code": "USD"}}]}),
+        );
+        write("fetch_meta.json", meta);
+        dir
+    }
+
+    fn full(seq: u64, item: &str) -> Value {
+        json!({"fetched_on": "2026-10-10", "mode": "full", "item_id": item, "fetch_seq": seq})
+    }
+
+    fn delta(seq: u64, prev: u64) -> Value {
+        json!({"fetched_on": "2026-10-12", "mode": "incremental", "item_id": "item1",
+               "fetch_seq": seq, "previous_seq": prev, "previous_fetched_on": "2026-10-10"})
+    }
+
+    fn ingest(
+        state: &mut SyncState,
+        last: &mut Option<PlaidProgress>,
+        raw: &Path,
+    ) -> Result<(), String> {
+        let (batch, p) = plaid_batch(raw, None, last.as_ref())?;
+        state.ingest(&batch, 1, 0)?;
+        *last = p;
+        Ok(())
+    }
+
+    #[test]
+    fn a_full_fetch_then_deltas_build_the_same_feed_as_one_full_fetch() {
+        let first = vec![
+            txn("a", 10.0, "2026-10-01", false),
+            txn("p", 4.0, "2026-10-09", true),
+            txn("x", 7.0, "2026-10-09", true),
+        ];
+        let full_dir = dump("full1", json!([{"added": first}]), full(1, "item1"));
+        // The delta: p posts as q, x is cancelled, b is new, a's name changes,
+        // and "old" is history Plaid backfills from before the first fetch.
+        let mut q = txn("q", 4.5, "2026-10-11", false);
+        q["pending_transaction_id"] = json!("p");
+        let mut a2 = txn("a", 10.0, "2026-10-01", false);
+        a2["merchant_name"] = json!("Shop Inc");
+        let delta_dir = dump(
+            "delta2",
+            json!([{"added": [q.clone(), txn("b", 2.0, "2026-10-12", false), txn("old", 3.0, "2026-08-01", false)],
+                    "modified": [a2.clone()],
+                    "removed": [{"transaction_id": "p"}, {"transaction_id": "x"}]}]),
+            delta(2, 1),
+        );
+        let (mut state, mut last) = (SyncState::new(), None);
+        ingest(&mut state, &mut last, &full_dir).unwrap();
+        ingest(&mut state, &mut last, &delta_dir).unwrap();
+        assert_eq!(
+            last,
+            Some(PlaidProgress {
+                item_id: "item1".into(),
+                seq: 2
+            })
+        );
+
+        // The same final records fetched in one go.
+        let mut meta = full(3, "item1");
+        meta["fetched_on"] = json!("2026-10-12");
+        let once = dump(
+            "once",
+            json!([{"added": [a2, q, txn("b", 2.0, "2026-10-12", false), txn("old", 3.0, "2026-08-01", false)]}]),
+            meta,
+        );
+        let (batch, _) = plaid_batch(&once, None, None).unwrap();
+        let mut direct = SyncState::new();
+        direct.ingest(&batch, 1, 0).unwrap();
+        assert_eq!(state.materialize().unwrap(), direct.materialize().unwrap());
+        // And import-plaid refuses the delta: it is not a whole feed.
+        let err = plaid::run(&delta_dir, None, &delta_dir.join("feed.json")).unwrap_err();
+        assert!(err.contains("incremental fetch"), "{err}");
+        for d in [full_dir, delta_dir, once] {
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    #[test]
+    fn deltas_must_follow_the_last_imported_fetch() {
+        let page = json!([{"added": [txn("a", 1.0, "2026-10-01", false)]}]);
+        let d2 = dump("seq-d2", page.clone(), delta(2, 1));
+        let d3 = dump("seq-d3", page.clone(), delta(3, 2));
+        let f1 = dump("seq-f1", page.clone(), full(1, "item1"));
+        let other = dump("seq-other", page, full(1, "item2"));
+
+        let (mut state, mut last) = (SyncState::new(), None);
+        let err = ingest(&mut state, &mut last, &d2).unwrap_err();
+        assert!(err.contains("no earlier fetch"), "{err}");
+        ingest(&mut state, &mut last, &f1).unwrap();
+        let err = ingest(&mut state, &mut last, &d3).unwrap_err();
+        assert!(err.contains("changes in between would be lost"), "{err}");
+        ingest(&mut state, &mut last, &d2).unwrap();
+        let err = ingest(&mut state, &mut last, &d2).unwrap_err();
+        assert!(err.contains("already imported fetch 2"), "{err}");
+        ingest(&mut state, &mut last, &d3).unwrap();
+        let err = ingest(&mut state, &mut last, &other).unwrap_err();
+        assert!(err.contains("start a new sync state"), "{err}");
+        // A full fetch of the same item is always accepted: it resets the run.
+        let mut f9 = full(9, "item1");
+        f9["fetched_on"] = json!("2026-10-13");
+        let f9 = dump("seq-f9", json!([{"added": []}]), f9);
+        ingest(&mut state, &mut last, &f9).unwrap();
+        assert_eq!(last.unwrap().seq, 9);
+        for d in [d2, d3, f1, other, f9] {
+            fs::remove_dir_all(d).unwrap();
+        }
     }
 }
