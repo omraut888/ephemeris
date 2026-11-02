@@ -74,7 +74,7 @@ that could disagree with its inputs.
 
 | State | Keyed by | Written by | CRDT type |
 |---|---|---|---|
-| **Bank records**: one version per Plaid `transaction_id` (account, dates, pending flag, amount in cents, `pending_transaction_id`, merchant, name, category), or a removal tombstone | Plaid `transaction_id` (string) | whichever device fetches | LWW register per record |
+| **Bank records**: one version per Plaid `transaction_id` (account, dates, pending flag, amount as reported, `pending_transaction_id`, merchant, name, category), or a removal tombstone | Plaid `transaction_id` (string) | whichever device fetches | LWW register per record |
 | **Account snapshots**: kind, currency, current balance | Plaid `account_id` | fetcher | LWW register per account |
 | **Latest fetch mark**: the fetch's `today` | — | fetcher | max of (`today`, HLC) |
 | **History coverage**: the days that fetches have covered | — | fetcher | union of day intervals |
@@ -93,9 +93,17 @@ machine-local), the replica's own id and clock, and the sync key. The Plaid
 access token and `/transactions/sync` cursor are also never synced: they
 are the fetcher's credentials (§1.4).
 
-Amounts are stored as **integer cents**. The materializer turns them into
-`cents as f64 / 100.0 + 0.0`. That is bit-identical to the adapter's
-current `cents()` rounding, so no float ever takes part in a merge.
+**Bank amounts are stored exactly as the bank reported them** (an `f64`,
+sign flipped to inflows positive). The feed rounds them to cents when it
+is built, as the adapter always has. No float takes part in a merge
+either way, because registers are only compared by their stamps.
+
+*Changed during step 1.* The design first said integer cents. But the
+sandbox fetch has 392 amounts with sub-cent digits (e.g. 48.2542), and
+the income detector sums *unrounded* amounts to rank streams. Rounding at
+ingest could therefore change which stream counts as income. Keeping the
+reported value makes the move byte-identical by construction rather than
+by luck. User-authored amounts (saved queries) are integer cents.
 
 ### 1.3 Which conflicts can actually happen
 
@@ -584,7 +592,7 @@ they cannot be merged (§1.1).
 - Interval-union normalization and `history_start` with gaps.
 - Effective override with pending predecessors.
 - Transfer-pair override propagation.
-- Cents round-trip identity with `cents()` over edge values.
+- Amounts survive a state round-trip bit for bit (`float_roundtrip`), and the feed rounds them as `import-plaid` did.
 
 **Lattice laws**, on random states (seeded): for every component and for
 `SyncState`: `merge(a,b) == merge(b,a)`,
