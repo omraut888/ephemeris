@@ -18,14 +18,20 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
 - Phase 3a, the iOS app, is in progress: crates/ephemeris-ffi (UniFFI)
   exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
   docs/phase3-design.md. Android (3b) comes later.
-- Phase 4b, sync between the apps, is designed but not approved or built:
-  docs/phase4b-design.md.
+- Phase 4b, sync between the apps, is in progress: the pure crate
+  crates/ephemeris-sync and the CLI's `ephemeris sync` commands are built;
+  shell adapters are not. Design and as-built notes: docs/phase4b-design.md.
+  The Mac is the only Plaid fetcher (§1.4).
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
 - crates/ephemeris-core: pure engine library. No I/O, no network, no printing.
   It will later compile to WASM and UniFFI bindings, so keep it portable.
 - crates/ephemeris-cli: thin wrapper for loading data, calling core, and printing results.
+- crates/ephemeris-sync: pure sync state (no I/O, clock or randomness):
+  bank records, the tagging that builds the feed, the HLC, the merge, user
+  edits and sealed files. Its convergence simulation is
+  `cargo test -p ephemeris-sync --test convergence` (soak: `-- --ignored`).
 - crates/ephemeris-wasm: wasm-bindgen wrapper; JSON in, JSON out, same schema as the CLI.
 - crates/ephemeris-desktop: the Tauri app. It is not a default workspace
   member, so use `-p ephemeris-desktop` (scripts/test-full.sh does this).
