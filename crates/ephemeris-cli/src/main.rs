@@ -74,22 +74,26 @@ enum Command {
         json: Option<PathBuf>,
     },
     /// Sync state: fetch into it, merge replicas, build the feed (docs/phase4b-design.md).
-    #[command(subcommand)]
-    Sync(SyncCommand),
+    Sync {
+        /// This device's replica file: plaintext financial data. It must be
+        /// gitignored; the default, data/sync/, is.
+        #[arg(long, global = true, default_value = sync::DEFAULT_STATE)]
+        state: PathBuf,
+        #[command(subcommand)]
+        command: SyncCommand,
+    },
 }
 
 #[derive(Subcommand)]
 enum SyncCommand {
     /// Create a replica file with a new, empty sync state.
     Init {
-        file: PathBuf,
         /// This replica's id (16 hex digits); random by default.
         #[arg(long)]
         replica: Option<String>,
     },
     /// Record a Plaid fetch (scripts/fetch_plaid_sandbox.py) in the sync state.
     ImportPlaid {
-        file: PathBuf,
         #[arg(long, default_value = "data/sandbox")]
         raw: PathBuf,
         /// The snapshot day; defaults to fetch_meta.json's fetched_on.
@@ -98,39 +102,27 @@ enum SyncCommand {
     },
     /// Merge other replica files into this one.
     Merge {
-        file: PathBuf,
         #[arg(required = true)]
         others: Vec<PathBuf>,
     },
     /// Write the schema-v1 feed the sync state describes.
     Materialize {
-        file: PathBuf,
         #[arg(long)]
         out: PathBuf,
     },
     /// Summarize a replica file.
-    Show { file: PathBuf },
+    Show,
+    /// Make this device the one that fetches from the bank (design §1.4),
+    /// e.g. after moving to a new Mac. Other devices are then refused.
+    TakeFetcher,
     /// Set or clear the kind of one transaction (by bank transaction id).
-    Override {
-        file: PathBuf,
-        id: String,
-        kind: KindArg,
-    },
+    Override { id: String, kind: KindArg },
     /// Set or clear the kind of every transaction from a counterparty.
-    Rule {
-        file: PathBuf,
-        counterparty: String,
-        kind: KindArg,
-    },
+    Rule { counterparty: String, kind: KindArg },
     /// Set a synced setting.
-    Set {
-        file: PathBuf,
-        setting: SettingArg,
-        value: u64,
-    },
+    Set { setting: SettingArg, value: u64 },
     /// Save a "can I afford it" query.
     QueryAdd {
-        file: PathBuf,
         /// Balance asked about, in account currency (e.g. 2000 or 1999.99).
         #[arg(long)]
         amount: String,
@@ -141,7 +133,6 @@ enum SyncCommand {
     },
     /// Change a saved query.
     QueryEdit {
-        file: PathBuf,
         id: String,
         #[arg(long)]
         amount: String,
@@ -151,10 +142,9 @@ enum SyncCommand {
         label: String,
     },
     /// Delete a saved query.
-    QueryRm { file: PathBuf, id: String },
+    QueryRm { id: String },
     /// List the live transactions with their final kind and where it came from.
     List {
-        file: PathBuf,
         #[arg(long)]
         kind: Option<KindArg>,
         #[arg(long, value_parser = parse_date)]
@@ -162,7 +152,6 @@ enum SyncCommand {
     },
     /// Write overrides, rules, settings and saved queries as plaintext JSON.
     Export {
-        file: PathBuf,
         /// Required: the export is not encrypted.
         #[arg(long, required = true)]
         plain: bool,
@@ -270,62 +259,49 @@ fn main() -> ExitCode {
             seed,
             json,
         }),
-        Command::Sync(c) => match c {
-            SyncCommand::Init { file, replica } => sync::init(&file, replica.as_deref()),
-            SyncCommand::ImportPlaid { file, raw, today } => sync::import_plaid(&file, &raw, today),
-            SyncCommand::Merge { file, others } => sync::merge(&file, &others),
-            SyncCommand::Materialize { file, out } => sync::materialize(&file, &out),
-            SyncCommand::Show { file } => sync::show(&file),
-            SyncCommand::Override { file, id, kind } => sync::edit(
-                &file,
+        Command::Sync { state, command } => match command {
+            SyncCommand::Init { replica } => sync::init(&state, replica.as_deref()),
+            SyncCommand::ImportPlaid { raw, today } => sync::import_plaid(&state, &raw, today),
+            SyncCommand::Merge { others } => sync::merge(&state, &others),
+            SyncCommand::Materialize { out } => sync::materialize(&state, &out),
+            SyncCommand::Show => sync::show(&state),
+            SyncCommand::TakeFetcher => sync::edit(&state, &Edit::TakeFetcher),
+            SyncCommand::Override { id, kind } => sync::edit(
+                &state,
                 &Edit::Override {
                     id,
                     kind: kind.kind(),
                 },
             ),
-            SyncCommand::Rule {
-                file,
-                counterparty,
-                kind,
-            } => sync::edit(
-                &file,
+            SyncCommand::Rule { counterparty, kind } => sync::edit(
+                &state,
                 &Edit::Rule {
                     counterparty,
                     kind: kind.kind(),
                 },
             ),
-            SyncCommand::Set {
-                file,
-                setting,
-                value,
-            } => {
+            SyncCommand::Set { setting, value } => {
                 let setting = match setting {
                     SettingArg::HorizonDays => Setting::HorizonDays,
                     SettingArg::Paths => Setting::Paths,
                     SettingArg::Seed => Setting::Seed,
                 };
-                sync::edit(&file, &Edit::Set { setting, value })
+                sync::edit(&state, &Edit::Set { setting, value })
             }
-            SyncCommand::QueryAdd {
-                file,
-                amount,
-                by,
-                label,
-            } => query(&amount, by, label)
-                .and_then(|query| sync::edit(&file, &Edit::AddQuery { query })),
+            SyncCommand::QueryAdd { amount, by, label } => query(&amount, by, label)
+                .and_then(|query| sync::edit(&state, &Edit::AddQuery { query })),
             SyncCommand::QueryEdit {
-                file,
                 id,
                 amount,
                 by,
                 label,
             } => query(&amount, by, label)
-                .and_then(|query| sync::edit(&file, &Edit::EditQuery { id, query })),
-            SyncCommand::QueryRm { file, id } => sync::edit(&file, &Edit::DeleteQuery { id }),
-            SyncCommand::List { file, kind, since } => {
-                sync::list(&file, kind.and_then(KindArg::kind), since)
+                .and_then(|query| sync::edit(&state, &Edit::EditQuery { id, query })),
+            SyncCommand::QueryRm { id } => sync::edit(&state, &Edit::DeleteQuery { id }),
+            SyncCommand::List { kind, since } => {
+                sync::list(&state, kind.and_then(KindArg::kind), since)
             }
-            SyncCommand::Export { file, out, .. } => sync::export_plain(&file, &out),
+            SyncCommand::Export { out, .. } => sync::export_plain(&state, &out),
         },
     };
     match result {

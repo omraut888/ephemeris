@@ -72,8 +72,62 @@ pub fn load(path: &Path) -> Result<ReplicaFile, String> {
     Ok(file)
 }
 
+/// Where this device's replica file lives by default. `data/sync/` is
+/// gitignored: the file is plaintext financial data.
+pub const DEFAULT_STATE: &str = "data/sync/replica.json";
+
+/// Refuse to write `path` if git would track it: inside a work tree and not
+/// ignored (or already tracked). Outside any repository, or without git,
+/// there is nothing to commit it to.
+pub fn ensure_untracked(path: &Path) -> Result<(), String> {
+    if path.file_name().is_none() {
+        return Err(format!("{} is not a file path", path.display()));
+    }
+    // Ask git from the nearest folder that exists (init may be about to
+    // create the rest), about the path relative to it.
+    let mut dir = path;
+    let rel = loop {
+        dir = match dir.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d,
+            _ => Path::new("."),
+        };
+        if dir.is_dir() {
+            break path.strip_prefix(dir).unwrap_or(path);
+        }
+    };
+    let git = |args: &[&std::ffi::OsStr]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .stderr(std::process::Stdio::null())
+            .output()
+    };
+    let inside = git(&["rev-parse".as_ref(), "--is-inside-work-tree".as_ref()]);
+    let in_repo = matches!(&inside, Ok(o) if o.status.success() && o.stdout.starts_with(b"true"));
+    if !in_repo {
+        return Ok(());
+    }
+    let ignored = git(&[
+        "check-ignore".as_ref(),
+        "-q".as_ref(),
+        "--".as_ref(),
+        rel.as_os_str(),
+    ]);
+    match ignored {
+        Ok(o) if o.status.success() => Ok(()),
+        _ => Err(format!(
+            "refusing to write {}: it is in a git work tree and not gitignored, so its \
+             plaintext financial data could be committed. Use the default ({DEFAULT_STATE}, \
+             gitignored) or a path outside the repository.",
+            path.display()
+        )),
+    }
+}
+
 /// Write via a temporary file and a rename, so a crash never leaves half a file.
 pub fn save(path: &Path, file: &ReplicaFile) -> Result<(), String> {
+    ensure_untracked(path)?;
     let tmp = path.with_extension("tmp");
     write_json(&tmp, file)?;
     fs::rename(&tmp, path).map_err(|e| format!("cannot write {}: {e}", path.display()))
@@ -82,6 +136,10 @@ pub fn save(path: &Path, file: &ReplicaFile) -> Result<(), String> {
 pub fn init(path: &Path, replica: Option<&str>) -> Result<(), String> {
     if path.exists() {
         return Err(format!("{} already exists", path.display()));
+    }
+    ensure_untracked(path)?;
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     }
     let id = match replica {
         Some(s) => parse_replica(s)?,
@@ -133,7 +191,16 @@ pub fn fetch_batch(
 pub fn import_plaid(path: &Path, raw: &Path, today: Option<Day>) -> Result<(), String> {
     let mut file = load(path)?;
     let batch = plaid_batch(raw, today)?;
-    let at = file.state.ingest(&batch, file.id()?, now_ms())?;
+    let at = file
+        .state
+        .ingest(&batch, file.id()?, now_ms())
+        .map_err(|e| {
+            if e.contains("fetched by device") {
+                format!("{e}\n  On this device: ephemeris sync take-fetcher")
+            } else {
+                e
+            }
+        })?;
     save(path, &file)?;
     println!(
         "Fetched {} records, {} accounts, {}..={}, stamped {at:?}",
@@ -297,5 +364,39 @@ mod tests {
         assert_eq!(parse_replica("00000000000000ff"), Ok(255));
         assert!(parse_replica("ff").is_err());
         assert!(parse_replica("zz000000000000ff").is_err());
+    }
+
+    /// The replica file holds plaintext financial data: the CLI must never
+    /// write it where git would pick it up. Tests run from crates/ephemeris-cli.
+    #[test]
+    fn replica_files_are_only_written_where_git_ignores_them() {
+        let git_works = std::process::Command::new("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if !git_works {
+            return; // not a checkout (e.g. a packaged source tree)
+        }
+        // The default location, before data/sync/ exists or after.
+        let default = Path::new("../..").join(DEFAULT_STATE);
+        assert_eq!(ensure_untracked(&default), Ok(()));
+        assert_eq!(
+            ensure_untracked(Path::new("../../data/sync/deeper/x.json")),
+            Ok(())
+        );
+        // The repository root and a source folder are not ignored.
+        for p in [
+            "../../replica.json",
+            "src/replica.json",
+            "../../data/replica.json",
+        ] {
+            let err = ensure_untracked(Path::new(p)).unwrap_err();
+            assert!(err.contains("refusing to write"), "{p}: {err}");
+        }
+        // A tracked file is refused even where a pattern might match.
+        assert!(ensure_untracked(Path::new("src/main.rs")).is_err());
+        // Outside any repository there is nothing to commit it to.
+        let outside = std::env::temp_dir().join("ephemeris-replica-test.json");
+        assert_eq!(ensure_untracked(&outside), Ok(()));
     }
 }

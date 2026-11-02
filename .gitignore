@@ -5,3 +5,5 @@
 .env.*
 data/sandbox/*.json
 !data/sandbox/.gitkeep
+# The CLI's sync replica file (plaintext financial data; docs/phase4b-design.md §8).
+data/sync/
