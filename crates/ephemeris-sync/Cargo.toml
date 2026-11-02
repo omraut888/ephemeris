@@ -15,6 +15,8 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
+# The convergence simulation compares forecasts across replicas.
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
 # Seeded random states for the lattice-law tests and the multi-replica
 # simulation. Already in the graph through the core; no new crates.
 rand = { version = "0.10", default-features = false }

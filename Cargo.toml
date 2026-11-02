@@ -18,6 +18,17 @@ default-members = [
 [profile.dev.package.ephemeris-core]
 opt-level = 3
 
+# The sync crate's convergence simulation seals, opens and merges thousands
+# of states; unoptimized JSON and cipher code make it several times slower.
+[profile.dev.package.ephemeris-sync]
+opt-level = 3
+[profile.dev.package.serde_json]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+
 [profile.release]
 lto = true
 codegen-units = 1
