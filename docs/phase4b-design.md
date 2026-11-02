@@ -80,7 +80,7 @@ that could disagree with its inputs.
 | **History coverage**: the days that fetches have covered | — | fetcher | union of day intervals |
 | **Per-record overrides**: "this is a transfer / bill / income / everyday spending", or cleared | Plaid `transaction_id` | user, any device | LWW register of `Option<FlowKind>` |
 | **Per-counterparty rules**: "Venmo from Sam is never income", "City Water is a bill" | counterparty key (the adapter's normalized merchant-or-name) | user | LWW register of `Option<FlowKind>` |
-| **Synced settings**: horizon, paths, **seed**, the afford default | setting name | user | LWW register per setting |
+| **Synced settings**: horizon, paths, **seed** | setting name | user | LWW register per setting |
 | **Saved afford queries**: amount (cents), date, label | query id (replica id + counter, never reused) | user | LWW register of `Option<Query>` (None = deleted) |
 
 The seed is a synced setting on purpose. The same records, overrides and
@@ -120,11 +120,17 @@ disagree about the truth, only about how recently they looked.
 - *A pending charge is cancelled.* Plaid reports a removal, kept as a
   tombstone. A stale device that still holds the pending version cannot
   bring it back: its version is older.
-- *Two concurrent fetches.* Both see the bank within seconds of each
-  other, and whichever HLC is larger wins. A version could lose only to an
-  older one if the two devices' clocks are skewed by more than the time
-  between the fetches. Even then, the next fetch corrects it. This is
-  accepted, not prevented.
+- *Two concurrent fetches* (only possible with more than one fetcher,
+  §1.4). Whichever HLC is larger wins. A version can lose to an older one
+  when the two devices' clocks are skewed by more than the time between
+  the fetches, and the newer fetcher had not yet merged the older one.
+  *Corrected in step 6:* the first draft said "the next fetch corrects
+  it". That holds only for a **complete** fetch, which re-stamps every
+  record in its window, or a delta that touches that record again. The
+  simulation found a cancelled pending charge surviving an ordinary delta
+  fetch under a one-day skew. With the single fetcher of §1.4 this cannot
+  happen: one replica's stamps rise with its own fetches. A test pins the
+  limit down (§5).
 - *Different history depths* (one fetch went back 90 days, another 730).
   The coverage union keeps both. The materialized `history_start` is the
   earliest day from which coverage is unbroken through the latest
@@ -171,9 +177,12 @@ Plaid's secret cannot ship in an app, and in this phase only the Mac has
 it (`.env`, the fetch script). Today the iPhone and the browser can only
 open files. Sync makes **the Mac the fetcher**: it ingests Plaid pages
 into the sync state, and the other devices receive records through sync.
-More fetchers would also be safe, because ingesting the same pages twice
-is idempotent. But a production Plaid link needs a server, and that is
-out of scope.
+Ingesting the same pages twice is idempotent. A second fetcher would
+converge too, but with a weaker guarantee: under clock skew a stale bank
+version can win until a complete fetch (§1.3). So **a single fetcher is a
+rule, not just today's situation.** If a second fetcher is ever added, it
+should make a complete fetch periodically. A production Plaid link needs
+a server anyway, and that is out of scope.
 
 **The Plaid access token lives in the macOS Keychain, never in a file.**
 Today `scripts/fetch_plaid_sandbox.py` makes a new sandbox item on every
@@ -735,3 +744,85 @@ scratch and FFI slices and `rm -rf ios/build` recover space, as in 3a.
 5. LWW is ordered by a hybrid logical clock with a replica-id tiebreak,
    never by wall time (§2.5).
 6. Overrides are CLI-only in 4b, and the override UI is Phase 4c (§4.4).
+
+## 8. As built: steps 1–6 (checkpoint, 2026-11-02)
+
+Steps 1–6 of §6.2 are done, with no shell adapter yet.
+
+### What exists
+
+- **`crates/ephemeris-sync`** is pure and `forbid(unsafe_code)`, with
+  no I/O, clock or randomness:
+  - `bank`: `BankRecord`, `AccountSnapshot`, `Category`;
+  - `tag`: the tagging moved from the CLI, plus a kind hook for
+    overrides;
+  - `hlc`: the clock (§2.5);
+  - `lww`: LWW registers and day intervals;
+  - `state`: `SyncState`, its validation and the all-or-nothing merge;
+  - `ingest`: fetches in, the feed out;
+  - `edits`: overrides, rules, settings, queries and the effective kind;
+  - `envelope`: sealed files, and the key as text.
+- **`ephemeris sync …`** (CLI): `init`, `import-plaid`, `merge`,
+  `materialize`, `show`, `override`, `rule`, `set`, `query-add`,
+  `query-edit`, `query-rm`, `list` and `export --plain`. A replica file is
+  plain JSON (`{replica, state}`). That makes it a developer tool: the
+  sealed per-device files come with the adapters (step 9 on).
+
+### Checks, measured
+
+- **Step 1 gate.** `import-plaid` writes byte-identical feeds before and
+  after the move:
+  - the sandbox fetch (91 records, one depository account);
+  - two other `--today` values;
+  - a variant with all seven accounts as depository (392 records, 15
+    pending).
+
+  The 20 adapter tests pass unchanged apart from imports. Each of them now
+  also checks that ingest + materialize gives the same feed.
+- **Sync path = import path.** On the sandbox fetch, the feed from
+  `sync init` + `sync import-plaid` + `sync materialize` is byte-identical
+  to `import-plaid`'s. So is the feed from a second replica that only
+  merged, and a repeated import changes nothing.
+- **Unit tests:** 42 in the crate. They cover the HLC (rules, overflow,
+  backward jumps, causality under ±1 h and ±1 day skew), the lattice laws
+  on 500 seeded triples compared as bytes, ingest, override precedence,
+  and the envelope (tampering, renaming, truncation, a wrong key).
+  - A mutation (`fetched` join made "last merged wins") fails the law
+    test.
+- **Simulation** (`tests/convergence.rs`), each run with four replicas
+  and 400 steps:
+  - 100 seeds with one fetcher;
+  - 100 seeds with two fetchers;
+  - one test that pins the two-fetcher limit.
+
+  The default pass takes **6.7 s**. The `--ignored` soak (4,000 more runs)
+  passes in **4 min 17 s**. Removing the HLC receive rule fails it at
+  seed 0 with a causality violation.
+
+### Deviations from the design above
+
+- **Bank amounts are stored as reported, not as cents** (§1.2,
+  explained there).
+- **Two fetchers settle only on a complete fetch** (§1.3, §1.4). That
+  makes one fetcher a rule. The finding came from the simulation.
+- **The "afford default" setting is dropped.** The synced settings are
+  horizon, paths and seed: the three `ForecastOptions` the shells
+  already share.
+- **State size is 446 B per record in compact form**, measured on the
+  sandbox fetch (392 records, 175 kB sealed), against the 250–300 B
+  estimated in §3.5. The cost is Plaid's long ids, a stamp per record,
+  and both the merchant name and the description.
+- **Dev profile.** `ephemeris-sync`, `serde_json`, `chacha20` and
+  `poly1305` build at `opt-level = 3` in dev, as the core already does.
+  The simulation fell from 83 s to 6.7 s. The desktop crate's dev build
+  also compiles `serde_json` optimized now.
+- **New crates:** `chacha20poly1305` 0.10 and its 9 RustCrypto
+  dependencies (`aead`, `chacha20`, `cipher`, `inout`, `opaque-debug`,
+  `poly1305`, `subtle`, `universal-hash`, `zeroize`).
+
+### Not done yet (after the checkpoint)
+
+Step 7 is the fetch script's Keychain token and incremental fetching.
+Steps 8–12 are the WASM and FFI exports with the cross-platform golden
+check, the desktop, web and iOS adapters, and the final as-built
+measurements. No shell reads or writes a sync file yet.
