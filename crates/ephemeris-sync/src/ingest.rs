@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 
+use ephemeris_core::FlowKind;
 use ephemeris_core::schema::{Date, Feed};
 use serde::{Deserialize, Serialize};
 
@@ -144,13 +145,23 @@ impl SyncState {
         Ok((today, records))
     }
 
-    /// The schema-v1 feed this state describes (design §4.2).
+    /// The schema-v1 feed this state describes, the user's overrides and
+    /// rules applied (design §4.2).
     pub fn materialize(&self) -> Result<(Feed, Notes), String> {
+        self.materialize_with(|r, partner, tagged| self.effective_kind(r, partner, tagged))
+    }
+
+    /// [`Self::materialize`] with a different kind hook (see
+    /// [`tag::to_feed_with`]); the CLI uses it to show why a record has its kind.
+    pub fn materialize_with(
+        &self,
+        edit: impl Fn(&BankRecord, Option<&BankRecord>, FlowKind) -> FlowKind,
+    ) -> Result<(Feed, Notes), String> {
         let (today, records) = self.live_records()?;
         let records: Vec<BankRecord> = records.into_iter().cloned().collect();
         let accounts: Vec<AccountSnapshot> =
             self.accounts.values().map(|v| v.value.clone()).collect();
-        tag::to_feed(&records, &accounts, today)
+        tag::to_feed_with(&records, &accounts, today, edit)
     }
 }
 

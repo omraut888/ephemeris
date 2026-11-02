@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bank;
+pub mod edits;
 pub mod hlc;
 pub mod ingest;
 pub mod lww;

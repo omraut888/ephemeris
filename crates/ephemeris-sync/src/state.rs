@@ -218,8 +218,9 @@ impl SyncState {
         for v in self.rules.values() {
             issued(&v.at, "rule")?;
         }
-        for v in self.settings.values() {
+        for (k, v) in &self.settings {
             issued(&v.at, "setting")?;
+            crate::edits::check_setting(*k, v.value)?;
         }
         for (id, v) in &self.queries {
             issued(&v.at, "query")?;
@@ -301,7 +302,7 @@ pub(crate) mod tests {
                     let setting = [Setting::HorizonDays, Setting::Paths, Setting::Seed]
                         [rng.random_range(0..3)];
                     s.settings
-                        .insert(setting, Lww::new(at, rng.random_range(0..5)));
+                        .insert(setting, Lww::new(at, rng.random_range(1..6)));
                 }
                 3 => {
                     let v = rng.random_bool(0.7).then(|| SavedQuery {

@@ -73,6 +73,8 @@ pub struct Notes {
     /// Records with enough same-amount repeats but irregular timing.
     pub irregular_repeats: usize,
     pub scheduled_by_category: usize,
+    /// Records whose kind the user's overrides or rules changed.
+    pub overridden: usize,
 }
 
 /// The feed for `records` and `accounts` as of the end of `today`.
@@ -82,6 +84,21 @@ pub fn to_feed(
     records: &[BankRecord],
     accounts: &[AccountSnapshot],
     today: Date,
+) -> Result<(Feed, Notes), String> {
+    to_feed_with(records, accounts, today, |_, _, tagged| tagged)
+}
+
+/// [`to_feed`], with each record's kind passed through `edit` after tagging:
+/// `edit(record, partner, tagged)`, where `partner` is the other leg when the
+/// record is half of a matched transfer pair. The user's overrides enter
+/// here (design §1.3). Tagging itself (transfer pairs, the primary income
+/// stream, repeats) sees the records as the bank reported them; streams are
+/// assigned from the final kinds.
+pub fn to_feed_with(
+    records: &[BankRecord],
+    accounts: &[AccountSnapshot],
+    today: Date,
+    edit: impl Fn(&BankRecord, Option<&BankRecord>, FlowKind) -> FlowKind,
 ) -> Result<(Feed, Notes), String> {
     let mut notes = Notes::default();
 
@@ -153,7 +170,8 @@ pub fn to_feed(
     let days: HashMap<&str, Day> = current.values().map(|t| (t.id.as_str(), t.day())).collect();
 
     // 4. Tags.
-    let transfers = match_transfers(&current, &days, today.0, accounts.len(), &mut notes);
+    let (transfers, partners) =
+        match_transfers(&current, &days, today.0, accounts.len(), &mut notes);
     let key = |t: &BankRecord| counterparty(t.merchant_name.as_deref(), t.name.as_deref());
     let income = primary_income(
         current
@@ -199,6 +217,10 @@ pub fn to_feed(
         } else {
             classify(t, same, &mut notes)
         };
+        let partner = partners.get(t.id.as_str()).map(|p| current[p]);
+        let tagged = kind;
+        let kind = edit(t, partner, tagged);
+        notes.overridden += usize::from(kind != tagged);
         stream_keys.push(matches!(kind, FlowKind::Income | FlowKind::Scheduled).then_some(k));
         out.push(FeedTransaction {
             id: ids[t.id.as_str()],
@@ -263,14 +285,15 @@ fn within_business_days(a: Day, b: Day, window: u32) -> bool {
 
 /// Ids of the records that are own-account transfers (module docs, step 4):
 /// matched pairs, plus unmatched legs still in flight when another account
-/// could show their counterpart.
+/// could show their counterpart. Also each matched leg's partner.
 fn match_transfers<'a>(
     current: &BTreeMap<&'a str, &'a BankRecord>,
     days: &HashMap<&str, Day>,
     today: Day,
     n_accounts: usize,
     notes: &mut Notes,
-) -> BTreeSet<&'a str> {
+) -> (BTreeSet<&'a str>, HashMap<&'a str, &'a str>) {
+    let mut partners = HashMap::new();
     let mut legs: Vec<&BankRecord> = current
         .values()
         .copied()
@@ -294,6 +317,8 @@ fn match_transfers<'a>(
         if let Some(inc) = partner {
             tagged.insert(out.id.as_str());
             tagged.insert(inc.id.as_str());
+            partners.insert(out.id.as_str(), inc.id.as_str());
+            partners.insert(inc.id.as_str(), out.id.as_str());
             notes.transfers += 2;
         }
     }
@@ -309,7 +334,7 @@ fn match_transfers<'a>(
             notes.unmatched_transfers += 1;
         }
     }
-    tagged
+    (tagged, partners)
 }
 
 /// Amount in whole cents, for grouping equal charges. Rounds half away from
