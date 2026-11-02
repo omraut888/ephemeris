@@ -90,16 +90,7 @@ pub fn to_feed(
     balances: &BalanceFile,
     today: Date,
 ) -> Result<(Feed, Notes), String> {
-    let accounts: Vec<AccountSnapshot> = balances
-        .accounts
-        .iter()
-        .map(|a| AccountSnapshot {
-            id: a.account_id.clone(),
-            depository: a.kind == "depository",
-            current: a.balances.current,
-            currency: a.balances.iso_currency_code.clone(),
-        })
-        .collect();
+    let accounts = account_snapshots(balances);
     let records = current_records(sync)
         .into_values()
         .map(bank_record)
@@ -160,6 +151,16 @@ struct FetchMeta {
 
 /// `ephemeris import-plaid`: read the fetcher's raw files, write a feed.
 pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
+    let (sync, balances, today) = load(raw, today)?;
+    let (feed, notes) = to_feed(&sync, &balances, today)?;
+    write_json(out, &feed)?;
+    print_summary(&feed, &notes, out);
+    Ok(())
+}
+
+/// The fetcher's raw files and the snapshot day (`today`, else the fetch
+/// date in fetch_meta.json).
+pub fn load(raw: &Path, today: Option<Day>) -> Result<(SyncFile, BalanceFile, Date), String> {
     let sync: SyncFile = read_json(
         &raw.join("transactions_sync.json"),
         "/transactions/sync dump",
@@ -182,9 +183,25 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
             })?
         }
     };
-    let (feed, notes) = to_feed(&sync, &balances, today)?;
-    write_json(out, &feed)?;
+    Ok((sync, balances, today))
+}
 
+/// The bank accounts in a balances dump.
+pub fn account_snapshots(balances: &BalanceFile) -> Vec<AccountSnapshot> {
+    balances
+        .accounts
+        .iter()
+        .map(|a| AccountSnapshot {
+            id: a.account_id.clone(),
+            depository: a.kind == "depository",
+            current: a.balances.current,
+            currency: a.balances.iso_currency_code.clone(),
+        })
+        .collect()
+}
+
+/// What `import-plaid` and `sync materialize` print about a feed.
+pub fn print_summary(feed: &Feed, notes: &Notes, out: &Path) {
     let count = |k: FlowKind| feed.transactions.iter().filter(|t| t.kind == k).count();
     let pending = feed
         .transactions
@@ -272,7 +289,6 @@ pub fn run(raw: &Path, today: Option<Day>, out: &Path) -> Result<(), String> {
             println!("    {n} {what}");
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -329,7 +345,15 @@ mod tests {
 
     fn convert(pages: Value) -> (Feed, Notes) {
         let sync: SyncFile = serde_json::from_value(json!({ "pages": pages })).unwrap();
-        to_feed(&sync, &balances(), Date::parse("2026-10-21").unwrap()).unwrap()
+        let today = Date::parse("2026-10-21").unwrap();
+        let direct = to_feed(&sync, &balances(), today).unwrap();
+        // The same fetch recorded in a sync state builds the same feed: every
+        // test below checks `sync materialize` as well as `import-plaid`.
+        let batch = crate::sync::fetch_batch(&sync, &balances(), today).unwrap();
+        let mut state = ephemeris_sync::SyncState::new();
+        state.ingest(&batch, 1, 0).unwrap();
+        assert_eq!(state.materialize().unwrap(), direct);
+        direct
     }
 
     fn one_page(added: Vec<Value>) -> Value {

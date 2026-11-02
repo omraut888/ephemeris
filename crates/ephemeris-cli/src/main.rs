@@ -8,6 +8,7 @@ mod files;
 mod forecast;
 mod plaid;
 mod simulate;
+mod sync;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -70,6 +71,43 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
+    /// Sync state: fetch into it, merge replicas, build the feed (docs/phase4b-design.md).
+    #[command(subcommand)]
+    Sync(SyncCommand),
+}
+
+#[derive(Subcommand)]
+enum SyncCommand {
+    /// Create a replica file with a new, empty sync state.
+    Init {
+        file: PathBuf,
+        /// This replica's id (16 hex digits); random by default.
+        #[arg(long)]
+        replica: Option<String>,
+    },
+    /// Record a Plaid fetch (scripts/fetch_plaid_sandbox.py) in the sync state.
+    ImportPlaid {
+        file: PathBuf,
+        #[arg(long, default_value = "data/sandbox")]
+        raw: PathBuf,
+        /// The snapshot day; defaults to fetch_meta.json's fetched_on.
+        #[arg(long, value_parser = parse_date)]
+        today: Option<Day>,
+    },
+    /// Merge other replica files into this one.
+    Merge {
+        file: PathBuf,
+        #[arg(required = true)]
+        others: Vec<PathBuf>,
+    },
+    /// Write the schema-v1 feed the sync state describes.
+    Materialize {
+        file: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Summarize a replica file.
+    Show { file: PathBuf },
 }
 
 /// Which synthetic generator to use (design §5).
@@ -111,6 +149,13 @@ fn main() -> ExitCode {
             seed,
             json,
         }),
+        Command::Sync(c) => match c {
+            SyncCommand::Init { file, replica } => sync::init(&file, replica.as_deref()),
+            SyncCommand::ImportPlaid { file, raw, today } => sync::import_plaid(&file, &raw, today),
+            SyncCommand::Merge { file, others } => sync::merge(&file, &others),
+            SyncCommand::Materialize { file, out } => sync::materialize(&file, &out),
+            SyncCommand::Show { file } => sync::show(&file),
+        },
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
