@@ -14,8 +14,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use ephemeris_core::Day;
 use ephemeris_core::schema::Date;
+use ephemeris_core::{Day, FlowKind};
+use ephemeris_sync::edits::Edit;
+use ephemeris_sync::state::{SavedQuery, Setting};
 
 #[derive(Parser)]
 #[command(name = "ephemeris", version, about = "Financial trajectory engine")]
@@ -108,6 +110,125 @@ enum SyncCommand {
     },
     /// Summarize a replica file.
     Show { file: PathBuf },
+    /// Set or clear the kind of one transaction (by bank transaction id).
+    Override {
+        file: PathBuf,
+        id: String,
+        kind: KindArg,
+    },
+    /// Set or clear the kind of every transaction from a counterparty.
+    Rule {
+        file: PathBuf,
+        counterparty: String,
+        kind: KindArg,
+    },
+    /// Set a synced setting.
+    Set {
+        file: PathBuf,
+        setting: SettingArg,
+        value: u64,
+    },
+    /// Save a "can I afford it" query.
+    QueryAdd {
+        file: PathBuf,
+        /// Balance asked about, in account currency (e.g. 2000 or 1999.99).
+        #[arg(long)]
+        amount: String,
+        #[arg(long, value_parser = parse_date)]
+        by: Day,
+        #[arg(long, default_value = "")]
+        label: String,
+    },
+    /// Change a saved query.
+    QueryEdit {
+        file: PathBuf,
+        id: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long, value_parser = parse_date)]
+        by: Day,
+        #[arg(long, default_value = "")]
+        label: String,
+    },
+    /// Delete a saved query.
+    QueryRm { file: PathBuf, id: String },
+    /// List the live transactions with their final kind and where it came from.
+    List {
+        file: PathBuf,
+        #[arg(long)]
+        kind: Option<KindArg>,
+        #[arg(long, value_parser = parse_date)]
+        since: Option<Day>,
+    },
+    /// Write overrides, rules, settings and saved queries as plaintext JSON.
+    Export {
+        file: PathBuf,
+        /// Required: the export is not encrypted.
+        #[arg(long, required = true)]
+        plain: bool,
+        #[arg(long)]
+        out: PathBuf,
+    },
+}
+
+/// A flow kind, or `clear` to remove an override or rule.
+#[derive(Clone, Copy, PartialEq, ValueEnum)]
+enum KindArg {
+    Income,
+    Scheduled,
+    Discretionary,
+    Transfer,
+    Clear,
+}
+
+impl KindArg {
+    fn kind(self) -> Option<FlowKind> {
+        match self {
+            KindArg::Income => Some(FlowKind::Income),
+            KindArg::Scheduled => Some(FlowKind::Scheduled),
+            KindArg::Discretionary => Some(FlowKind::Discretionary),
+            KindArg::Transfer => Some(FlowKind::Transfer),
+            KindArg::Clear => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum SettingArg {
+    HorizonDays,
+    Paths,
+    Seed,
+}
+
+/// A decimal amount in cents, exactly ("12.5" → 1250), never through a float.
+fn parse_cents(s: &str) -> Result<i64, String> {
+    let bad = || format!("{s:?} is not an amount like 2000 or 1999.99");
+    let (neg, t) = match s.strip_prefix('-') {
+        Some(t) => (true, t),
+        None => (false, s),
+    };
+    let (whole, frac) = t.split_once('.').unwrap_or((t, ""));
+    if whole.is_empty()
+        || frac.len() > 2
+        || !(whole.chars().chain(frac.chars())).all(|c| c.is_ascii_digit())
+    {
+        return Err(bad());
+    }
+    let cents = whole
+        .parse::<i64>()
+        .ok()
+        .and_then(|w| w.checked_mul(100))
+        .and_then(|w| w.checked_add(format!("{frac:0<2}").parse::<i64>().ok()?))
+        .ok_or_else(bad)?;
+    Ok(if neg { -cents } else { cents })
+}
+
+fn query(amount: &str, by: Day, label: String) -> Result<SavedQuery, String> {
+    Ok(SavedQuery {
+        amount_cents: parse_cents(amount)?,
+        by: Date(by),
+        label,
+    })
 }
 
 /// Which synthetic generator to use (design §5).
@@ -155,6 +276,56 @@ fn main() -> ExitCode {
             SyncCommand::Merge { file, others } => sync::merge(&file, &others),
             SyncCommand::Materialize { file, out } => sync::materialize(&file, &out),
             SyncCommand::Show { file } => sync::show(&file),
+            SyncCommand::Override { file, id, kind } => sync::edit(
+                &file,
+                &Edit::Override {
+                    id,
+                    kind: kind.kind(),
+                },
+            ),
+            SyncCommand::Rule {
+                file,
+                counterparty,
+                kind,
+            } => sync::edit(
+                &file,
+                &Edit::Rule {
+                    counterparty,
+                    kind: kind.kind(),
+                },
+            ),
+            SyncCommand::Set {
+                file,
+                setting,
+                value,
+            } => {
+                let setting = match setting {
+                    SettingArg::HorizonDays => Setting::HorizonDays,
+                    SettingArg::Paths => Setting::Paths,
+                    SettingArg::Seed => Setting::Seed,
+                };
+                sync::edit(&file, &Edit::Set { setting, value })
+            }
+            SyncCommand::QueryAdd {
+                file,
+                amount,
+                by,
+                label,
+            } => query(&amount, by, label)
+                .and_then(|query| sync::edit(&file, &Edit::AddQuery { query })),
+            SyncCommand::QueryEdit {
+                file,
+                id,
+                amount,
+                by,
+                label,
+            } => query(&amount, by, label)
+                .and_then(|query| sync::edit(&file, &Edit::EditQuery { id, query })),
+            SyncCommand::QueryRm { file, id } => sync::edit(&file, &Edit::DeleteQuery { id }),
+            SyncCommand::List { file, kind, since } => {
+                sync::list(&file, kind.and_then(KindArg::kind), since)
+            }
+            SyncCommand::Export { file, out, .. } => sync::export_plain(&file, &out),
         },
     };
     match result {
@@ -162,6 +333,36 @@ fn main() -> ExitCode {
         Err(msg) => {
             eprintln!("error: {msg}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cents;
+
+    #[test]
+    fn amounts_parse_to_exact_cents() {
+        for (s, c) in [
+            ("2000", 200_000),
+            ("1999.99", 199_999),
+            ("12.5", 1250),
+            ("0.07", 7),
+            ("-3.10", -310),
+        ] {
+            assert_eq!(parse_cents(s), Ok(c), "{s}");
+        }
+        for s in [
+            "",
+            ".5",
+            "1.234",
+            "1e3",
+            "12,5",
+            "--1",
+            "abc",
+            "99999999999999999999",
+        ] {
+            assert!(parse_cents(s).is_err(), "{s}");
         }
     }
 }

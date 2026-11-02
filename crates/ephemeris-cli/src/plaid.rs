@@ -280,6 +280,10 @@ pub fn print_summary(feed: &Feed, notes: &Notes, out: &Path) {
             "posted records without authorized_date (posted date used)".into(),
         ),
         (
+            notes.overridden,
+            "records whose kind an override or rule changed (ephemeris sync list)".into(),
+        ),
+        (
             notes.superseded_pending,
             "pending records dropped for their posted versions".into(),
         ),

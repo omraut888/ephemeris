@@ -5,15 +5,20 @@
 //! It is a developer tool: the sealed per-device files and their key come
 //! with the shell adapters (design §3).
 
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ephemeris_core::Day;
 use ephemeris_core::schema::Date;
+use ephemeris_core::{Day, FlowKind};
+use ephemeris_sync::edits::{Edit, rule_key};
 use ephemeris_sync::ingest::FetchBatch;
-use ephemeris_sync::{ReplicaId, SyncState};
+use ephemeris_sync::lww::Lww;
+use ephemeris_sync::state::{SavedQuery, Setting};
+use ephemeris_sync::{BankRecord, ReplicaId, SyncState, tag};
 use serde::{Deserialize, Serialize};
 
 use crate::files::write_json;
@@ -183,6 +188,102 @@ pub fn show(path: &Path) -> Result<(), String> {
         s.rules.len(),
         s.settings.len(),
         s.queries.len()
+    );
+    Ok(())
+}
+
+/// Apply one user edit to the replica file (design §4.4: CLI-only in 4b).
+pub fn edit(path: &Path, edit: &Edit) -> Result<(), String> {
+    let mut file = load(path)?;
+    let new_id = file.state.edit(edit, file.id()?, now_ms())?;
+    save(path, &file)?;
+    match new_id {
+        Some(id) => println!("Saved query {id}"),
+        None => println!("Done"),
+    }
+    Ok(())
+}
+
+/// Where a record's kind came from.
+fn source(state: &SyncState, r: &BankRecord, tagged: FlowKind, kind: FlowKind) -> &'static str {
+    if kind == tagged {
+        "tagged"
+    } else if state.record_override(r).is_some_and(|v| v.value.is_some()) {
+        "override"
+    } else if state.rules.contains_key(&rule_key(&tag::counterparty(
+        r.merchant_name.as_deref(),
+        r.name.as_deref(),
+    ))) {
+        "rule"
+    } else {
+        "transfer partner's override"
+    }
+}
+
+/// The live records with their final kind and why, newest first.
+pub fn list(path: &Path, kind: Option<FlowKind>, since: Option<Day>) -> Result<(), String> {
+    let file = load(path)?;
+    let state = &file.state;
+    let seen: RefCell<BTreeMap<String, (FlowKind, FlowKind)>> = RefCell::default();
+    state.materialize_with(|r, partner, tagged| {
+        let k = state.effective_kind(r, partner, tagged);
+        seen.borrow_mut().insert(r.id.clone(), (tagged, k));
+        k
+    })?;
+    let seen = seen.into_inner();
+    let (_, records) = state.live_records()?;
+    let mut rows: Vec<&BankRecord> = records
+        .into_iter()
+        .filter(|r| seen.contains_key(&r.id))
+        .filter(|r| since.is_none_or(|d| r.day() >= d))
+        .filter(|r| kind.is_none_or(|k| seen[&r.id].1 == k))
+        .collect();
+    rows.sort_by(|a, b| (b.day(), &b.id).cmp(&(a.day(), &a.id)));
+    for r in rows {
+        let (tagged, k) = seen[&r.id];
+        let name = r
+            .merchant_name
+            .as_deref()
+            .or(r.name.as_deref())
+            .unwrap_or("");
+        println!(
+            "{}  {:>10.2}  {:<13}  {:<8}  {}{}  {}",
+            Date(r.day()),
+            r.amount,
+            format!("{k:?}").to_lowercase(),
+            source(state, r, tagged, k),
+            name,
+            if r.pending { " (pending)" } else { "" },
+            r.id
+        );
+    }
+    Ok(())
+}
+
+/// The user-authored state, for the user's own backup (design §3.4).
+#[derive(Serialize)]
+struct UserState<'a> {
+    overrides: &'a BTreeMap<String, Lww<Option<FlowKind>>>,
+    rules: &'a BTreeMap<String, Lww<Option<FlowKind>>>,
+    settings: &'a BTreeMap<Setting, Lww<u64>>,
+    queries: &'a BTreeMap<String, Lww<Option<SavedQuery>>>,
+}
+
+pub fn export_plain(path: &Path, out: &Path) -> Result<(), String> {
+    let file = load(path)?;
+    let s = &file.state;
+    write_json(
+        out,
+        &UserState {
+            overrides: &s.overrides,
+            rules: &s.rules,
+            settings: &s.settings,
+            queries: &s.queries,
+        },
+    )?;
+    println!(
+        "Wrote overrides, rules, settings and saved queries to {} (plaintext: keep it private)",
+        out.display()
     );
     Ok(())
 }
