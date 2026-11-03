@@ -26,6 +26,11 @@ serde_json = "1"
 tauri = { version = "2.12", features = [] }
 # The native open dialog, called from Rust only.
 tauri-plugin-dialog = "2.8"
+# Sync (docs/phase4b-design.md §4): the state, the folder transport and
+# Keychain key, and Plaid imports for when this device is the fetcher.
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
+ephemeris-sync-folder = { version = "0.1.0", path = "../ephemeris-sync-folder" }
+ephemeris-plaid = { version = "0.1.0", path = "../ephemeris-plaid" }
 
 [dev-dependencies]
 # Calls the commands through Tauri's IPC layer for the golden test.

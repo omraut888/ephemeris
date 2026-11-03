@@ -993,6 +993,9 @@ name = "ephemeris-desktop"
 version = "0.1.0"
 dependencies = [
  "ephemeris-core",
+ "ephemeris-plaid",
+ "ephemeris-sync",
+ "ephemeris-sync-folder",
  "serde",
  "serde_json",
  "tauri",

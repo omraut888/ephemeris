@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 mod recent;
+mod sync;
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,7 @@ use tauri::{AppHandle, DragDropEvent, Emitter, Manager, Runtime, State, WindowEv
 use tauri_plugin_dialog::DialogExt;
 
 pub use recent::{RecentFeed, RecentFile};
+pub use sync::{Device, Query, SyncStatus, SyncedFeed};
 
 /// Larger files are refused unread; a year of transactions is under 1 MiB.
 pub const MAX_FEED_BYTES: u64 = 32 * 1024 * 1024;
@@ -130,6 +132,97 @@ async fn open_recent(path: String, recent: State<'_, RecentFile>) -> Result<Open
     open_path(Path::new(&path), &recent)
 }
 
+// Sync (docs/phase4b-design.md §4): thin wrappers over `sync::Device`.
+
+#[tauri::command]
+async fn sync_status(d: State<'_, Device>) -> Result<SyncStatus, String> {
+    Ok(d.status())
+}
+
+#[tauri::command]
+async fn sync_create_key(d: State<'_, Device>) -> Result<SyncStatus, String> {
+    d.create_key()
+}
+
+#[tauri::command]
+async fn sync_pair(key: String, d: State<'_, Device>) -> Result<SyncStatus, String> {
+    d.pair(&key)
+}
+
+#[tauri::command]
+async fn sync_show_key(d: State<'_, Device>) -> Result<String, String> {
+    d.show_key()
+}
+
+/// The native folder dialog; the status unchanged when cancelled.
+#[tauri::command]
+async fn sync_choose_folder<R: Runtime>(
+    app: AppHandle<R>,
+    d: State<'_, Device>,
+) -> Result<SyncStatus, String> {
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .set_title("Choose the folder to sync through (iCloud Drive, Dropbox…)")
+        .blocking_pick_folder()
+    else {
+        return Ok(d.status());
+    };
+    d.set_folder(&picked.into_path().map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+async fn sync_now(d: State<'_, Device>) -> Result<SyncStatus, String> {
+    Ok(d.sync_now())
+}
+
+#[tauri::command]
+async fn sync_take_fetcher(d: State<'_, Device>) -> Result<SyncStatus, String> {
+    d.take_fetcher()
+}
+
+/// Pick the fetch script's output folder and record the fetch.
+#[tauri::command]
+async fn sync_import_fetch<R: Runtime>(
+    app: AppHandle<R>,
+    d: State<'_, Device>,
+) -> Result<SyncStatus, String> {
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .set_title("Choose the Plaid fetch folder (scripts/fetch_plaid_sandbox.py --out)")
+        .blocking_pick_folder()
+    else {
+        return Ok(d.status());
+    };
+    d.import_fetch(&picked.into_path().map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+async fn sync_feed(d: State<'_, Device>) -> Result<Option<SyncedFeed>, String> {
+    d.feed()
+}
+
+#[tauri::command]
+async fn sync_queries(d: State<'_, Device>) -> Result<Vec<Query>, String> {
+    Ok(d.queries())
+}
+
+#[tauri::command]
+async fn sync_save_query(
+    amount_cents: i64,
+    by: String,
+    label: String,
+    d: State<'_, Device>,
+) -> Result<Vec<Query>, String> {
+    d.save_query(amount_cents, &by, &label)
+}
+
+#[tauri::command]
+async fn sync_delete_query(id: String, d: State<'_, Device>) -> Result<Vec<Query>, String> {
+    d.delete_query(&id)
+}
+
 /// Files dropped on the window: read the first and send it to the webview.
 fn on_drag_drop<R: Runtime>(window: &tauri::Window<R>, event: &DragDropEvent) {
     match event {
@@ -160,6 +253,8 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
         .setup(|app| {
             let dir: PathBuf = app.path().app_data_dir()?;
             app.manage(RecentFile::new(dir.join("recent.json")));
+            let keys = Box::new(ephemeris_sync_folder::Keychain::sync_key());
+            app.manage(Device::open(dir.join("sync"), keys)?);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -172,7 +267,19 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
             forecast,
             pick_feed,
             recent_feeds,
-            open_recent
+            open_recent,
+            sync_status,
+            sync_create_key,
+            sync_pair,
+            sync_show_key,
+            sync_choose_folder,
+            sync_now,
+            sync_take_fetcher,
+            sync_import_fetch,
+            sync_feed,
+            sync_queries,
+            sync_save_query,
+            sync_delete_query
         ])
 }
 
@@ -189,6 +296,62 @@ mod tests {
     const GOLDEN_FEED: &str = include_str!("../../ephemeris-wasm/tests/golden/feed.json");
     const GOLDEN_REPORT: &str = include_str!("../../ephemeris-wasm/tests/golden/report.json");
 
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    /// Call a command and get its JSON value, for commands that return objects.
+    fn invoke_value(
+        webview: &tauri::WebviewWindow<MockRuntime>,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        get_ipc_response(
+            webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "tauri://localhost".parse().unwrap(),
+                body: InvokeBody::Json(args),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|b| b.deserialize::<serde_json::Value>().unwrap())
+        .map_err(|e| e.as_str().unwrap_or_default().to_owned())
+    }
+
+    /// The sync commands are wired, take camelCase arguments and return
+    /// camelCase objects, as web/src/sync expects.
+    #[test]
+    fn sync_commands_through_ipc() {
+        let (_app, webview) = app();
+        let s = invoke_value(&webview, "sync_status", serde_json::json!({})).unwrap();
+        assert_eq!(s["paired"], false);
+        assert_eq!(s["isFetcher"], false);
+        assert!(s["replica"].as_str().unwrap().len() == 16);
+        let err = invoke_value(
+            &webview,
+            "sync_save_query",
+            serde_json::json!({ "amountCents": 1000, "by": "2026-12-01", "label": "x" }),
+        )
+        .unwrap_err();
+        assert!(err.contains("no sync key"), "{err}");
+        let s = invoke_value(&webview, "sync_create_key", serde_json::json!({})).unwrap();
+        assert_eq!(s["paired"], true);
+        let q = invoke_value(
+            &webview,
+            "sync_save_query",
+            serde_json::json!({ "amountCents": 1000, "by": "2026-12-01", "label": "x" }),
+        )
+        .unwrap();
+        assert_eq!(q[0]["amountCents"], 1000);
+        assert_eq!(q[0]["by"], "2026-12-01");
+        let feed = invoke_value(&webview, "sync_feed", serde_json::json!({})).unwrap();
+        assert!(feed.is_null(), "no bank data yet");
+        let key = invoke(&webview, "sync_show_key", serde_json::json!({})).unwrap();
+        assert_eq!(key.replace('-', "").len(), 52);
+    }
+
     fn app() -> (tauri::App<MockRuntime>, tauri::WebviewWindow<MockRuntime>) {
         let app = configure(mock_builder())
             .build(mock_context(tauri::test::noop_assets()))
@@ -198,6 +361,20 @@ mod tests {
         app.manage(RecentFile::new(
             std::env::temp_dir().join("ephemeris-ipc-test-no-recent.json"),
         ));
+        // A sync device with an in-memory key: never the real Keychain.
+        let sync_dir = std::env::temp_dir().join(format!(
+            "ephemeris-ipc-test-sync-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&sync_dir);
+        app.manage(
+            Device::open(
+                sync_dir,
+                Box::new(ephemeris_sync_folder::MemoryKeys::default()),
+            )
+            .unwrap(),
+        );
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .unwrap();
