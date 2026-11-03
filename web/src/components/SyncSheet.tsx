@@ -141,14 +141,16 @@ export function SyncSheet({ host, status, onStatus, onClose, onShowSynced }: Pro
             </Row>
             <Row label="Folder">
               <div>{status.folder ?? <span className="dim">none chosen</span>}</div>
-              {host.canChooseFolder ? (
+              {host.canChooseFolder && (
                 <button type="button" disabled={busy} onClick={() => void act(host.chooseFolder)}>
                   Choose folder…
                 </button>
-              ) : (
-                <div className="dim">
-                  This browser cannot keep a folder open. Import the files from your sync
-                  folder, and export this device's file back into it.
+              )}
+              {host.importFiles && host.exportFile && (
+                <div className="dim" data-testid="sync-manual">
+                  {host.canChooseFolder
+                    ? "Or, if the browser will not open your sync folder (it refuses some, such as iCloud Drive), move the files by hand: import the folder's files, and export this device's file back into it."
+                    : "This browser cannot keep a folder open. Import the files from your sync folder, and export this device's file back into it."}
                   <div className="sheet-actions">
                     <label className="button">
                       Import sync files…

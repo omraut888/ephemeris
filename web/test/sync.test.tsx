@@ -11,6 +11,7 @@ import { SyncSheet } from "../src/components/SyncSheet";
 import { tauriSync } from "../src/desktop/sync";
 import type { Invoke } from "../src/desktop/shell";
 import type { SavedQuery, SyncHost, SyncStatus } from "../src/sync/host";
+import { FOLDER_REFUSED } from "../src/sync/web";
 import { directEngine } from "../src/wasm/engine";
 import { FEED_JSON } from "./fixtures";
 
@@ -146,6 +147,31 @@ describe("SyncSheet", () => {
     expect(screen.getByText("This device fetches from the bank.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Import a Plaid fetch…" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Make this device the fetcher" })).toBeNull();
+  });
+
+  it("in a browser with a folder picker: import and export are offered too, and a refused folder points to them", async () => {
+    const host = fakeHost("web", status({ folder: null }));
+    (host as { canChooseFolder: boolean }).canChooseFolder = true;
+    host.chooseFolder = vi.fn(async () => {
+      throw new Error(`${FOLDER_REFUSED} (SecurityError: blocked)`);
+    });
+    sheet(host, host.s);
+    expect(screen.getByRole("button", { name: "Choose folder…" })).toBeTruthy();
+    expect(screen.getByTestId("sync-manual").textContent).toMatch(/such as iCloud Drive/);
+    await userEvent.click(screen.getByRole("button", { name: "Choose folder…" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Use “Import sync files…”/);
+    // The manual path still works after the refusal.
+    const file = new File([new Uint8Array([1])], "a.ephsync");
+    await userEvent.upload(screen.getByTestId("sync-import"), file);
+    await waitFor(() => expect(host.importFiles).toHaveBeenCalledWith([file]));
+    await userEvent.click(screen.getByRole("button", { name: "Export this device's file" }));
+    expect(host.exportFile).toHaveBeenCalledOnce();
+  });
+
+  it("on the desktop there are no manual file controls: the native folder always works", () => {
+    const host = fakeHost("desktop", status());
+    sheet(host, host.s);
+    expect(screen.queryByTestId("sync-manual")).toBeNull();
   });
 
   it("in a browser without folder access: import and export, no fetcher actions", async () => {
