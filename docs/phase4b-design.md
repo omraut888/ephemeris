@@ -274,6 +274,17 @@ example, written before the data was known. Measured against this data:
   the shell API. yrs would have come on top of most of those. Still, size
   no longer favors the hand-rolled design by much. The case for it rests
   on fit, retention and correctness that we can check ourselves.
+
+  **Decision (2026-11-03): keep the hand-written CRDT; do not switch to
+  yrs.** Switching now would throw away a built and verified
+  implementation for no size gain:
+  - the lattice laws, the convergence simulation and soak, and the
+    four-shell golden check;
+  - the tagging, the envelope, validation and the shell API, which yrs
+    would need around it anyway.
+
+  The size is handled separately: sync is split into its own WASM module,
+  loaded only when the Sync sheet opens (§10).
 - **Fit.** yrs is built for shared sequences and text (Yjs's document
   model). Ephemeris has no collaborative text. Its state is a keyed map of
   bank records plus a few registers, so yrs's core structure would go
