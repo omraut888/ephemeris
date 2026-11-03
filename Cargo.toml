@@ -32,3 +32,9 @@ opt-level = 3
 [profile.release]
 lto = true
 codegen-units = 1
+
+# The sync crate is built for size: it merges a few thousand records at
+# most, and at opt-level 3 it added 368 kB to the web app's WASM
+# (docs/phase4b-design.md §8). The engine stays at opt-level 3.
+[profile.release.package.ephemeris-sync]
+opt-level = "z"
