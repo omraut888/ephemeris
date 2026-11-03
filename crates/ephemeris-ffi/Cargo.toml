@@ -26,3 +26,9 @@ bindgen = ["uniffi/cli"]
 ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
 # Generates the C ABI and the Swift bindings (docs/phase3-design.md §1).
 uniffi = "0.32"
+# The sync state (docs/phase4b-design.md §4.3), exported as sync_*.
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
+
+[dev-dependencies]
+# Reads the state out of sync_open's result in the golden test.
+serde_json = "1"

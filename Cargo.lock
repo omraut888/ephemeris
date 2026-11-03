@@ -1003,6 +1003,8 @@ name = "ephemeris-ffi"
 version = "0.1.0"
 dependencies = [
  "ephemeris-core",
+ "ephemeris-sync",
+ "serde_json",
  "uniffi",
 ]
 

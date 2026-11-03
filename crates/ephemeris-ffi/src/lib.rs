@@ -10,6 +10,7 @@
 
 use ephemeris_core::json;
 use ephemeris_core::schema::SCHEMA_VERSION;
+use ephemeris_sync::json as sync;
 
 uniffi::setup_scaffolding!();
 
@@ -54,6 +55,91 @@ pub fn forecast_json(feed_json: String, options_json: String) -> Result<String, 
     Ok(json::forecast_json(&feed_json, &options_json)?)
 }
 
+// Sync (docs/phase4b-design.md §4.3): thin wrappers over
+// `ephemeris_sync::json`. Swift keeps a state as an opaque String and
+// passes it back; it never decodes and re-encodes one.
+
+/// A new, empty sync state.
+#[uniffi::export]
+pub fn sync_new() -> String {
+    sync::sync_new()
+}
+
+/// Apply an edit (JSON): `{"state": "<state JSON>", "query_id": string | null}`.
+#[uniffi::export]
+pub fn sync_edit(
+    state: String,
+    edit_json: String,
+    replica: String,
+    now_ms: u64,
+) -> Result<String, EngineError> {
+    Ok(sync::sync_edit(&state, &edit_json, &replica, now_ms)?)
+}
+
+/// Record a fetch batch (JSON) made on this device.
+#[uniffi::export]
+pub fn sync_ingest(
+    state: String,
+    batch_json: String,
+    replica: String,
+    now_ms: u64,
+) -> Result<String, EngineError> {
+    Ok(sync::sync_ingest(&state, &batch_json, &replica, now_ms)?)
+}
+
+/// Merge state `b` into state `a`.
+#[uniffi::export]
+pub fn sync_merge(a: String, b: String) -> Result<String, EngineError> {
+    Ok(sync::sync_merge(&a, &b)?)
+}
+
+/// The feed (JSON) the state describes, for `forecast_json`.
+#[uniffi::export]
+pub fn sync_materialize(state: String) -> Result<String, EngineError> {
+    Ok(sync::sync_materialize(&state)?)
+}
+
+/// The `ForecastOptions` (JSON) the synced settings ask for.
+#[uniffi::export]
+pub fn sync_forecast_options(state: String) -> Result<String, EngineError> {
+    Ok(sync::sync_forecast_options(&state)?)
+}
+
+/// The saved queries (JSON array).
+#[uniffi::export]
+pub fn sync_saved_queries(state: String) -> Result<String, EngineError> {
+    Ok(sync::sync_saved_queries(&state)?)
+}
+
+/// The state sealed as this replica's file, with a 24-byte random nonce.
+#[uniffi::export]
+pub fn sync_seal(
+    state: String,
+    replica: String,
+    key: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, EngineError> {
+    Ok(sync::sync_seal(&state, &replica, &key, &nonce)?)
+}
+
+/// A sealed file opened: `{"replica": "<16 hex>", "state": "<state JSON>"}`.
+#[uniffi::export]
+pub fn sync_open(file: Vec<u8>, key: Vec<u8>) -> Result<String, EngineError> {
+    Ok(sync::sync_open(&file, &key)?)
+}
+
+/// The 32-byte key as the text people copy between devices.
+#[uniffi::export]
+pub fn sync_key_to_text(key: Vec<u8>) -> Result<String, EngineError> {
+    Ok(sync::sync_key_to_text(&key)?)
+}
+
+/// The key from that text.
+#[uniffi::export]
+pub fn sync_key_from_text(text: String) -> Result<Vec<u8>, EngineError> {
+    Ok(sync::sync_key_from_text(&text)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +170,35 @@ mod tests {
         assert!(message.starts_with("feed:"), "{message}");
         let err = simulate_json(r#"{"dayz": 3}"#.into()).unwrap_err();
         assert!(err.to_string().contains("dayz"), "{err}");
+    }
+
+    /// The sync golden check, FFI leg in Rust (docs/phase4b-design.md §5):
+    /// this shell merges B into A.
+    #[test]
+    fn sync_replicas_merge_to_the_golden_files() {
+        let key = sync_key_from_text(
+            include_str!("../../ephemeris-sync/tests/golden/key.txt")
+                .trim()
+                .into(),
+        )
+        .unwrap();
+        let state = |file: &[u8]| {
+            let opened = sync_open(file.to_vec(), key.clone()).unwrap();
+            let v: serde_json::Value = serde_json::from_str(&opened).unwrap();
+            v["state"].as_str().unwrap().to_string()
+        };
+        let a = state(include_bytes!(
+            "../../ephemeris-sync/tests/golden/replica-a.ephsync"
+        ));
+        let b = state(include_bytes!(
+            "../../ephemeris-sync/tests/golden/replica-b.ephsync"
+        ));
+        let merged = sync_merge(a, b).unwrap();
+        assert!(merged == include_str!("../../ephemeris-sync/tests/golden/merged-state.json"));
+        let feed = sync_materialize(merged.clone()).unwrap();
+        assert!(feed == include_str!("../../ephemeris-sync/tests/golden/merged-feed.json"));
+        let report = forecast_json(feed, sync_forecast_options(merged).unwrap()).unwrap();
+        assert!(report == include_str!("../../ephemeris-sync/tests/golden/merged-report.json"));
     }
 
     #[test]
