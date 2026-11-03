@@ -227,6 +227,45 @@ pub fn materialize(path: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// One line from stdin, for a secret. At a terminal it prompts on stderr
+/// and turns echo off with `stty` while reading; from a pipe it just reads.
+/// The secret never passes through a process's arguments.
+pub fn read_secret(prompt: &str) -> Result<String, String> {
+    use std::io::{IsTerminal, Write};
+    let stdin = std::io::stdin();
+    let tty = stdin.is_terminal();
+    let stty = |arg: &str| {
+        let _ = std::process::Command::new("stty")
+            .arg(arg)
+            .stdin(std::process::Stdio::inherit())
+            .status();
+    };
+    if tty {
+        eprint!("{prompt}");
+        let _ = std::io::stderr().flush();
+        stty("-echo");
+    }
+    let line = read_line(&mut stdin.lock());
+    if tty {
+        stty("echo");
+        eprintln!();
+    }
+    line
+}
+
+/// The first line of `input`, trimmed; empty input is an error.
+pub fn read_line(input: &mut impl std::io::BufRead) -> Result<String, String> {
+    let mut line = String::new();
+    input
+        .read_line(&mut line)
+        .map_err(|e| format!("cannot read the key: {e}"))?;
+    let line = line.trim().to_string();
+    if line.is_empty() {
+        return Err("no key given on stdin".into());
+    }
+    Ok(line)
+}
+
 /// `ephemeris sync key`: create, pair or show the shared sync key.
 pub fn key(
     store: &impl KeyStore,
@@ -590,6 +629,14 @@ mod tests {
         for d in [d2, d3, f1, other, f9] {
             fs::remove_dir_all(d).unwrap();
         }
+    }
+
+    #[test]
+    fn secrets_are_read_as_one_trimmed_line() {
+        let mut input = std::io::Cursor::new("  000G-40R4 \nignored\n");
+        assert_eq!(read_line(&mut input).unwrap(), "000G-40R4");
+        assert!(read_line(&mut std::io::Cursor::new("\n")).is_err());
+        assert!(read_line(&mut std::io::Cursor::new("")).is_err());
     }
 
     #[test]

@@ -120,9 +120,11 @@ enum SyncCommand {
         /// Create a new random key (refused if one exists, unless --replace).
         #[arg(long, conflicts_with_all = ["pair", "show"])]
         new: bool,
-        /// Store a key copied from another device.
-        #[arg(long, value_name = "KEY", conflicts_with = "show")]
-        pair: Option<String>,
+        /// Store a key copied from another device, read from stdin (hidden at
+        /// a terminal), never from the command line, where `ps` and the shell's
+        /// history would show it.
+        #[arg(long, conflicts_with = "show")]
+        pair: bool,
         /// Print the key, to pair another device. Keep it private.
         #[arg(long)]
         show: bool,
@@ -288,13 +290,21 @@ fn main() -> ExitCode {
                 pair,
                 show,
                 replace,
-            } => sync::key(
-                &ephemeris_sync_folder::Keychain::sync_key(),
-                new,
-                pair,
-                show,
-                replace,
-            ),
+            } => (if pair {
+                sync::read_secret("Paste the sync key from another device, then press Return: ")
+                    .map(Some)
+            } else {
+                Ok(None)
+            })
+            .and_then(|text| {
+                sync::key(
+                    &ephemeris_sync_folder::Keychain::sync_key(),
+                    new,
+                    text,
+                    show,
+                    replace,
+                )
+            }),
             SyncCommand::Folder { dir } => {
                 sync::folder(&state, &dir, &ephemeris_sync_folder::Keychain::sync_key())
             }
@@ -347,7 +357,22 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_cents;
+    use super::{Cli, parse_cents};
+    use clap::Parser;
+
+    /// The sync key is never taken from the command line, where `ps` and
+    /// the shell's history would show it: `--pair` reads stdin.
+    #[test]
+    fn a_key_on_the_command_line_is_refused() {
+        let key = "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-3RFG";
+        for args in [
+            vec!["ephemeris", "sync", "key", "--pair", key],
+            vec!["ephemeris", "sync", "key", &format!("--pair={key}")],
+        ] {
+            assert!(Cli::try_parse_from(&args).is_err(), "{args:?}");
+        }
+        assert!(Cli::try_parse_from(["ephemeris", "sync", "key", "--pair"]).is_ok());
+    }
 
     #[test]
     fn amounts_parse_to_exact_cents() {
