@@ -102,6 +102,28 @@ pub fn sync_forecast_options(state_json: &str) -> Result<String, String> {
 }
 
 #[derive(Serialize)]
+struct Summary {
+    /// Bank data has arrived.
+    has_data: bool,
+    /// The latest fetch's day.
+    fetched_through: Option<String>,
+    /// The fetching device, 16 hex digits.
+    fetcher: Option<String>,
+}
+
+/// What a shell shows about a state without parsing it:
+/// `{"has_data", "fetched_through", "fetcher"}`.
+pub fn sync_summary(state_json: &str) -> Result<String, String> {
+    let s = state(state_json)?;
+    Ok(serde_json::to_string(&Summary {
+        has_data: s.fetched.is_some(),
+        fetched_through: s.fetched.map(|f| f.today.to_string()),
+        fetcher: s.fetcher.map(|f| format!("{:016x}", f.value)),
+    })
+    .expect("a summary serializes"))
+}
+
+#[derive(Serialize)]
 struct Query<'a> {
     id: &'a str,
     #[serde(flatten)]
@@ -195,6 +217,10 @@ mod tests {
             "byte-identical after sealing"
         );
         assert_eq!(sync_merge(&s, &sync_new()).unwrap(), s);
+        assert_eq!(
+            sync_summary(&s).unwrap(),
+            r#"{"has_data":false,"fetched_through":null,"fetcher":null}"#
+        );
         assert_eq!(
             sync_forecast_options(&s).unwrap(),
             r#"{"horizon_days":90,"paths":2000,"seed":0,"targets":[]}"#

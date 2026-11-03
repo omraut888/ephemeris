@@ -66,6 +66,12 @@ pub fn sync_forecast_options(state: &str) -> Result<String, JsError> {
     sync::sync_forecast_options(state).map_err(js)
 }
 
+/// `{"has_data", "fetched_through", "fetcher"}` for the Sync sheet.
+#[wasm_bindgen]
+pub fn sync_summary(state: &str) -> Result<String, JsError> {
+    sync::sync_summary(state).map_err(js)
+}
+
 /// The saved queries (JSON array).
 #[wasm_bindgen]
 pub fn sync_saved_queries(state: &str) -> Result<String, JsError> {
