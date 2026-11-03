@@ -1083,8 +1083,13 @@ in the graph.
 
 - **`web/src/sync/web.ts`.** With the File System Access API (Chrome,
   Edge), it syncs through a chosen folder: every `*.ephsync` is merged,
-  bad files are reported, and its own file is written. Elsewhere, the
-  sheet offers "Import sync files…" and "Export this device's file".
+  bad files are reported, and its own file is written. "Import sync
+  files…" and "Export this device's file" are always offered on the web,
+  next to the picker. Without the API they are the only way. With it,
+  they are the fallback for a folder the browser refuses: Chrome blocks
+  some folders under `~/Library`, where iCloud Drive lives. A refused
+  pick or a refused write shows a message pointing to them; a cancel
+  shows nothing.
 - **The key** is held in memory for the tab and asked for each session.
   It is never written to storage. Only the browser's replica id, which is
   not secret, is kept in `localStorage`, so a returning browser stays one
