@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 use crate::files::write_json;
 use crate::plaid;
 use crate::plaid::PlaidProgress;
+use ephemeris_sync::envelope;
+use ephemeris_sync_folder::KeyStore;
 
 /// A replica file: who this replica is, and what it holds.
 #[derive(Serialize, Deserialize)]
@@ -222,6 +224,74 @@ pub fn materialize(path: &Path, out: &Path) -> Result<(), String> {
     let (feed, notes) = file.state.materialize()?;
     write_json(out, &feed)?;
     plaid::print_summary(&feed, &notes, out);
+    Ok(())
+}
+
+/// `ephemeris sync key`: create, pair or show the shared sync key.
+pub fn key(
+    store: &impl KeyStore,
+    new: bool,
+    pair: Option<String>,
+    show: bool,
+    replace: bool,
+) -> Result<(), String> {
+    let have = store.get()?;
+    if new || pair.is_some() {
+        if have.is_some() && !replace {
+            return Err(
+                "there is a sync key already; --replace overwrites it, and devices \
+                        paired with the old one stop syncing with this one"
+                    .into(),
+            );
+        }
+        let key = match pair {
+            Some(text) => envelope::key_from_text(&text)?,
+            None => ephemeris_sync_folder::new_key()?,
+        };
+        store.set(&key)?;
+        println!(
+            "{} sync key stored in the Keychain.",
+            if new { "A new" } else { "The" }
+        );
+        if new {
+            println!("To pair another device: ephemeris sync key --show");
+        }
+        return Ok(());
+    }
+    match have {
+        None => Err("no sync key yet: ephemeris sync key --new, or --pair <key>".into()),
+        Some(k) if show => {
+            println!("{}", envelope::key_to_text(&k));
+            Ok(())
+        }
+        Some(_) => {
+            println!("A sync key is in the Keychain (--show prints it).");
+            Ok(())
+        }
+    }
+}
+
+/// `ephemeris sync folder`: merge every device's file in `dir`, then write
+/// this replica's own (design §3.2).
+pub fn folder(path: &Path, dir: &Path, store: &impl KeyStore) -> Result<(), String> {
+    let mut file = load(path)?;
+    let key = store
+        .get()?
+        .ok_or("no sync key yet: ephemeris sync key --new, or --pair <key>")?;
+    let report = ephemeris_sync_folder::sync(dir, file.id()?, &mut file.state, &key)?;
+    save(path, &file)?;
+    for f in &report.found {
+        let who = f.replica.map_or("?".to_string(), |r| format!("{r:016x}"));
+        match &f.error {
+            None => println!("  merged   {}  ({who})", f.file),
+            Some(e) => println!("  skipped  {}: {e}", f.file),
+        }
+    }
+    println!(
+        "Merged {} file(s); wrote {}",
+        report.merged,
+        report.wrote.display()
+    );
     Ok(())
 }
 
@@ -520,5 +590,65 @@ mod tests {
         for d in [d2, d3, f1, other, f9] {
             fs::remove_dir_all(d).unwrap();
         }
+    }
+
+    #[test]
+    fn key_new_pair_and_replace() {
+        let store = ephemeris_sync_folder::MemoryKeys::default();
+        assert!(
+            key(&store, false, None, false, false).is_err(),
+            "no key yet"
+        );
+        key(&store, true, None, false, false).unwrap();
+        let first = store.get().unwrap().unwrap();
+        let err = key(&store, true, None, false, false).unwrap_err();
+        assert!(err.contains("--replace"), "{err}");
+        let text = envelope::key_to_text(&[5; 32]);
+        assert!(key(&store, false, Some(text.clone()), false, false).is_err());
+        key(&store, false, Some(text), false, true).unwrap();
+        assert_ne!(store.get().unwrap().unwrap(), first);
+        assert_eq!(store.get().unwrap(), Some([5; 32]));
+        assert!(key(&store, false, Some("not a key".into()), false, true).is_err());
+    }
+
+    #[test]
+    fn two_replica_files_converge_through_a_folder() {
+        let base =
+            std::env::temp_dir().join(format!("ephemeris-cli-folder-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let shared = base.join("shared");
+        fs::create_dir_all(&shared).unwrap();
+        let store = ephemeris_sync_folder::MemoryKeys::default();
+        assert!(
+            folder(&base.join("x.json"), &shared, &store).is_err(),
+            "no replica file"
+        );
+        store.set(&[7; 32]).unwrap();
+        let (a, b) = (base.join("a.json"), base.join("b.json"));
+        init(&a, Some("00000000000000aa")).unwrap();
+        init(&b, Some("00000000000000bb")).unwrap();
+        edit(
+            &a,
+            &Edit::Set {
+                setting: Setting::Seed,
+                value: 42,
+            },
+        )
+        .unwrap();
+        folder(&a, &shared, &store).unwrap();
+        folder(&b, &shared, &store).unwrap();
+        folder(&a, &shared, &store).unwrap();
+        let (sa, sb) = (load(&a).unwrap().state, load(&b).unwrap().state);
+        assert_eq!(sa.to_json(), sb.to_json());
+        assert_eq!(sb.forecast_options().seed, 42);
+        // Another key cannot read the folder's files; they are skipped.
+        store.set(&[8; 32]).unwrap();
+        folder(&b, &shared, &store).unwrap();
+        assert_eq!(
+            load(&b).unwrap().state.to_json(),
+            sa.to_json(),
+            "nothing merged"
+        );
+        fs::remove_dir_all(&base).unwrap();
     }
 }

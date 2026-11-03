@@ -115,6 +115,23 @@ enum SyncCommand {
     /// Make this device the one that fetches from the bank (design §1.4),
     /// e.g. after moving to a new Mac. Other devices are then refused.
     TakeFetcher,
+    /// The sync key in the macOS Keychain, shared with the desktop app.
+    Key {
+        /// Create a new random key (refused if one exists, unless --replace).
+        #[arg(long, conflicts_with_all = ["pair", "show"])]
+        new: bool,
+        /// Store a key copied from another device.
+        #[arg(long, value_name = "KEY", conflicts_with = "show")]
+        pair: Option<String>,
+        /// Print the key, to pair another device. Keep it private.
+        #[arg(long)]
+        show: bool,
+        /// Allow --new or --pair to overwrite the key there is.
+        #[arg(long)]
+        replace: bool,
+    },
+    /// Sync through a folder: merge every device's file, write this one's.
+    Folder { dir: PathBuf },
     /// Set or clear the kind of one transaction (by bank transaction id).
     Override { id: String, kind: KindArg },
     /// Set or clear the kind of every transaction from a counterparty.
@@ -266,6 +283,21 @@ fn main() -> ExitCode {
             SyncCommand::Materialize { out } => sync::materialize(&state, &out),
             SyncCommand::Show => sync::show(&state),
             SyncCommand::TakeFetcher => sync::edit(&state, &Edit::TakeFetcher),
+            SyncCommand::Key {
+                new,
+                pair,
+                show,
+                replace,
+            } => sync::key(
+                &ephemeris_sync_folder::Keychain::sync_key(),
+                new,
+                pair,
+                show,
+                replace,
+            ),
+            SyncCommand::Folder { dir } => {
+                sync::folder(&state, &dir, &ephemeris_sync_folder::Keychain::sync_key())
+            }
             SyncCommand::Override { id, kind } => sync::edit(
                 &state,
                 &Edit::Override {

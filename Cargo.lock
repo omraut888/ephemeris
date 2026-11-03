@@ -969,6 +969,7 @@ dependencies = [
  "ephemeris-core",
  "ephemeris-plaid",
  "ephemeris-sync",
+ "ephemeris-sync-folder",
  "serde",
  "serde_json",
 ]
