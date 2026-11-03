@@ -11,6 +11,7 @@ default-members = [
     "crates/ephemeris-sync",
     "crates/ephemeris-sync-wasm",
     "crates/ephemeris-plaid",
+    "crates/ephemeris-sync-folder",
 ]
 
 # The engine optimized even in dev builds: `tauri dev` runs the forecast

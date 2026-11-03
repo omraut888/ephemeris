@@ -1,0 +1,12 @@
+[package]
+name = "ephemeris-sync-folder"
+version = "0.1.0"
+edition = "2024"
+description = "Folder transport and the Keychain sync key, for the native shells (CLI, desktop): docs/phase4b-design.md §3"
+publish = false
+
+[dependencies]
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
+# Keys, nonces and replica ids. Already in the graph (through rand);
+# the platform's CSPRNG, no code of its own on macOS.
+getrandom = "0.3"
