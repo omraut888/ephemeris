@@ -965,8 +965,169 @@ estimated "tens of kB" (§2.2), which was wrong by an order of magnitude.
 - fewer distinct map types;
 - a hand-written state decoder in place of derived serde.
 
-### Not done yet
+### Not done yet (at this checkpoint)
 
 Steps 9–12: the desktop, web and iOS adapters (folder transport, keychain
 for the sync key, the Sync sheet, saved queries), then the final as-built
-measurements. No app reads or writes a sync file yet.
+measurements. No app reads or writes a sync file yet. (§10 takes up the
+desktop and web adapters.)
+
+## 10. As built: WASM size, the desktop and web adapters (third checkpoint, 2026-11-03)
+
+### WASM size: where the 304 kB came from, and the split
+
+**Measured with twiggy** on the release `.wasm` before wasm-opt (names
+kept). It diffed the engine-only build against engine + sync; the names
+section is left out because shipped builds strip it. The sync code was
+335 kB there, which became 304 kB after wasm-opt:
+
+| Share | Contributor |
+|---|---|
+| 27% | serde_json deserialization generated for the sync types (state, edits, batches) |
+| 24% | `BTreeMap` code repeated for each map type (insertion, iteration, tree internals) |
+| 12% | allocator, core and other library code newly reached |
+| 8% | sorts (mostly from collecting into sorted sets) |
+| 6% | strings and the Unicode case tables the tagging uses |
+| 6% | the sync crate's own state, merge, edits, ingest and envelope |
+| 4% | serde serialization |
+| 3% each or less | tagging logic, shell API, cipher (2%), formatting, wasm-bindgen glue |
+
+Nothing dominates. The two big buckets are generic code instantiated for
+our types. Shrinking them means rewriting verified code (a hand-written
+decoder, fewer map types), which is not a trim and was not done.
+
+**What was trimmed, all without changing any output bytes** (sync module
+sizes after wasm-pack):
+
+| Step | Raw | gzip |
+|---|---|---|
+| Split out, with `sync_ingest`, wasm-opt `-O` | 432,933 | 174,837 |
+| + `-Oz` instead of `-O` | 427,898 | 175,606 (worse gzipped: not kept) |
+| **Without `sync_ingest`, `-O` (kept)** | **421,648** | **170,645** |
+| *(the same at opt-level 3 for the sync crate, to show what `"z"` buys)* | *487,391* | *189,093* |
+
+`sync_ingest` is left out of the browser module because only the Mac
+fetches, natively. The FFI keeps it for now. Adding `sync_summary` later
+made the module 422,850 B (gzip 173,070 as Vite reports it).
+
+**The split.** `crates/ephemeris-sync-wasm` is a module of its own, and
+`ephemeris-wasm` is back to its pre-sync sources:
+
+| | Before sync | Sync in the engine (§9) | **Now** |
+|---|---|---|---|
+| Engine WASM, loaded with the page | 352,597 B (gzip 151,748) | 656,720 B (gzip 265,060) | **352,597 B (gzip 151,748)**, the same SHA-256 as the build the web app shipped, so the same golden outputs |
+| Sync WASM, loaded when the Sync sheet opens | — | — | 422,850 B (gzip 173,070) |
+
+In the production build, Vite gives the sync package its own chunk, and
+only `loadSyncWasm()` reaches it, through a dynamic `import()`. The
+engine's WASM keeps its content-hashed name (`…-0FJEp3k6.wasm`). In
+headless Chrome against `vite preview`, no sync WASM was requested on
+page load, and it was requested when the Sync sheet opened.
+
+### New crates
+
+| Crate | What | Why separate |
+|---|---|---|
+| `ephemeris-sync-wasm` | the browser's sync exports | so the page loads without it |
+| `ephemeris-plaid` | Plaid's JSON → bank records and fetch batches, moved out of the CLI (tests and `import-plaid` bytes unchanged) | the desktop app can be the fetcher too, so it imports fetches |
+| `ephemeris-sync-folder` | folder transport and the Keychain key, for native shells | shared by the CLI and the desktop app |
+
+No new third-party crate. The Keychain goes through macOS's `security`
+tool, as the fetch script does: the key is written on `security -i`'s
+stdin, never in a process's arguments, and read back to confirm. That
+replaces the `keyring` crate §6.2 considered. `getrandom` 0.3 was already
+in the graph.
+
+### Desktop
+
+- **Native (`crates/ephemeris-desktop/src/sync.rs`).** In the app's data
+  folder, `sync/config.json` holds the replica id, the chosen folder and
+  Plaid progress (nothing secret). `sync/local.ephsync` is the state,
+  sealed with the Keychain key (service `ephemeris.sync`, which the CLI
+  shares).
+  - Commands: status, create key, pair, show key, choose folder (native
+    dialog), sync now, take fetcher, import a Plaid fetch (native dialog;
+    only the fetcher may), the synced feed and options, and saved queries.
+  - Folder problems (a missing folder, files from another key or damaged)
+    are reported in the status, not thrown.
+- **The Sync sheet** (shared React):
+  - pair: create a key, or paste one;
+  - show the key on request;
+  - choose the folder;
+  - list each device's file with its errors;
+  - show who fetches; take the fetcher role and import a fetch;
+  - "Show synced data", which forecasts with the synced horizon, paths
+    and seed.
+- **Saved queries** live in the afford panel: save, reuse, delete.
+- **Polling.** While paired with a folder, the app syncs on focus and
+  every 10 s with focus, and redraws synced data that changed.
+- **The CLI as a device.** The CLI is its own replica: `ephemeris sync
+  key` and `ephemeris sync folder <dir>` use the same Keychain key. A fetch
+  recorded with the CLI therefore reaches the app, or the app takes the
+  fetcher role and imports fetches itself.
+- **Checked:**
+  - Rust unit tests: two desktops pair, sync, fetch and share queries
+    through a temp folder; a non-fetcher is refused; state at rest is
+    sealed; bad files are reported.
+  - IPC tests through Tauri's mock runtime, using an in-memory key, never
+    the real Keychain.
+  - One test round-trips through the real Keychain under a throwaway
+    service name, deleted after.
+  - A `tauri dev` launch built, ran, and created `sync/config.json`.
+    With no key yet, it wrote nothing to the Keychain.
+- **Not checked by hand:** the window itself (this session cannot see the
+  screen), the native folder dialogs, and real iCloud Drive or Dropbox
+  behavior.
+
+### Web
+
+- **`web/src/sync/web.ts`.** With the File System Access API (Chrome,
+  Edge), it syncs through a chosen folder: every `*.ephsync` is merged,
+  bad files are reported, and its own file is written. Elsewhere, the
+  sheet offers "Import sync files…" and "Export this device's file".
+- **The key** is held in memory for the tab and asked for each session.
+  It is never written to storage. Only the browser's replica id, which is
+  not secret, is kept in `localStorage`, so a returning browser stays one
+  device.
+- **Checked:**
+  - Vitest, with an in-memory folder: two browsers converge, and deleting
+    a query on one removes it from the other.
+  - The golden replica files, imported in JavaScript, give the golden
+    feed and report. That is a fifth leg of the golden check.
+  - Bad files are reported, exports open with the key, and storage holds
+    only the replica id.
+  - In headless Chrome on the production build, after "Create a new sync
+    key": `localStorage` holds only `ephemeris.sync.replica`, and
+    `sessionStorage` and IndexedDB are empty.
+- **Not checked by hand:** a real folder through Chrome's picker, and
+  Safari or Firefox (the manual import and export path).
+
+### Deviations from the design
+
+- **The web has no local copy of the state** (§3.3 said a sealed
+  IndexedDB copy). The state lives in memory for the tab and persists
+  through the folder or an exported file. Without folder access, an edit
+  not exported is lost when the tab closes. The sheet says to export.
+  The folder handle is not remembered either: the user picks the folder
+  each session.
+- **The desktop app and the CLI are separate replicas** on one Mac. They
+  share the Keychain key and sync through the folder.
+- **No `keyring` crate:** the Keychain goes through `security` instead.
+
+### Costs (this Mac)
+
+| Item | Measured |
+|---|---|
+| Free disk | 26 GB (30 GB after the `cargo clean` before this session; 13 GB at the second checkpoint) |
+| `target/` | 4.4 GB, 4.1 GB of it the debug build (mostly Tauri) |
+| `ios/build` | 352 MB (from step 8; iOS not rebuilt since) |
+| `web/node_modules` | 129 MB |
+| twiggy (host tool, `~/.cargo/bin`) | 3.2 MB |
+| Desktop crate tests, cold build | 40 s |
+| Vitest | 52 tests |
+| Workspace `cargo test` | 239 tests |
+
+### Next
+
+iOS (step 11), run alone because the simulator saturates this Mac. Then
+the final as-built measurements (step 12).
