@@ -9,7 +9,8 @@ import type { SimMode } from "../schema.gen";
 
 export type Source =
   | { kind: "demo"; mode: SimMode; seed: number }
-  | { kind: "file"; name: string };
+  | { kind: "file"; name: string }
+  | { kind: "synced"; through: string | null };
 
 export type Status = "loading" | "ready" | "error";
 
@@ -27,6 +28,8 @@ interface Props {
   /** Recent feeds; the menu shows only when there are some and `onRecent`. */
   recent?: RecentFeed[];
   onRecent?: (path: string) => void;
+  /** Opens the Sync sheet, when the shell can sync. */
+  onSync?: () => void;
 }
 
 function Mark() {
@@ -41,9 +44,9 @@ function Mark() {
 
 function describe(source: Source | null): string {
   if (!source) return "no data";
-  return source.kind === "demo"
-    ? `demo · ${source.mode} · seed ${source.seed}`
-    : `file · ${source.name}`;
+  if (source.kind === "demo") return `demo · ${source.mode} · seed ${source.seed}`;
+  if (source.kind === "synced") return `synced · through ${source.through ?? "?"}`;
+  return `file · ${source.name}`;
 }
 
 export function Header({
@@ -58,6 +61,7 @@ export function Header({
   onPick,
   recent = [],
   onRecent,
+  onSync,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   return (
@@ -116,6 +120,11 @@ export function Header({
               </option>
             ))}
           </select>
+        )}
+        {onSync && (
+          <button type="button" onClick={onSync}>
+            Sync
+          </button>
         )}
         <input
           ref={fileInput}

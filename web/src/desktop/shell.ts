@@ -13,6 +13,8 @@ import type { DropHandlers, FileHost, OpenedFeed, RecentFeed } from "../files";
 import { portEngine } from "../wasm/client";
 import type { Engine, Port } from "../wasm/client";
 import type { Request, Response } from "../wasm/protocol";
+import type { SyncHost } from "../sync/host";
+import { tauriSync } from "./sync";
 
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 export type Listen = <T>(
@@ -69,6 +71,6 @@ export function tauriFiles(call: Invoke = invoke, on: Listen = listen): FileHost
   };
 }
 
-export function desktopShell(): { engine: Engine; files: FileHost } {
-  return { engine: portEngine(tauriPort()), files: tauriFiles() };
+export function desktopShell(): { engine: Engine; files: FileHost; sync: SyncHost } {
+  return { engine: portEngine(tauriPort()), files: tauriFiles(), sync: tauriSync() };
 }

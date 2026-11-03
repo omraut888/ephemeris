@@ -8,6 +8,7 @@ import type { FormEvent } from "react";
 
 import { longDate, money, percent } from "../format";
 import type { ForecastOptions, ForecastReport, IsoDate } from "../schema.gen";
+import type { SavedQuery } from "../sync/host";
 
 export type RunForecast = (
   feedJson: string,
@@ -20,6 +21,10 @@ interface Props {
   /** The report on screen: it fixes the selectable dates. */
   report: ForecastReport;
   run: RunForecast;
+  /** Saved queries, synced between devices, when the shell syncs. */
+  saved?: SavedQuery[];
+  onSave?: (amountCents: number, by: IsoDate, label: string) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
 }
 
 interface Answer {
@@ -29,7 +34,7 @@ interface Answer {
   reachedBy: number;
 }
 
-export function AffordQuery({ feedJson, options, report, run }: Props) {
+export function AffordQuery({ feedJson, options, report, run, saved, onSave, onDelete }: Props) {
   const days = report.forecast.days;
   const first = days[0]?.date ?? report.as_of;
   const last = days[days.length - 1]?.date ?? report.as_of;
@@ -38,6 +43,22 @@ export function AffordQuery({ feedJson, options, report, run }: Props) {
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [label, setLabel] = useState("");
+
+  const save = async () => {
+    const x = Number(amount);
+    if (!Number.isFinite(x) || !onSave) {
+      setError("Enter an amount in dollars.");
+      return;
+    }
+    try {
+      await onSave(Math.round(x * 100), date, label.trim());
+      setLabel("");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -98,7 +119,50 @@ export function AffordQuery({ feedJson, options, report, run }: Props) {
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Checking…" : "Check"}
         </button>
+        {onSave && (
+          <>
+            <input
+              type="text"
+              aria-label="Label"
+              placeholder="label (optional)"
+              value={label}
+              maxLength={200}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+            <button type="button" onClick={() => void save()}>
+              Save
+            </button>
+          </>
+        )}
       </form>
+      {saved && saved.length > 0 && (
+        <ul className="saved-queries" aria-label="Saved queries">
+          {saved.map((q) => (
+            <li key={q.id}>
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setAmount(String(q.amountCents / 100));
+                  setDate(q.by);
+                }}
+              >
+                {money(q.amountCents / 100)} by {longDate(q.by)}
+                {q.label && ` · ${q.label}`}
+              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label={`Delete saved query ${q.label || q.id}`}
+                  onClick={() => void onDelete(q.id)}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {error && (
         <p className="dim" role="alert" style={{ color: "var(--bad)" }}>
           {error}

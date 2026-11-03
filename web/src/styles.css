@@ -586,3 +586,121 @@ button.primary {
     margin: 10px 16px 0;
   }
 }
+
+/* Sync (docs/phase4b-design.md §4.4) */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.sheet {
+  width: min(560px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.sheet-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 4px 12px;
+}
+
+.sheet-row > div:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sheet-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.sheet-pair input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sheet-error {
+  color: var(--bad);
+}
+
+.sync-key {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  user-select: all;
+}
+
+.sync-devices {
+  width: 100%;
+}
+
+label.button {
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: var(--panel-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.saved-queries {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.saved-queries li {
+  display: flex;
+  gap: 2px;
+}
+
+button.link {
+  background: none;
+  border-color: var(--line);
+}
+
+@media (max-width: 520px) {
+  .sheet-row {
+    grid-template-columns: 1fr;
+  }
+}

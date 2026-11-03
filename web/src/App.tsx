@@ -13,7 +13,10 @@ import { Header } from "./components/Header";
 import { OVERDRAWN_TARGET, Risk } from "./components/Risk";
 import type { Source, Status } from "./components/Header";
 import { StatePanel } from "./components/StatePanel";
+import { SyncSheet } from "./components/SyncSheet";
 import type { FileHost, OpenedFeed, RecentFeed } from "./files";
+import { SYNC_POLL_MS } from "./sync/host";
+import type { SavedQuery, SyncHost, SyncStatus } from "./sync/host";
 import type { Engine } from "./wasm/client";
 import type { ForecastOptions, ForecastReport, SimMode } from "./schema.gen";
 
@@ -37,7 +40,16 @@ interface Loaded {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
+export function App({
+  engine,
+  files,
+  sync,
+}: {
+  engine: Engine;
+  files?: FileHost;
+  /** The shell's sync, when it has one (docs/phase4b-design.md §4). */
+  sync?: SyncHost;
+}) {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Loaded | null>(null);
@@ -47,6 +59,11 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
   const [seed, setSeed] = useState(7);
   const [dragging, setDragging] = useState(false);
   const [recent, setRecent] = useState<RecentFeed[]>([]);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [saved, setSaved] = useState<SavedQuery[]>([]);
+  // The synced settings' options, used while the synced data is on screen.
+  const syncedOptions = useRef<ForecastOptions | null>(null);
 
   const options = useCallback(
     (h: number): Partial<ForecastOptions> => ({
@@ -57,6 +74,16 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
       targets: [OVERDRAWN_TARGET],
     }),
     [],
+  );
+
+  /** The options for a source: the synced settings' paths and seed for
+   * synced data (so every device draws the same cone), the app's otherwise. */
+  const optionsFor = useCallback(
+    (source: Source, h: number): Partial<ForecastOptions> =>
+      source.kind === "synced" && syncedOptions.current
+        ? { ...syncedOptions.current, horizon_days: h, targets: [OVERDRAWN_TARGET] }
+        : options(h),
+    [options],
   );
 
   // Only the latest request may update the screen.
@@ -73,7 +100,7 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
       try {
         const json = await feedJson;
         // One lane: a burst of changes computes only the newest.
-        const report = await engine.forecast(json, options(h), "cone");
+        const report = await engine.forecast(json, optionsFor(source, h), "cone");
         if (ticket !== latest.current) return;
         setData({ source, feedJson: json, report });
         setError(null);
@@ -84,7 +111,7 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
         setStatus("error");
       }
     },
-    [engine, options],
+    [engine, optionsFor],
   );
 
   const runDemo = useCallback(
@@ -147,6 +174,83 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
     [files, fail],
   );
 
+  // Sync: the status at start, saved queries once paired, and a sync on
+  // focus and every SYNC_POLL_MS while the window has focus.
+  const refreshQueries = useCallback(() => {
+    sync?.queries().then(setSaved, () => setSaved([]));
+  }, [sync]);
+  const onSyncStatus = useCallback(
+    (s: SyncStatus) => {
+      setSyncStatus(s);
+      if (s.paired) refreshQueries();
+    },
+    [refreshQueries],
+  );
+  useEffect(() => {
+    sync?.status().then(onSyncStatus, fail);
+  }, [sync, onSyncStatus, fail]);
+
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+  const horizonRef = useRef(horizon);
+  useEffect(() => {
+    horizonRef.current = horizon;
+  }, [horizon]);
+
+  const showSynced = useCallback(async () => {
+    if (!sync) return;
+    try {
+      const synced = await sync.feed();
+      if (!synced) {
+        fail("No synced bank data yet.");
+        return;
+      }
+      const opts = JSON.parse(synced.optionsJson) as ForecastOptions;
+      syncedOptions.current = opts;
+      const through = (await sync.status()).fetchedThrough;
+      setSheetOpen(false);
+      setHorizon(opts.horizon_days);
+      await run({ kind: "synced", through }, synced.feedJson, opts.horizon_days);
+    } catch (e) {
+      fail(e);
+    }
+  }, [sync, run, fail]);
+
+  const syncing = !!(sync && syncStatus?.paired && syncStatus.folder);
+  useEffect(() => {
+    if (!sync || !syncing) return;
+    const tick = async () => {
+      if (typeof document !== "undefined" && !document.hasFocus()) return;
+      try {
+        onSyncStatus(await sync.syncNow());
+        const shown = dataRef.current;
+        if (shown?.source.kind !== "synced") return;
+        const synced = await sync.feed();
+        if (!synced) return;
+        const opts = JSON.parse(synced.optionsJson) as ForecastOptions;
+        const changed =
+          synced.feedJson !== shown.feedJson ||
+          JSON.stringify(opts) !== JSON.stringify(syncedOptions.current);
+        if (changed) {
+          syncedOptions.current = opts;
+          const through = (await sync.status()).fetchedThrough;
+          await run({ kind: "synced", through }, synced.feedJson, horizonRef.current);
+        }
+      } catch {
+        // A failed background sync shows in the sheet's status next time.
+      }
+    };
+    const id = setInterval(() => void tick(), SYNC_POLL_MS);
+    const onFocus = () => void tick();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [sync, syncing, onSyncStatus, run]);
+
   // Open on a demo so there is something to look at.
   useEffect(() => {
     void runDemo("realistic", 7, 90);
@@ -188,6 +292,13 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
         onRecent={
           files && ((path) => void files.openRecent(path).then(openFeed, fail))
         }
+        onSync={
+          sync &&
+          (() => {
+            setSheetOpen(true);
+            sync.status().then(onSyncStatus, fail);
+          })
+        }
       />
       {error && (
         <div className="banner" role="alert">
@@ -217,7 +328,10 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
                   );
                 }}
               >
-                {HORIZONS.map((h) => (
+                {(HORIZONS.includes(horizon as (typeof HORIZONS)[number])
+                  ? [...HORIZONS]
+                  : [...HORIZONS, horizon].sort((a, b) => a - b)
+                ).map((h) => (
                   <option key={h} value={h}>
                     {h} days
                   </option>
@@ -273,9 +387,20 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
             <AffordQuery
               key={`${data.feedJson.length}-${horizon}-${data.report.as_of}`}
               feedJson={data.feedJson}
-              options={options(horizon)}
+              options={optionsFor(data.source, horizon)}
               report={data.report}
               run={engine.forecast}
+              saved={sync && syncStatus?.paired ? saved : undefined}
+              onSave={
+                sync && syncStatus?.paired
+                  ? async (cents, by, label) => setSaved(await sync.saveQuery(cents, by, label))
+                  : undefined
+              }
+              onDelete={
+                sync && syncStatus?.paired
+                  ? async (id) => setSaved(await sync.deleteQuery(id))
+                  : undefined
+              }
             />
           </div>
         </main>
@@ -283,6 +408,15 @@ export function App({ engine, files }: { engine: Engine; files?: FileHost }) {
         <div className="empty">{status === "loading" ? "Loading the engine…" : "No data yet."}</div>
       )}
       {dragging && <div className="drop-overlay">Drop a feed JSON to forecast it</div>}
+      {sync && sheetOpen && (
+        <SyncSheet
+          host={sync}
+          status={syncStatus}
+          onStatus={onSyncStatus}
+          onClose={() => setSheetOpen(false)}
+          onShowSynced={() => void showSynced()}
+        />
+      )}
     </div>
   );
 }
