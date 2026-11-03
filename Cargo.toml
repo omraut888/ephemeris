@@ -9,6 +9,7 @@ default-members = [
     "crates/ephemeris-cli",
     "crates/ephemeris-wasm",
     "crates/ephemeris-sync",
+    "crates/ephemeris-sync-wasm",
 ]
 
 # The engine optimized even in dev builds: `tauri dev` runs the forecast
@@ -34,7 +35,8 @@ lto = true
 codegen-units = 1
 
 # The sync crate is built for size: it merges a few thousand records at
-# most, and at opt-level 3 it added 368 kB to the web app's WASM
-# (docs/phase4b-design.md §8). The engine stays at opt-level 3.
+# most, and its WASM module is 487 kB at opt-level 3 against 422 kB here
+# (gzip 189 against 171 kB; docs/phase4b-design.md §10). The engine stays
+# at opt-level 3.
 [profile.release.package.ephemeris-sync]
 opt-level = "z"

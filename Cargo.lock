@@ -1021,11 +1021,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "ephemeris-wasm"
+name = "ephemeris-sync-wasm"
 version = "0.1.0"
 dependencies = [
  "ephemeris-core",
  "ephemeris-sync",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "ephemeris-wasm"
+version = "0.1.0"
+dependencies = [
+ "ephemeris-core",
  "serde_json",
  "ts-rs",
  "wasm-bindgen",

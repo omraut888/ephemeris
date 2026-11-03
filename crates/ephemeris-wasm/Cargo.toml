@@ -13,8 +13,6 @@ crate-type = ["cdylib", "rlib"]
 ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
 # Exports the functions to JavaScript (docs/phase2-design.md §2).
 wasm-bindgen = "0.2"
-# The sync state (docs/phase4b-design.md §4.3), exported as sync_*.
-ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
 
 [dev-dependencies]
 # Writes the all-fields report fixture (tests/golden.rs). Already in the graph.

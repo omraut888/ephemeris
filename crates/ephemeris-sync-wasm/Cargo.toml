@@ -1,0 +1,19 @@
+[package]
+name = "ephemeris-sync-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "WASM bindings for ephemeris-sync, a module of its own so the web app loads it only when the Sync sheet opens"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
+wasm-bindgen = "0.2"
+
+[dev-dependencies]
+# The golden check forecasts the merged state, and reads sync_open's result.
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["json"] }
+serde_json = "1"
+wasm-bindgen-test = "0.3"

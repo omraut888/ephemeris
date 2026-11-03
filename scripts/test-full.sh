@@ -8,6 +8,9 @@ cargo test --release -- --include-ignored "$@"
 # The same golden files again, inside WASM under Node: native and WASM must
 # produce byte-identical feeds and reports (docs/phase2-design.md §2).
 wasm-pack test --node --release crates/ephemeris-wasm
+# The sync module, a WASM of its own: the two sealed golden replicas merge
+# to the native golden state, feed and report (docs/phase4b-design.md §5).
+wasm-pack test --node --release crates/ephemeris-sync-wasm
 # The desktop crate is not a default workspace member (it compiles Tauri),
 # so it runs here: the golden files again, through Tauri's IPC, plus its
 # lints (docs/phase4-design.md §4).
