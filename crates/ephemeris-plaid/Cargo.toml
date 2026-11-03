@@ -1,0 +1,14 @@
+[package]
+name = "ephemeris-plaid"
+version = "0.1.0"
+edition = "2024"
+description = "Plaid's raw JSON to bank records and fetch batches, for the shells that can fetch (CLI, desktop)"
+publish = false
+
+[dependencies]
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
