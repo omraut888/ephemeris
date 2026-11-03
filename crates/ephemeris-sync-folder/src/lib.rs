@@ -55,10 +55,14 @@ pub trait KeyStore {
 
 /// The macOS Keychain, through `security`, as a generic password. The key
 /// goes in as its text form on `security -i`'s standard input, never in a
-/// process's arguments, and comes out on a pipe.
+/// process's arguments, and comes out on a pipe. Every argument list passed
+/// to `security` holds only the subcommand, flags, service and account; the
+/// tests run a recording stand-in for `security` to prove it.
 pub struct Keychain {
     pub service: String,
     pub account: String,
+    /// The `security` tool: `security` on the PATH, or a stand-in in tests.
+    pub program: PathBuf,
 }
 
 impl Keychain {
@@ -68,6 +72,7 @@ impl Keychain {
         Self {
             service: "ephemeris.sync".into(),
             account: "key".into(),
+            program: PathBuf::from("security"),
         }
     }
 
@@ -78,7 +83,7 @@ impl Keychain {
     }
 
     fn security(&self, args: &[&str]) -> Result<std::process::Output, String> {
-        std::process::Command::new("security")
+        std::process::Command::new(&self.program)
             .args(args)
             .args(["-s", &self.service, "-a", &self.account])
             .output()
@@ -115,7 +120,7 @@ impl KeyStore for Keychain {
         // Crockford base32 and dashes only: nothing that could end the
         // quoted value or start another command.
         let text = envelope::key_to_text(key);
-        let mut child = Command::new("security")
+        let mut child = Command::new(&self.program)
             .arg("-i")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -420,6 +425,7 @@ mod tests {
         let kc = Keychain {
             service: format!("ephemeris.sync.test-{}", std::process::id()),
             account: "key".into(),
+            program: PathBuf::from("security"),
         };
         let key = new_key().unwrap();
         assert_eq!(kc.get().unwrap(), None);
@@ -431,5 +437,73 @@ mod tests {
         kc.delete().unwrap();
         assert_eq!(kc.get().unwrap(), None);
         kc.delete().unwrap();
+    }
+
+    /// The secret never reaches a process's arguments: a stand-in `security`
+    /// records exactly the argv and stdin it is given, and behaves like the
+    /// real tool for the three commands used. The key must appear in stdin
+    /// (for `set`) and stdout (for `get`) only.
+    #[cfg(unix)]
+    #[test]
+    fn the_key_is_never_in_securitys_arguments() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp("argv");
+        let shim = dir.join("security");
+        let log = dir.display();
+        // One line per call: every argument, each in brackets, so nothing
+        // can hide in word splitting.
+        let script = format!(
+            r#"#!/bin/sh
+for a in "$@"; do printf '[%s]' "$a"; done >> "{log}/argv.log"
+echo >> "{log}/argv.log"
+case "$1" in
+  -i) tee -a "{log}/stdin.log" | sed -n 's/.*-w "\([^"]*\)".*/\1/p' > "{log}/store" ;;
+  find-generic-password) [ -s "{log}/store" ] || exit 44; cat "{log}/store" ;;
+  delete-generic-password) rm -f "{log}/store" ;;
+esac
+"#
+        );
+        fs::write(&shim, script).unwrap();
+        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
+        let kc = Keychain {
+            service: "ephemeris.sync".into(),
+            account: "key".into(),
+            program: shim,
+        };
+
+        let key = new_key().unwrap();
+        let text = envelope::key_to_text(&key);
+        kc.set(&key).unwrap();
+        assert_eq!(
+            kc.get().unwrap(),
+            Some(key),
+            "the stand-in behaves like security"
+        );
+        kc.delete().unwrap();
+        assert_eq!(kc.get().unwrap(), None);
+
+        let argv = fs::read_to_string(dir.join("argv.log")).unwrap();
+        let stdin = fs::read_to_string(dir.join("stdin.log")).unwrap();
+        assert_eq!(
+            argv.lines().collect::<Vec<_>>(),
+            [
+                "[-i]",
+                "[find-generic-password][-w][-s][ephemeris.sync][-a][key]",
+                "[find-generic-password][-w][-s][ephemeris.sync][-a][key]",
+                "[delete-generic-password][-s][ephemeris.sync][-a][key]",
+                "[find-generic-password][-w][-s][ephemeris.sync][-a][key]",
+            ],
+            "every argument list, exactly"
+        );
+        // Neither the text form nor any 4-character group of it is in argv.
+        assert!(!argv.contains(&text));
+        for group in text.split('-') {
+            assert!(!argv.contains(group), "{group} found in argv");
+        }
+        assert!(
+            stdin.contains(&format!("-w \"{text}\"")),
+            "the key went in on stdin"
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
