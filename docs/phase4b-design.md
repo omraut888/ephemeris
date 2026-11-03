@@ -1127,7 +1127,39 @@ in the graph.
 | Vitest | 52 tests |
 | Workspace `cargo test` | 239 tests |
 
+### Secrets and process arguments (audit, 2026-11-03)
+
+Every call to macOS's `security` tool (Rust `ephemeris-sync-folder`,
+used by the desktop app and the CLI; `scripts/fetch_plaid_sandbox.py`)
+was checked:
+
+| Call | Argument list | Secret travels |
+|---|---|---|
+| store | `security -i` | stdin: `add-generic-password -U -s … -a … -w "<secret>"` |
+| read | `find-generic-password -s … -a … -w` (`-w` is a flag: print the password) | stdout, on a pipe |
+| delete | `delete-generic-password -s … -a …` | nowhere |
+
+None passes a secret as an argument. The proof is a recording stand-in
+for `security`, swapped in for the real tool. It logs exactly the argv
+and stdin it gets. Tests assert every argument list in full and that no
+part of the secret is in any of them:
+- Rust: `the_key_is_never_in_securitys_arguments`. Making `set` pass the
+  key as an argument fails it.
+- Python: `scripts/test_fetch_plaid_sandbox.py`, run by
+  `scripts/test-full.sh`.
+
+**One leak found and fixed:** `ephemeris sync key --pair <KEY>` took the
+key as the CLI's own argument, visible to `ps` while it ran and kept in
+the shell's history. `--pair` is now a flag, and the key is read from
+stdin with echo off at a terminal. A test checks that the parser refuses
+a key on the command line.
+
+Elsewhere, the desktop app gets a pasted key over Tauri's IPC, and the
+browser holds it in memory; neither starts a process with it.
+`security-framework` was not needed.
+
 ### Next
 
 iOS (step 11), run alone because the simulator saturates this Mac. Then
-the final as-built measurements (step 12).
+the final as-built measurements (step 12). Before that,
+docs/sync-manual-test.md is to be run by hand.
