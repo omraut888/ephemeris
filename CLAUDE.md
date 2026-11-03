@@ -19,9 +19,11 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
   docs/phase3-design.md. Android (3b) comes later.
 - Phase 4b, sync between the apps, is in progress: the pure crate
-  crates/ephemeris-sync and the CLI's `ephemeris sync` commands are built;
-  shell adapters are not. Design and as-built notes: docs/phase4b-design.md.
-  The Mac is the only Plaid fetcher (§1.4).
+  crates/ephemeris-sync, the CLI's `ephemeris sync` commands, and the sync_*
+  exports in the WASM and FFI crates are built; shell adapters are not.
+  Design and as-built notes: docs/phase4b-design.md. One device fetches
+  from Plaid, enforced in the sync state (§1.4); the fetch script keeps the
+  item's access token in the macOS Keychain, never in a file.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
