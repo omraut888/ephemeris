@@ -71,5 +71,8 @@ mkdir -p "$KIT/Sources/EphemerisKit/Generated" "$KIT/Tests/EphemerisKitTests/Gol
 cp "$GEN/ephemeris_ffi.swift" "$KIT/Sources/EphemerisKit/Generated/"
 cp "$GOLDEN"/{feed.json,report.json,report-all-fields.json,simulate-options.json,forecast-options.json} \
   "$KIT/Tests/EphemerisKitTests/Golden/"
+# The sync golden files (docs/phase4b-design.md §5).
+cp crates/ephemeris-sync/tests/golden/{key.txt,replica-a.ephsync,replica-b.ephsync,merged-state.json,merged-feed.json,merged-report.json} \
+  "$KIT/Tests/EphemerisKitTests/Golden/"
 
 echo "== done: $XCF ($(du -sh "$XCF" | cut -f1))"
