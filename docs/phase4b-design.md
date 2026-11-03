@@ -245,7 +245,7 @@ section.
 
 | | Automerge | yrs | Hand-rolled |
 |---|---|---|---|
-| WASM / native size | +741 / +762 kB | +348 / +381 kB | est. tens of kB, plus 12 kB cipher |
+| WASM / native size | +741 / +762 kB | +348 / +381 kB | est. tens of kB, plus 12 kB cipher. **Measured after building: +304 kB WASM** (+113 kB gzipped), the whole sync API including the tagging, the cipher and the API layer; see §8 |
 | New crates | ~60 | ~33 | 1 (chacha20poly1305 and its RustCrypto deps, ~17 in tree) |
 | Fits the data | Generic maps, lists, text. We would still encode "posted supersedes pending", "a tombstone beats a stale version" and the override precedence in our own materializer. | Same, and it is built for text, which we have none of. | The types *are* the semantics. |
 | History | Keeps every change. Truly forgetting a record (a bank correction, a user wiping data) means rewriting the document. | Keeps deleted items as tombstones. | Keeps only the current value per key and id-only tombstones. |
@@ -267,6 +267,13 @@ example, written before the data was known. Measured against this data:
   the 353 kB engine, nearly doubling what the browser downloads. It adds
   381 kB natively, and about 33 crates. The hand-rolled design plus its
   cipher is estimated at tens of kB, 12 kB of it the measured cipher.
+  *Corrected in step 8:* the estimate was wrong. The built sync API adds
+  304 kB to the WASM (§8), about what yrs would add. The comparison is not
+  like for like: yrs's figure is a minimal use of the library alone, and
+  ours includes the tagging moved from the CLI, the cipher, validation and
+  the shell API. yrs would have come on top of most of those. Still, size
+  no longer favors the hand-rolled design by much. The case for it rests
+  on fit, retention and correctness that we can check ourselves.
 - **Fit.** yrs is built for shared sequences and text (Yjs's document
   model). Ephemeris has no collaborative text. Its state is a keyed map of
   bank records plus a few registers, so yrs's core structure would go
@@ -855,9 +862,100 @@ Steps 1–6 of §6.2 are done, with no shell adapter yet.
   dependencies (`aead`, `chacha20`, `cipher`, `inout`, `opaque-debug`,
   `poly1305`, `subtle`, `universal-hash`, `zeroize`).
 
-### Not done yet (after the checkpoint)
+## 9. As built: step 7 and step 8 (second checkpoint, 2026-11-02)
 
-Step 7 is the fetch script's Keychain token and incremental fetching.
-Steps 8–12 are the WASM and FFI exports with the cross-platform golden
-check, the desktop, web and iOS adapters, and the final as-built
-measurements. No shell reads or writes a sync file yet.
+### Step 7: the Keychain token and incremental fetches
+
+- **`scripts/fetch_plaid_sandbox.py`** keeps one item:
+  - The first run creates it and stores the access token in the Keychain
+    (service `ephemeris.plaid`, account = item id). The token goes in
+    through `security -i` on stdin, after a character check, so it never
+    appears in a process's arguments.
+  - `fetch_state.json` (item, cursor, sequence; no secret) is written as
+    soon as the item exists, so a failed run cannot orphan the token.
+  - Later runs sync from the saved cursor. `--full`, `--new-item`,
+    `--forget` (removes the item at Plaid and deletes the token),
+    `--refresh` and `--out` are new.
+  - `fetch_meta.json` records the mode, the item and the fetch's sequence
+    number.
+- **`ephemeris sync import-plaid`** records a delta as changed records plus
+  removals. It keeps, in the replica file (local, never synced), which
+  fetch of which item it imported last. It refuses:
+  - a delta with no full fetch before it;
+  - a gap in the sequence, because the changes in between would be lost;
+  - a repeated fetch;
+  - a fetch of a different item.
+
+  A `--full` fetch is always accepted. Plain `import-plaid` refuses a
+  delta, which is not a whole feed.
+- **Finding, from the live sandbox:** a first full fetch held 30 days, and
+  the next delta backfilled two years of history. So a delta's window
+  reaches back to its earliest record, not just to the previous fetch.
+  Without that, the backfilled records fell outside fetched history and
+  were dropped. A unit test pins this down and fails without the fix.
+- **Checked live** against the Plaid sandbox, into the scratch folder (not
+  `data/sandbox`):
+  - Fetch 1 was full (311 records). Fetch 2, after `--refresh`, was a
+    delta: 119 added, 291 modified, 20 removed. Fetch 3 was `--full`.
+  - A replica given fetch 1 + delta 2 materializes **byte-identically**
+    to a replica given only fetch 3.
+  - No file held a token, the Keychain entry existed, and `--forget`
+    removed the item and the entry. The check used lookup exit codes
+    only; the token was never printed.
+
+### Step 8: the shell API, and the cross-platform golden check
+
+- **`ephemeris_sync::json`** is what every shell calls. The exports are
+  `sync_new`, `sync_edit`, `sync_ingest`, `sync_merge`,
+  `sync_materialize`, `sync_forecast_options`, `sync_saved_queries`,
+  `sync_seal`, `sync_open` and the key text.
+  - A state is an opaque string to the shells. Where it comes back next
+    to other data, it is a JSON string inside the object, so JavaScript
+    never re-encodes it.
+  - WASM (`ephemeris-wasm`) and UniFFI (`ephemeris-ffi`) wrap these
+    functions one for one.
+- **Golden fixtures** (`crates/ephemeris-sync/tests/golden`, 296 kB):
+  - two sealed replica files: a fetcher with a 90-day synthetic history
+    (biweekly income, 5 bills, transfers, 6 pending) and a second device
+    with concurrent edits (an override, a rule moving 45 charges, settings
+    on both sides, a saved query);
+  - a fixed test key;
+  - the merged state, feed and report.
+
+  Each shell merges in its own order and must reproduce all three, byte
+  for byte. All four pass:
+
+  | Shell | Merge order | Command |
+  |---|---|---|
+  | Native | new ⊔ A ⊔ B, and B ⊔ A | `cargo test -p ephemeris-sync --test golden` |
+  | WASM (Node) | B ⊔ A | `wasm-pack test --node --release crates/ephemeris-wasm` |
+  | FFI, from Rust | A ⊔ B | `cargo test -p ephemeris-ffi` |
+  | Swift, through the FFI on the Mac | new ⊔ B ⊔ A | `scripts/build-ios.sh --sim-only` then `swift test --package-path ios/EphemerisKit` (21 tests in 6 suites) |
+
+### Measured costs, and a corrected estimate
+
+| Item | Measured |
+|---|---|
+| Web WASM, before sync | 352,597 B (gzip 151,748) |
+| With the sync exports, the sync crate at opt-level 3 | 720,547 B (gzip 276,658) |
+| With the sync crate at opt-level `"z"` (kept; release only) | **656,720 B (gzip 265,060): +304 kB, +113 kB gzipped** |
+| XCFramework (simulator + macOS slices) | 35 MB (29 MB in 3a); built in 39 s |
+| `swift test`, first run after the rebuild | 68 s |
+| Default `cargo test` (workspace) | 231 tests pass |
+| Convergence simulation, default pass (one fetcher + handover, 100 seeds each) | 7.3 s |
+| Soak (`--ignored`, 4,000 runs, one fetcher + handover) | passes; 812 s of test time. The machine was evidently suspended or busy (3.6 h wall clock), and the default pass is unchanged, so this is not a code slowdown. |
+| Free disk | 13 GB, down from 18 GB at the start of 4b (build output) |
+
+The sync crate's share of the WASM is spread out. It is generic serde
+and `BTreeMap` code repeated for each map type, sorts and the tagging, as
+the name-section breakdown shows; there is no single culprit. The design
+estimated "tens of kB" (§2.2), which was wrong by an order of magnitude.
+§2.3 is corrected. Possible reductions are unmeasured and not done:
+- fewer distinct map types;
+- a hand-written state decoder in place of derived serde.
+
+### Not done yet
+
+Steps 9–12: the desktop, web and iOS adapters (folder transport, keychain
+for the sync key, the Sync sheet, saved queries), then the final as-built
+measurements. No app reads or writes a sync file yet.
