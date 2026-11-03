@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import * as syncWasm from "../src/wasm/sync-pkg/ephemeris_sync_wasm.js";
 import { forecastJson } from "../src/wasm/engine";
-import { setSyncWasm, webSync } from "../src/sync/web";
+import { FOLDER_REFUSED, setSyncWasm, webSync } from "../src/sync/web";
 import type { Directory, FileEntry, Writable } from "../src/sync/web";
 
 beforeAll(() => {
@@ -135,6 +135,58 @@ describe("webSync", () => {
     expect(e?.name).toBe(`${s.replica}.ephsync`);
     const key = syncWasm.sync_key_from_text(await host.showKey());
     expect(JSON.parse(syncWasm.sync_open(e!.bytes, key)).replica).toBe(s.replica);
+  });
+
+  it("a folder the browser refuses gives a message pointing to import and export, which still work", async () => {
+    for (const name of ["SecurityError", "NotAllowedError"]) {
+      const host = webSync({
+        storage: null,
+        pickDirectory: async () => {
+          throw new DOMException("It contains system files", name);
+        },
+        download: () => {},
+      });
+      await host.createKey();
+      const err = await host.chooseFolder().then(
+        () => null,
+        (e: Error) => e.message,
+      );
+      expect(err).toContain(FOLDER_REFUSED);
+      expect(err).toContain("It contains system files");
+      expect(err).toMatch(/Import sync files…/);
+      expect((await host.status()).folder).toBeNull();
+      // The manual path is the way in.
+      const golden = (n: string) => new File([readFileSync(resolve(GOLDEN, n))], n);
+      const paired = webSync({ storage: null });
+      await paired.pair(readFileSync(resolve(GOLDEN, "key.txt"), "utf8").trim());
+      const s = await paired.importFiles!([golden("replica-a.ephsync"), golden("replica-b.ephsync")]);
+      expect(s.hasData).toBe(true);
+    }
+  });
+
+  it("cancelling the picker is not an error", async () => {
+    const host = webSync({
+      storage: null,
+      pickDirectory: async () => {
+        throw new DOMException("The user aborted a request.", "AbortError");
+      },
+    });
+    await host.createKey();
+    const s = await host.chooseFolder();
+    expect(s.folder).toBeNull();
+    expect(s.error).toBeNull();
+  });
+
+  it("write access refused after the pick shows the same message in the status", async () => {
+    const folder = new MemoryFolder();
+    folder.getFileHandle = async () => {
+      throw new DOMException("Write permission denied", "NotAllowedError");
+    };
+    const host = webSync({ storage: null, pickDirectory: async () => folder });
+    await host.createKey();
+    const s = await host.chooseFolder();
+    expect(s.error).toContain(FOLDER_REFUSED);
+    expect(s.error).toContain("Write permission denied");
   });
 
   it("without a folder picker it offers no folder, and edits need a key", async () => {

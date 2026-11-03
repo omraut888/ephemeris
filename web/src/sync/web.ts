@@ -69,6 +69,20 @@ const EXT = ".ephsync";
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** What to tell the user when the browser will not open or write the
+ * folder: Chrome refuses some folders outright (those under ~/Library,
+ * where iCloud Drive lives, among them), and permission can be denied. */
+export const FOLDER_REFUSED =
+  "The browser would not use that folder. Some folders are blocked (those under ~/Library, such as iCloud Drive), and access can be denied. Use “Import sync files…” to read the folder's files, and “Export this device's file” to save this device's file into it.";
+
+function refused(e: unknown): Error {
+  return new Error(`${FOLDER_REFUSED} (${message(e)})`);
+}
+
+/** Errors that mean the folder itself was refused, not a sync problem. */
+const isRefusal = (e: unknown) =>
+  e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError");
+
 function browserDefaults(): WebSyncOptions {
   const w = typeof window === "undefined" ? undefined : (window as unknown as Record<string, unknown>);
   const picker = w?.showDirectoryPicker as
@@ -207,7 +221,9 @@ export function webSync(options: WebSyncOptions = browserDefaults()): SyncHost &
       lastSync = now();
       error = null;
     } catch (e) {
-      error = message(e);
+      // Read or write access refused after the pick (permission revoked,
+      // or denied when the browser asked to save changes).
+      error = isRefusal(e) ? message(refused(e)) : message(e);
     }
     return status();
   }
@@ -264,7 +280,8 @@ export function webSync(options: WebSyncOptions = browserDefaults()): SyncHost &
       } catch (e) {
         // Cancelling the picker is not an error.
         if (e instanceof DOMException && e.name === "AbortError") return status();
-        throw e;
+        // Anything else is the browser refusing the folder or the access.
+        throw refused(e);
       }
       return syncNow();
     },
