@@ -75,6 +75,8 @@ export interface SyncHost {
   exportFile?(): Promise<void>;
   /** Whether `chooseFolder` can work here (web: the File System Access API). */
   readonly canChooseFolder: boolean;
+  /** Start loading what sync needs (web: the sync WASM), as the sheet opens. */
+  prepare?(): void;
   feed(): Promise<SyncedFeed | null>;
   queries(): Promise<SavedQuery[]>;
   saveQuery(amountCents: number, by: string, label: string): Promise<SavedQuery[]>;

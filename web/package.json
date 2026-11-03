@@ -5,7 +5,9 @@
   "type": "module",
   "description": "EPHEMERIS web shell: the Rust engine in WASM, drawn with React (docs/phase2-design.md)",
   "scripts": {
-    "wasm": "wasm-pack build ../crates/ephemeris-wasm --target web --release --out-dir ../../web/src/wasm/pkg",
+    "wasm": "npm run wasm:engine && npm run wasm:sync",
+    "wasm:engine": "wasm-pack build ../crates/ephemeris-wasm --target web --release --out-dir ../../web/src/wasm/pkg",
+    "wasm:sync": "wasm-pack build ../crates/ephemeris-sync-wasm --target web --release --out-dir ../../web/src/wasm/sync-pkg",
     "dev": "npm run wasm && vite",
     "build": "npm run wasm && tsc --noEmit -p . && vite build",
     "preview": "vite preview",

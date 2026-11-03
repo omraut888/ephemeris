@@ -3,3 +3,5 @@ dist/
 dist-desktop/
 # wasm-pack output; `npm run wasm` regenerates it.
 src/wasm/pkg/
+# The sync module's wasm-pack output (docs/phase4b-design.md §10).
+src/wasm/sync-pkg/

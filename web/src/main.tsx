@@ -13,7 +13,11 @@ import type { Engine } from "./wasm/client";
 function shell(): Promise<{ engine: Engine; files?: FileHost; sync?: SyncHost }> {
   return import.meta.env.MODE === "desktop"
     ? import("./desktop/shell").then((m) => m.desktopShell())
-    : import("./wasm/browser").then((m) => ({ engine: m.workerEngine() }));
+    : Promise.all([import("./wasm/browser"), import("./sync/web")]).then(([m, s]) => ({
+        engine: m.workerEngine(),
+        // The sync WASM itself loads only when the Sync sheet is used.
+        sync: s.webSync(),
+      }));
 }
 
 const root = document.getElementById("root");

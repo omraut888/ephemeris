@@ -296,6 +296,7 @@ export function App({
           sync &&
           (() => {
             setSheetOpen(true);
+            sync.prepare?.();
             sync.status().then(onSyncStatus, fail);
           })
         }
