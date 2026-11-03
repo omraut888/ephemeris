@@ -18,12 +18,13 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
 - Phase 3a, the iOS app, is in progress: crates/ephemeris-ffi (UniFFI)
   exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
   docs/phase3-design.md. Android (3b) comes later.
-- Phase 4b, sync between the apps, is in progress: the pure crate
-  crates/ephemeris-sync, the CLI's `ephemeris sync` commands, and the sync_*
-  exports in the WASM and FFI crates are built; shell adapters are not.
-  Design and as-built notes: docs/phase4b-design.md. One device fetches
-  from Plaid, enforced in the sync state (§1.4); the fetch script keeps the
-  item's access token in the macOS Keychain, never in a file.
+- Phase 4b, sync between the apps, is in progress: the sync crates, the
+  CLI's `ephemeris sync` commands, and the desktop and web adapters (Sync
+  sheet, folder sync, saved queries) are built; iOS is not. Design and
+  as-built notes: docs/phase4b-design.md (§10 for the adapters). One device
+  fetches from Plaid, enforced in the sync state (§1.4). The Plaid token and
+  the sync key live in the macOS Keychain, never in files; the browser
+  holds the sync key in memory for the tab only.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
@@ -35,6 +36,13 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   edits and sealed files. Its convergence simulation is
   `cargo test -p ephemeris-sync --test convergence` (soak: `-- --ignored`).
 - crates/ephemeris-wasm: wasm-bindgen wrapper; JSON in, JSON out, same schema as the CLI.
+  Engine only: its bytes must not change when sync does.
+- crates/ephemeris-sync-wasm: the browser's sync exports, a WASM module of
+  its own that web/src/sync/web.ts imports only when the Sync sheet opens.
+- crates/ephemeris-plaid: Plaid's JSON to bank records and fetch batches
+  (pure), for the CLI and the desktop app, either of which can fetch.
+- crates/ephemeris-sync-folder: folder transport and the Keychain sync key
+  for the native shells (CLI, desktop).
 - crates/ephemeris-desktop: the Tauri app. It is not a default workspace
   member, so use `-p ephemeris-desktop` (scripts/test-full.sh does this).
 - crates/ephemeris-ffi: UniFFI exports for Swift, JSON in and out like the
