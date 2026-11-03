@@ -5,6 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo test --release -- --include-ignored "$@"
+# The fetch script keeps the Plaid token out of every process's arguments
+# (a recording stand-in for `security`; no Plaid, no real Keychain).
+python3 -I scripts/test_fetch_plaid_sandbox.py
 # The same golden files again, inside WASM under Node: native and WASM must
 # produce byte-identical feeds and reports (docs/phase2-design.md §2).
 wasm-pack test --node --release crates/ephemeris-wasm
