@@ -11,6 +11,7 @@ pub mod edits;
 pub mod envelope;
 pub mod hlc;
 pub mod ingest;
+pub mod json;
 pub mod lww;
 pub mod state;
 pub mod tag;
