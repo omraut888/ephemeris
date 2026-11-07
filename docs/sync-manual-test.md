@@ -10,6 +10,16 @@ red message, or the terminal's `error:` line).
 Background: docs/phase4b-design.md §3 (transport, key), §1.4 (one
 fetcher), §10 (the adapters as built).
 
+**Run every command in one ordinary Terminal window**, the same kind of
+shell for all of them, not inside an agent's sandboxed shell. A Keychain
+lookup from a restricted shell can say "not found" for an item that
+exists. **Watch the `tauri dev` terminal**: every sync action logs one
+line, `[sync] <action>: ok` or `[sync] <action> failed: <reason>`. If a
+step fails, copy those lines and the red message in the Sync sheet.
+**Do not repeat step 0 while the desktop app is running.** It deletes
+the app's sync folder under the running app; restart from 0 with the app
+stopped.
+
 ## 0. Setup
 
 ```sh
@@ -23,7 +33,7 @@ APP="$HOME/Library/Application Support/dev.ephemeris.desktop"
 | # | Do | Expect |
 |---|---|---|
 | 0.1 | `security find-generic-password -s ephemeris.sync -a key >/dev/null 2>&1 && echo "a key exists" \|\| echo "no key"` | `no key`. If a key exists, delete it with `security delete-generic-password -s ephemeris.sync -a key`. That only removes the test key. |
-| 0.2 | `rm -rf "$APP/sync" data/sync` | Starts the desktop app and the CLI as new devices. `$APP/sync` holds only a device id from an earlier launch. |
+| 0.2 | Make sure the desktop app is not running (no `tauri dev` window), then `rm -rf "$APP/sync" data/sync` | Starts the desktop app and the CLI as new devices. |
 | 0.3 | `mkdir -p "$SYNC" && ls -A "$SYNC"` | No output (an empty folder). |
 
 ## 1. Desktop: create a key
@@ -32,14 +42,16 @@ APP="$HOME/Library/Application Support/dev.ephemeris.desktop"
 |---|---|---|
 | 1.1 | `cd web && npm run tauri dev` (in its own terminal; the first build takes a few minutes) | The EPHEMERIS window opens on the demo. |
 | 1.2 | Click **Sync** (top right, after "Load feed…") | A "Sync" sheet with a key field, **Pair**, and "First device? **Create a new sync key**". |
-| 1.3 | Click **Create a new sync key** | The sheet shows the rows Key (**Show key**), Folder ("none chosen", **Choose folder…**), Status ("Last synced never"), and Bank data ("None yet…", "No device fetches yet.", **Make this device the fetcher**). |
+| 1.3 | Click **Create a new sync key** | The `tauri dev` terminal prints `[sync] create key: ok`. The sheet shows the rows Key (**Show key**), Folder ("none chosen", **Choose folder…**), Status ("Last synced never"), and Bank data ("None yet…", "No device fetches yet.", **Make this device the fetcher**). If it fails, the sheet shows a red message and the terminal shows `[sync] create key failed: …` with the Keychain's own reason. Copy both. |
 | 1.4 | `security find-generic-password -s ephemeris.sync -a key >/dev/null && echo present` | `present` (this checks that the key exists without printing it). |
+| 1.5 | `ls "$APP/sync"` | `config.json  local.ephsync`: this device's state, sealed with the key. |
 
 ## 2. Choose a folder inside iCloud Drive
 
 | # | Do | Expect |
 |---|---|---|
-| 2.1 | Click **Choose folder…**, then pick **iCloud Drive › Ephemeris Sync** and click **Open** | Folder shows `/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/Ephemeris Sync`. Status shows "Last synced" with the current time, and a Devices list with one row, "This device". |
+| 2.1 | Click **Choose folder…**, then select **iCloud Drive › Ephemeris Sync** (select the folder itself, so its name is highlighted) and click **Open** | The terminal prints `[sync] choose folder /Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/Ephemeris Sync: ok`. Folder shows that path. Status shows "Last synced" with the current time, and a Devices list with one row, "This device". If the terminal prints `[sync] choose folder: the dialog was cancelled`, the dialog returned no folder: try again. |
+| 2.1b | `grep '"folder"' "$APP/sync/config.json"; ls "$SYNC"` | `"folder": "/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/Ephemeris Sync",` then one file, `<16 hex>.ephsync`. |
 | 2.2 | `python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/Library/Application Support/dev.ephemeris.desktop/sync/config.json")))["replica"])'` | 16 hex digits: the desktop's device id. Note it as DESKTOP. |
 
 ## 3. The device file is ciphertext
