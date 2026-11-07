@@ -1163,6 +1163,31 @@ Elsewhere, the desktop app gets a pasted key over Tauri's IPC, and the
 browser holds it in memory; neither starts a process with it.
 `security-framework` was not needed.
 
+### Hand-tested (2026-11-07)
+
+docs/sync-manual-test.md was run by hand, end to end, and passed. It
+covers the "not checked by hand" items above for the desktop and the web:
+
+| Step | Result |
+|---|---|
+| 1–2 Desktop key, folder in iCloud Drive | The key was created in the Keychain, and the folder was chosen in the native dialog; the `tauri dev` terminal printed `[sync] … ok` for each. |
+| 3 Ciphertext | The device file and the local copy hold no readable JSON. |
+| 4 CLI pairing | The key was pasted on stdin; a key on the command line was refused. The plaintext replica is gitignored. |
+| 5 Plaid fetch by the CLI | A full fetch of 311 records. The token was only in the Keychain. |
+| 6a Override conflict, CLI A against CLI B | Both converged to the later edit. |
+| 6b Saved query, deleted on the desktop and edited in the CLI | The delete (later) won on both. |
+| 7 Fetcher handover | After the desktop took the role, the CLI's fetch was refused, and the record count stayed at 311. |
+| 8 Web in Chrome | The sync WASM loaded only when the Sync sheet opened. Pairing by a pasted key worked. **Chrome + iCloud Drive gave outcome A**: Chrome opened the iCloud folder directly, so the manual import and export fallback was not needed. Four devices were listed, and all four `.ephsync` files start with `EPHS`. |
+| 9 Cleanup | The Plaid item was forgotten and the test key deleted. |
+
+Not seen during the run: the web sheet's Bank data line "Device … fetches
+from the bank." The web and the desktop render the same `SyncSheet`, and
+both give the fetcher as 16 hex digits (the desktop from its status, the
+web from `sync_summary`). A Vitest test now drives the real browser host
+on the golden files through the sheet. It shows "Device 0000aa fetches
+from the bank." exactly as the desktop's sheet would, so nothing needed
+fixing.
+
 ### Next
 
 iOS (step 11), run alone because the simulator saturates this Mac. Then
