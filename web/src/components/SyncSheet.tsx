@@ -14,6 +14,10 @@ interface Props {
   onClose: () => void;
   /** Show the synced data in the app. */
   onShowSynced: () => void;
+  /** The last sync error, kept by the app so it survives closing the sheet. */
+  lastError?: string | null;
+  /** Report an action's error (or null once one succeeds) to the app. */
+  onError?: (message: string | null) => void;
 }
 
 const message = (e: unknown) =>
@@ -40,7 +44,15 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function SyncSheet({ host, status, onStatus, onClose, onShowSynced }: Props) {
+export function SyncSheet({
+  host,
+  status,
+  onStatus,
+  onClose,
+  onShowSynced,
+  lastError = null,
+  onError,
+}: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keyText, setKeyText] = useState("");
@@ -52,8 +64,13 @@ export function SyncSheet({ host, status, onStatus, onClose, onShowSynced }: Pro
     try {
       const s = await f();
       if (s) onStatus(s);
+      onError?.(null);
     } catch (e) {
-      setError(message(e));
+      const m = message(e);
+      // The desktop backend logs to its terminal; this lands in devtools.
+      console.error("[sync]", m);
+      setError(m);
+      onError?.(m);
     } finally {
       setBusy(false);
     }
@@ -64,7 +81,7 @@ export function SyncSheet({ host, status, onStatus, onClose, onShowSynced }: Pro
     void act(() => host.pair(keyText.trim()));
   };
 
-  const shownError = error ?? status?.error ?? null;
+  const shownError = error ?? lastError ?? status?.error ?? null;
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>

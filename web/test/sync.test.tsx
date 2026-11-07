@@ -224,6 +224,40 @@ describe("App with sync", () => {
     await waitFor(() => expect(screen.queryByRole("list", { name: "Saved queries" })).toBeNull());
   });
 
+  it("keeps a failed action's message after the sheet is closed and reopened", async () => {
+    const host = fakeHost("desktop", status({ paired: false }));
+    host.createKey = vi.fn(async () => {
+      throw "could not store the sync key in the Keychain: User interaction is not allowed.";
+    });
+    render(<App engine={directEngine} sync={host} />);
+    await screen.findByText(/demo · realistic/);
+    await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Create a new sync key" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/User interaction is not allowed/);
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/User interaction is not allowed/);
+  });
+
+  it("shows a background sync's failure when the sheet opens", async () => {
+    const host = fakeHost("desktop", status());
+    host.syncNow = vi.fn(async () => {
+      throw "cannot read the sync folder /Users/me/iCloud/Ephemeris: Operation not permitted";
+    });
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    render(<App engine={directEngine} sync={host} />);
+    await screen.findByText(/demo · realistic/);
+    await waitFor(() => expect(host.status).toHaveBeenCalled());
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(host.syncNow).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Operation not permitted/);
+    vi.restoreAllMocks();
+  });
+
   it("has no Sync button and no saving without a sync host", async () => {
     render(<App engine={directEngine} />);
     await screen.findByText(/demo · realistic/);

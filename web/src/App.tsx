@@ -62,6 +62,9 @@ export function App({
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saved, setSaved] = useState<SavedQuery[]>([]);
+  // The last sync error, from the sheet or a background sync. Kept here so
+  // closing the sheet does not lose it.
+  const [syncError, setSyncError] = useState<string | null>(null);
   // The synced settings' options, used while the synced data is on screen.
   const syncedOptions = useRef<ForecastOptions | null>(null);
 
@@ -225,6 +228,7 @@ export function App({
       if (typeof document !== "undefined" && !document.hasFocus()) return;
       try {
         onSyncStatus(await sync.syncNow());
+        setSyncError(null);
         const shown = dataRef.current;
         if (shown?.source.kind !== "synced") return;
         const synced = await sync.feed();
@@ -238,8 +242,10 @@ export function App({
           const through = (await sync.status()).fetchedThrough;
           await run({ kind: "synced", through }, synced.feedJson, horizonRef.current);
         }
-      } catch {
-        // A failed background sync shows in the sheet's status next time.
+      } catch (e) {
+        // Shown in the sheet the next time it opens, and logged.
+        console.error("[sync] background sync failed:", e);
+        setSyncError(message(e));
       }
     };
     const id = setInterval(() => void tick(), SYNC_POLL_MS);
@@ -416,6 +422,8 @@ export function App({
           onStatus={onSyncStatus}
           onClose={() => setSheetOpen(false)}
           onShowSynced={() => void showSynced()}
+          lastError={syncError}
+          onError={setSyncError}
         />
       )}
     </div>
