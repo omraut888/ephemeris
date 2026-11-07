@@ -94,6 +94,31 @@ impl Keychain {
 /// `security`'s exit code for "no such item".
 const NOT_FOUND: i32 = 44;
 
+/// What `security` said about a failure: its stderr, else its stdout
+/// without the interactive prompts, else its exit status. Never the secret:
+/// `security` does not echo what it reads.
+fn reason(out: &std::process::Output) -> String {
+    let text = |b: &[u8]| {
+        String::from_utf8_lossy(b)
+            .lines()
+            .map(|l| l.trim_start_matches("security> ").trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let said = text(&out.stderr);
+    let said = if said.is_empty() {
+        text(&out.stdout)
+    } else {
+        said
+    };
+    if said.is_empty() {
+        format!("security exited with {}", out.status)
+    } else {
+        format!("{said} ({})", out.status)
+    }
+}
+
 impl KeyStore for Keychain {
     fn get(&self) -> Result<Option<Key>, String> {
         let out = self.security(&["find-generic-password", "-w"])?;
@@ -105,8 +130,8 @@ impl KeyStore for Keychain {
             }
             Some(NOT_FOUND) => Ok(None),
             _ => Err(format!(
-                "could not read the sync key from the Keychain ({})",
-                out.status
+                "could not read the sync key from the Keychain: {}",
+                reason(&out)
             )),
         }
     }
@@ -120,11 +145,14 @@ impl KeyStore for Keychain {
         // Crockford base32 and dashes only: nothing that could end the
         // quoted value or start another command.
         let text = envelope::key_to_text(key);
+        // stdout and stderr are kept: when the Keychain refuses (locked,
+        // "User interaction is not allowed", no default keychain), they hold
+        // the reason, which the error then carries.
         let mut child = Command::new(&self.program)
             .arg("-i")
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("cannot run security (the Keychain tool): {e}"))?;
         let command = format!(
@@ -137,11 +165,20 @@ impl KeyStore for Keychain {
             .expect("piped")
             .write_all(command.as_bytes())
             .map_err(|e| format!("cannot talk to security: {e}"))?;
-        child.wait().map_err(|e| e.to_string())?;
+        let out = child
+            .wait_with_output()
+            .map_err(|e| format!("cannot talk to security: {e}"))?;
         // `security -i` exits 0 even when a command fails: read it back.
-        match self.get()? {
-            Some(k) if &k == key => Ok(()),
-            _ => Err("could not store the sync key in the Keychain".into()),
+        match self.get() {
+            Ok(Some(k)) if &k == key => Ok(()),
+            Ok(_) => Err(format!(
+                "could not store the sync key in the Keychain: {}",
+                reason(&out)
+            )),
+            Err(e) => Err(format!(
+                "could not store the sync key in the Keychain: {}; then {e}",
+                reason(&out)
+            )),
         }
     }
 
@@ -149,7 +186,7 @@ impl KeyStore for Keychain {
         let out = self.security(&["delete-generic-password"])?;
         match out.status.code() {
             Some(0) | Some(NOT_FOUND) => Ok(()),
-            _ => Err(format!("could not delete the sync key ({})", out.status)),
+            _ => Err(format!("could not delete the sync key: {}", reason(&out))),
         }
     }
 }
@@ -503,6 +540,60 @@ esac
         assert!(
             stdin.contains(&format!("-w \"{text}\"")),
             "the key went in on stdin"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A stand-in `security` that refuses the way the real one does: it
+    /// prints its reason on stderr, and `-i` still exits 0.
+    #[cfg(unix)]
+    fn refusing_security(dir: &Path, find_exit: i32, find_err: &str) -> Keychain {
+        use std::os::unix::fs::PermissionsExt;
+        let shim = dir.join("security");
+        let script = format!(
+            r#"#!/bin/sh
+case "$1" in
+  -i) cat > /dev/null
+      echo "security: SecKeychainItemCreateFromContent (<default>): User interaction is not allowed." >&2 ;;
+  find-generic-password) echo "{find_err}" >&2; exit {find_exit} ;;
+  delete-generic-password) echo "security: SecKeychainItemDelete: Write permissions error." >&2; exit 50 ;;
+esac
+"#
+        );
+        fs::write(&shim, script).unwrap();
+        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
+        Keychain {
+            service: "ephemeris.sync".into(),
+            account: "key".into(),
+            program: shim,
+        }
+    }
+
+    /// When the Keychain refuses, the error carries `security`'s own reason,
+    /// so the Sync sheet and the terminal say why, not just that it failed.
+    #[cfg(unix)]
+    #[test]
+    fn keychain_errors_carry_securitys_own_reason() {
+        let dir = temp("refuse");
+        let kc = refusing_security(
+            &dir,
+            44,
+            "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.",
+        );
+        let err = kc.set(&[1; 32]).unwrap_err();
+        assert!(err.contains("User interaction is not allowed"), "{err}");
+        let err = kc.delete().unwrap_err();
+        assert!(err.contains("Write permissions error"), "{err}");
+
+        let kc = refusing_security(
+            &dir,
+            51,
+            "security: SecKeychainSearchCopyNext: The user name or passphrase you entered is not correct.",
+        );
+        let err = kc.get().unwrap_err();
+        assert!(
+            err.contains("passphrase you entered is not correct"),
+            "{err}"
         );
         fs::remove_dir_all(&dir).unwrap();
     }
