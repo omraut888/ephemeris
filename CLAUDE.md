@@ -19,12 +19,14 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   exposes the engine to a SwiftUI app in ios/. Design and as-built notes:
   docs/phase3-design.md. Android (3b) comes later.
 - Phase 4b, sync between the apps, is in progress: the sync crates, the
-  CLI's `ephemeris sync` commands, and the desktop and web adapters (Sync
-  sheet, folder sync, saved queries) are built; iOS is not. Design and
-  as-built notes: docs/phase4b-design.md (§10 for the adapters). One device
-  fetches from Plaid, enforced in the sync state (§1.4). The Plaid token and
-  the sync key live in the macOS Keychain, never in files; the browser
-  holds the sync key in memory for the tab only.
+  CLI's `ephemeris sync` commands, and the desktop, web and iOS adapters
+  (Sync sheet, folder sync, saved queries) are built; the final
+  measurements (step 12) remain. Design and as-built notes:
+  docs/phase4b-design.md (§10 for desktop and web, §11 for iOS); the hand
+  test is docs/sync-manual-test.md. One device fetches from Plaid,
+  enforced in the sync state (§1.4); iOS never fetches. The Plaid token
+  and the sync key live in the Keychain (macOS, iOS), never in files; the
+  browser holds the sync key in memory for the tab only.
 - Data source for now: Plaid sandbox (synthetic). Keys go in .env, never committed.
 
 ## Layout
@@ -49,7 +51,8 @@ Monte Carlo simulation for a forecast cone. Full spec: docs/spec.html
   WASM crate. Not a default member either; scripts/build-ios.sh builds the
   XCFramework from it.
 - ios/: the Swift package EphemerisKit (Codable schema types with a drift
-  test against Rust, the engine client, the app model) and the SwiftUI app
+  test against Rust, the engine client, the app model, the sync device in
+  Sources/EphemerisKit/Sync) and the SwiftUI app
   (XcodeGen, ios/project.yml). `swift test --package-path ios/EphemerisKit`
   runs on the Mac; scripts/test-ios.sh runs the simulator. The simulator
   saturates this 8 GB Mac for minutes after a boot, so run it alone.

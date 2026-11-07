@@ -1192,4 +1192,131 @@ fixing.
 
 iOS (step 11), run alone because the simulator saturates this Mac. Then
 the final as-built measurements (step 12). Before that,
-docs/sync-manual-test.md is to be run by hand.
+docs/sync-manual-test.md is to be run by hand. (It was, on 2026-11-07:
+see above. §11 takes up iOS.)
+
+## 11. As built: the iOS adapter (fourth checkpoint, 2026-11-07)
+
+The last adapter. It does what the desktop and web adapters do, minus the
+fetcher role: iOS never fetches (§1.4).
+
+### What exists
+
+- **FFI:** one new export, `sync_summary`: has data, fetched through, and
+  the fetcher. It is a wrapper over the function the browser module
+  already exports, so the Sync sheet can show Bank data without Swift
+  decoding a state. Everything else uses the exports from §9 unchanged
+  (`sync_ingest` stays exported, unused on iOS).
+- **`EphemerisKit/Sources/EphemerisKit/Sync/`** (in the package, so
+  `swift test` covers it on the Mac):
+  - `SyncKeyStore`: the Keychain through Security.framework
+    (`SecItemAdd`/`CopyMatching`/`Update`/`Delete`). It uses service
+    `ephemeris.sync` and account `key`, and stores the key as text, as on
+    the Mac. It is accessible after first unlock, on this device only: the
+    key is not restored from a backup onto another phone and does not
+    travel by iCloud Keychain. A new key is read back after it is stored,
+    as on the Mac. `MemoryKeyStore` is for tests.
+  - `SyncFolder`: the folder transport. The listing and every file read
+    are `NSFileCoordinator` reads. The device's own file is a coordinated
+    `.forReplacing` write of an atomic file. A file iCloud has not
+    downloaded yet (a "not downloaded" status, or an older-style
+    `.<name>.icloud` placeholder) is not read: its download is started,
+    and its row says to sync again in a moment. Names starting with a
+    dot are skipped, as on the other shells.
+  - `SyncModel`: the device, the counterpart of the desktop's `Device`.
+    - In Application Support, `sync/config.json` holds the replica id, a
+      bookmark to the folder chosen in Files, the folder's name and the
+      last sync time; nothing secret. `sync/local.ephsync` is the state,
+      sealed with the key. Both are written with complete file
+      protection.
+    - Actions: create key, pair, show key, choose folder, sync now, save
+      and delete queries, forget the key, and the synced feed.
+    - Each action logs one `[sync] <action>: ok` or `… failed: <reason>`
+      line to stderr (Xcode's console), as the desktop does. Background
+      sync failures are kept in the status and logged once. The key is
+      never logged.
+    - The folder pass (read, merge, seal, write) runs off the main
+      thread. Its result is merged into the current state, not assigned
+      over it, so an edit made during the pass is kept.
+  - `SyncSelfTest`: two devices, one on the real Keychain under a
+    throwaway service, pair through a temporary folder. A query saved on
+    one reaches the other, and a delete there comes back. It checks
+    every file for `EPHS`, and reopens the sealed state from disk. It
+    deletes its Keychain item and folders either way.
+  - `AppModel`: a `synced(through:)` source ("synced · through <date>"),
+    using the synced horizon, paths and seed, as on the web. The horizon
+    menu adds the synced horizon when it is not 30, 90 or 180. After a
+    sync, synced data on screen is redrawn if the feed or the settings
+    changed. A changed synced horizon is adopted, which the web does not
+    do; otherwise the horizon the user picked stays.
+- **The app:**
+  - A **Sync** button (top left) opens the sheet. The sheet pairs by a
+    pasted key or creates one, shows the key on request (with Copy), and
+    chooses the folder with Files' folder picker. It shows the status
+    with the device list and each file's error, and Bank data with the
+    same wording as the React sheet. It offers "Show synced data" and
+    "Remove the key from this iPhone…". There is no fetcher button.
+  - **Saved queries** live in the afford panel: a label field and
+    **Save** while paired, then chips that refill the question when
+    tapped, each with a delete button.
+  - **When it syncs** (§3.2): on launch, on becoming active, on pull to
+    refresh, and after each edit. There is no timer and no background
+    sync.
+
+### Checks
+
+- **`swift test` on the Mac** (31 tests in 7 suites, up from 21 in 6;
+  the new suite is `SyncModelTests`):
+  - two devices converge through a real temporary folder, including a
+    delete;
+  - every file, the local copy included, is sealed (`EPHS`, no readable
+    JSON or labels), and the config holds no key;
+  - a relaunch keeps the replica, the state and the folder;
+  - the golden replicas, put in the folder, give the golden feed and
+    report and name the fetcher `…0000aa`. That is a sixth leg of the
+    golden check, through the folder code;
+  - damaged files, files from another key and iCloud placeholders are
+    reported and never deleted;
+  - pairing and edit refusals; one log line per action, and never the
+    key;
+  - a missing folder is a status error, logged once;
+  - forgetting the key leaves the folder alone;
+  - synced data uses the synced options, and is redrawn only on a
+    change;
+  - the self-test through the real macOS Keychain, under a throwaway
+    service.
+- **The simulator** (`scripts/test-ios.sh`, run alone, once): passed in
+  4 min 33 s.
+  - 30 of 30 package tests passed on iOS 27.1: all but the macOS-only
+    Keychain test.
+  - The app then ran `SyncSelfTest` through the iOS Keychain and logged
+    `EPHEMERIS sync selftest ok: 2 sealed files, Keychain round trip, a
+    query saved and deleted across two devices`, then `EPHEMERIS ready`.
+  - One small `AppModel` change came after that run: adopting a changed
+    synced horizon on refresh. It is covered by the Mac tests only. The
+    app target did not change.
+- **Not checked here:** a real iPhone, real iCloud Drive on iOS, Files'
+  folder picker, and the sheet by hand. docs/sync-manual-test.md §9 is
+  the checklist for these.
+
+### Deviations from the design
+
+- **No iCloud entitlement or ubiquity container.** The user picks a
+  folder in Files, as §3.1 planned. Access persists through a bookmark,
+  so the app needs no paid account.
+- **"Forget the key" exists on iOS** (and not on the desktop or the web).
+  The Keychain item can outlive deleting the app, so the checklist's
+  cleanup needs a way to remove it from inside the app.
+
+### Costs (this Mac)
+
+| Item | Measured |
+|---|---|
+| Free disk (data volume) | 22 GB before this step, 20 GB after |
+| `target/` | 4.9 GB → 6.5 GB (the FFI's release slices rebuilt with `sync_summary`, and its tests) |
+| `ios/build` | 352 MB → 327 MB |
+| Simulator devices (`~/Library/Developer/CoreSimulator/Devices`) | 3.2 GB |
+| XCFramework rebuild (`build-ios.sh --sim-only`) | 73 s; 35 MB, unchanged |
+| `swift test` on the Mac | 11 s (31 tests) |
+| `scripts/test-ios.sh` | 4 min 33 s, run alone; nothing else ran meanwhile |
+| Vitest | 60 tests |
