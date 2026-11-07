@@ -105,6 +105,13 @@ pub fn sync_forecast_options(state: String) -> Result<String, EngineError> {
     Ok(sync::sync_forecast_options(&state)?)
 }
 
+/// What the Sync sheet shows of a state (JSON): `{"has_data", "fetched_through",
+/// "fetcher"}`, the same summary the browser's module gives.
+#[uniffi::export]
+pub fn sync_summary(state: String) -> Result<String, EngineError> {
+    Ok(sync::sync_summary(&state)?)
+}
+
 /// The saved queries (JSON array).
 #[uniffi::export]
 pub fn sync_saved_queries(state: String) -> Result<String, EngineError> {
@@ -197,8 +204,20 @@ mod tests {
         assert!(merged == include_str!("../../ephemeris-sync/tests/golden/merged-state.json"));
         let feed = sync_materialize(merged.clone()).unwrap();
         assert!(feed == include_str!("../../ephemeris-sync/tests/golden/merged-feed.json"));
-        let report = forecast_json(feed, sync_forecast_options(merged).unwrap()).unwrap();
+        let report = forecast_json(feed, sync_forecast_options(merged.clone()).unwrap()).unwrap();
         assert!(report == include_str!("../../ephemeris-sync/tests/golden/merged-report.json"));
+        // Golden replica A (…aa) fetches.
+        let summary: serde_json::Value =
+            serde_json::from_str(&sync_summary(merged).unwrap()).unwrap();
+        assert_eq!(summary["fetcher"], "00000000000000aa");
+        assert_eq!(summary["has_data"], true);
+        assert!(summary["fetched_through"].is_string());
+        let empty: serde_json::Value =
+            serde_json::from_str(&sync_summary(sync_new()).unwrap()).unwrap();
+        assert_eq!(
+            empty,
+            serde_json::json!({"has_data": false, "fetched_through": null, "fetcher": null})
+        );
     }
 
     #[test]
