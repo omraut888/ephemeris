@@ -7,8 +7,11 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     let model: AppModel
+    let sync: SyncModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var importing = false
     @State private var demoSettings = false
+    @State private var syncSheet = false
 
     var body: some View {
         NavigationStack {
@@ -26,7 +29,7 @@ struct ContentView: View {
                     if let report = model.report {
                         RiskView(report: report)
                         ForecastPanel(model: model, report: report)
-                        AffordView(model: model, report: report)
+                        AffordView(model: model, report: report, sync: sync)
                             .id("\(report.asOf)-\(report.forecast.horizonDays)-\(model.source?.label ?? "")")
                         StatePanelView(report: report)
                     } else if model.status == .loading {
@@ -38,9 +41,14 @@ struct ContentView: View {
                 }
                 .padding(16)
             }
+            .refreshable { await syncNow() }
             .background(Theme.bg)
             .toolbar {
                 ToolbarItem(placement: .principal) { header }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Sync", systemImage: "arrow.triangle.2.circlepath") { syncSheet = true }
+                        .accessibilityIdentifier("sync")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Open feed…", systemImage: "doc") { importing = true }
@@ -62,9 +70,18 @@ struct ContentView: View {
                 DemoSettings(model: model)
                     .presentationDetents([.medium])
             }
+            .sheet(isPresented: $syncSheet) {
+                SyncSheet(sync: sync) { Task { await showSynced() } }
+            }
         }
         .tint(Theme.accent)
         .task { await start() }
+        .task { await syncNow() }
+        // Sync on launch (start) and on becoming active; there is no
+        // background sync (docs/phase4b-design.md §3.2).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await syncNow() } }
+        }
         #if DEBUG
         .onChange(of: model.status) { _, status in
             // Lines for scripts/test-ios.sh to wait for, on stderr: unbuffered,
@@ -93,11 +110,36 @@ struct ContentView: View {
         }
     }
 
-    /// Opens on a demo, or, in Debug builds, on what the screenshot script
-    /// asks for: `-EPHEMERIS_FEED <file in Documents>`, `-EPHEMERIS_VIEW lows`.
+    /// Merge the folder, then redraw synced data if it is on screen and changed.
+    private func syncNow() async {
+        await sync.syncNow()
+        await model.refreshSynced(try? sync.syncedFeed())
+    }
+
+    private func showSynced() async {
+        do {
+            guard let synced = try sync.syncedFeed() else { return }
+            await model.showSynced(synced)
+        } catch {
+            model.show(error: "synced data: \(errorMessage(error))")
+        }
+    }
+
+    /// Opens on a demo, or, in Debug builds, on what the scripts ask for:
+    /// `-EPHEMERIS_FEED <file in Documents>`, `-EPHEMERIS_VIEW lows`, and
+    /// `-EPHEMERIS_SYNC_SELFTEST YES` (scripts/test-ios.sh), which runs the
+    /// sync round trip through the iOS Keychain first.
     private func start() async {
         #if DEBUG
         let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "EPHEMERIS_SYNC_SELFTEST") {
+            do {
+                log("EPHEMERIS sync selftest ok: \(try await SyncSelfTest.run())")
+            } catch {
+                log("EPHEMERIS error: sync selftest: \(errorMessage(error))")
+                return
+            }
+        }
         if defaults.string(forKey: "EPHEMERIS_VIEW") == "lows" { model.view = .lows }
         if let name = defaults.string(forKey: "EPHEMERIS_FEED") {
             let url = URL.documentsDirectory.appending(path: name)

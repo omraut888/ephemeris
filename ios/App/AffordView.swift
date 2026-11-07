@@ -8,15 +8,19 @@ import SwiftUI
 struct AffordView: View {
     let model: AppModel
     let report: ForecastReport
+    /// Saved queries sync between devices once this iPhone is paired.
+    let sync: SyncModel?
     @State private var amount = "2000"
     @State private var date: Date
+    @State private var label = ""
     @State private var answer: AffordAnswer?
     @State private var error: String?
     @State private var busy = false
 
-    init(model: AppModel, report: ForecastReport) {
+    init(model: AppModel, report: ForecastReport, sync: SyncModel? = nil) {
         self.model = model
         self.report = report
+        self.sync = sync
         let days = report.forecast.days
         let initial = days.isEmpty ? report.asOf : days[min(29, days.count - 1)].date
         _date = State(initialValue: IsoDay.date(initial) ?? .now)
@@ -51,6 +55,37 @@ struct AffordView: View {
                     .disabled(busy)
                     .accessibilityIdentifier("afford-check")
             }
+            if let sync, sync.status.paired {
+                HStack(spacing: 8) {
+                    TextField("label (optional)", text: $label)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("afford-label")
+                    Button("Save") { Task { await save(sync) } }
+                        .buttonStyle(.bordered)
+                        .disabled(sync.busy)
+                        .accessibilityIdentifier("afford-save")
+                }
+                ForEach(sync.queries) { q in
+                    HStack {
+                        Button {
+                            amount = Self.dollars(q.amountCents)
+                            if let d = IsoDay.date(q.by) { date = d }
+                        } label: {
+                            Text("\(Format.money(Double(q.amountCents) / 100)) by \(Format.longDate(q.by))\(q.label.isEmpty ? "" : " · \(q.label)")")
+                                .font(.callout)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.borderless)
+                        Button {
+                            Task { await sync.deleteQuery(id: q.id) }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.dim)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Delete saved query \(q.label.isEmpty ? q.id : q.label)")
+                    }
+                }
+            }
             if let error {
                 Text(error).font(.callout).foregroundStyle(Theme.bad)
             } else if let answer {
@@ -83,6 +118,22 @@ struct AffordView: View {
         .padding(12)
         .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .combine)
+    }
+
+    /// Save the question as it stands, for every paired device.
+    private func save(_ sync: SyncModel) async {
+        guard let x = Double(amount.replacingOccurrences(of: ",", with: "")), x.isFinite else {
+            error = "Enter an amount in dollars."
+            return
+        }
+        error = nil
+        await sync.saveQuery(amountCents: Int64((x * 100).rounded()), by: IsoDay.string(date), label: label.trimmingCharacters(in: .whitespaces))
+        if sync.status.error == nil { label = "" } else { error = sync.status.error }
+    }
+
+    /// Cents as the amount field shows dollars: "2000", "12.5".
+    static func dollars(_ cents: Int64) -> String {
+        cents % 100 == 0 ? String(cents / 100) : String(Double(cents) / 100)
     }
 
     private func check() async {

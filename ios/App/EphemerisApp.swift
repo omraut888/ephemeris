@@ -7,10 +7,12 @@ import SwiftUI
 @main
 struct EphemerisApp: App {
     @State private var model = AppModel()
+    /// This iPhone as a sync device (docs/phase4b-design.md §10).
+    @State private var sync = SyncModel()
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
+            ContentView(model: model, sync: sync)
         }
     }
 }

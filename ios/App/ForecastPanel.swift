@@ -17,7 +17,7 @@ struct ForecastPanel: View {
             .pickerStyle(.segmented)
             .disabled(report.forecast.cycleLows == nil)
             Picker("Horizon", selection: Binding(get: { model.horizon }, set: { model.setHorizon($0) })) {
-                ForEach(AppModel.horizons, id: \.self) { Text("\($0) days").tag($0) }
+                ForEach(model.horizonChoices, id: \.self) { Text("\($0) days").tag($0) }
             }
             .pickerStyle(.segmented)
 

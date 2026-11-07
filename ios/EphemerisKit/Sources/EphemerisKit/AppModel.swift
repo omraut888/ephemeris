@@ -112,6 +112,13 @@ public final class AppModel {
         status = .error
     }
 
+    /// Show an error from outside the engine (the synced data failing to
+    /// materialize), superseding any forecast in flight.
+    public func show(error message: String) {
+        latest += 1
+        fail(message)
+    }
+
     /// A new demo feed with the chosen mode and seed.
     public func runDemo() async {
         let (mode, seed) = (mode, seed)
