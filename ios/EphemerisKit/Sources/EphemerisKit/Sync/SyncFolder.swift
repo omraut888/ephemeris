@@ -30,10 +30,19 @@ public enum SyncFolder {
         let keys: [URLResourceKey] = [
             .contentModificationDateKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
         ]
+        // The listing is a coordinated read of the folder, so a provider can
+        // bring it up to date first; each file is read after, on its own.
+        var coordinationError: NSError?
+        var listed: Result<[URL], Error> = .failure(SyncError("not listed"))
+        NSFileCoordinator().coordinate(readingItemAt: dir, options: [], error: &coordinationError) { dir in
+            listed = Result {
+                try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys, options: [])
+            }
+        }
         let urls: [URL]
         do {
-            urls = try FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: keys, options: [])
+            if let coordinationError { throw coordinationError }
+            urls = try listed.get()
         } catch {
             throw SyncError("cannot read the sync folder \(dir.lastPathComponent): \(error.localizedDescription)")
         }
