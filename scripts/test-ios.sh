@@ -3,9 +3,12 @@
 #
 # 1. EphemerisKit's tests on the iOS simulator: the golden feed and report
 #    through the FFI on iOS itself (the fourth byte-identity path), the drift,
-#    format, lane and app-model tests.
-# 2. The app installed and launched; it must log "EPHEMERIS ready" (a demo
-#    forecast on screen) and no "EPHEMERIS error".
+#    format, lane, app-model and sync-device tests.
+# 2. The app installed and launched with `-EPHEMERIS_SYNC_SELFTEST YES`: it
+#    first runs a sync round trip through the iOS Keychain (a throwaway
+#    service, deleted after) and a coordinated folder, and must log
+#    "EPHEMERIS sync selftest ok"; then "EPHEMERIS ready" (a demo forecast
+#    on screen), and no "EPHEMERIS error".
 #
 # Uses the dedicated simulator from scripts/ios-device.sh and shuts it down
 # afterwards unless KEEP_BOOTED=1. The app gets LAUNCH_TIMEOUT seconds
@@ -30,6 +33,7 @@ boot_device
 xcrun simctl install "$udid" "$APP"
 log=$(mktemp)
 trap 'stop_app; rm -f "$log"; shutdown_device' EXIT
-launch_and_wait "$log"
+launch_and_wait "$log" -EPHEMERIS_SYNC_SELFTEST YES
 stop_app
+grep "EPHEMERIS sync selftest ok" "$log"
 grep "EPHEMERIS ready" "$log"
