@@ -1,14 +1,15 @@
 # Sync: hand-test checklist (Phase 4b)
 
 What the automated tests cannot cover: the real desktop window, real
-iCloud Drive, the real Keychain across two shells, and Chrome's folder
-picker. Run the steps in order from the repository root. Each step gives
-the exact command or click and what you should see. If a step's result
+iCloud Drive, the real Keychain across two shells, Chrome's folder
+picker, and an iPhone's Files picker and Keychain (section 9). Run the
+steps in order from the repository root. Each step gives the exact
+command or click and what you should see. If a step's result
 differs, note the step number and copy the exact text (the Sync sheet's
 red message, or the terminal's `error:` line).
 
 Background: docs/phase4b-design.md §3 (transport, key), §1.4 (one
-fetcher), §10 (the adapters as built).
+fetcher), §10 (the desktop and web adapters as built), §11 (iOS).
 
 **Run every command in one ordinary Terminal window**, the same kind of
 shell for all of them, not inside an agent's sandboxed shell. A Keychain
@@ -148,7 +149,51 @@ error: bank data for this sync state is fetched by device <DESKTOP>, not this on
 | 8.9 | Reload the tab, then click **Sync** | The sheet asks for the key again: it was not kept. |
 | 8.10 | DevTools › Application: Local storage, Session storage and IndexedDB for `localhost:5173` | Local storage holds only `ephemeris.sync.replica` (a device id, not secret). Session storage and IndexedDB are empty. |
 
-## 9. Clean up
+## 9. The iPhone, same folder (iOS adapter, design §10)
+
+This needs the state from sections 0–8 in the same session: the key, the
+folder with the desktop's, both CLIs' and the browser's files, bank data,
+and the desktop as the fetcher. If you have already cleaned up, first
+repeat 0, 1, 2, 4, 5 and 7.1–7.2 (8 is optional: without it, expect one
+device fewer below). Run this section before cleaning up (10).
+
+You need an iPhone signed in to the same Apple Account as the Mac, with
+iCloud Drive on. **Watch Xcode's debug console** while the app runs from
+Xcode: every sync action logs one line, `[sync] <action>: ok` or
+`[sync] <action> failed: <reason>`. If a step fails, copy those lines and
+the red message at the top of the Sync sheet. In the steps below, "the
+sheet" is the iPhone's Sync sheet, and "the desktop sheet" is the Mac
+app's.
+
+| # | Do | Expect |
+|---|---|---|
+| 9.1 | `scripts/build-ios.sh && xcodegen generate --spec ios/project.yml && open ios/Ephemeris.xcodeproj` (without `--sim-only`: this builds the device slice too, which takes a few minutes the first time) | Xcode opens the Ephemeris project. |
+| 9.2 | In Xcode, open the Ephemeris target › **Signing & Capabilities**: turn on **Automatically manage signing** and choose your team (a free Personal Team works: the app needs no iCloud entitlement). If Xcode says the bundle id is taken, change it to `dev.ephemeris.ios.<yourname>`. Choose your iPhone as the run destination and press ⌘R. If the iPhone asks, turn on Developer Mode, and trust the developer under Settings › General › VPN & Device Management | The app opens on the demo. The console shows `EPHEMERIS ready: demo · realistic · seed 7`. |
+| 9.3 | On the iPhone, open the **Files** app › iCloud Drive › **Ephemeris Sync** | The device files from the Mac, one per device (four after section 8). Wait for iCloud if the folder is still empty. |
+| 9.4 | Back in Ephemeris, tap **Sync** (the circular arrows, top left) | A "Sync" sheet with a key field, **Pair**, and "First device?" **Create a new sync key**. |
+| 9.5 | Type `RNRA-CJ05` in the key field and tap **Pair** | The red message `that is not a sync key (52 characters, 0-9 and A-Z)`, and the console line `[sync] pair failed: that is not a sync key …`. The sheet stays unpaired. |
+| 9.6 | On the Mac, click **Show key** in the desktop sheet and copy the key. On the iPhone, clear the field, paste the key and tap **Pair**. (Universal Clipboard pastes what the Mac copied; AirDrop or a password manager also work.) | The console prints `[sync] pair: ok`. The sheet shows the rows Key (**Show key**), Folder ("none chosen", **Choose folder…**), Status ("Last synced never"), and Bank data ("None yet: the fetching device has not synced any.", "No device fetches yet."). There is no fetcher button. A footer says the iPhone never fetches from the bank. |
+| 9.7 | Tap **Choose folder…**. In the picker, open **iCloud Drive › Ephemeris Sync**, then tap **Open** | The console prints `[sync] choose folder Ephemeris Sync: ok`. Folder shows `Ephemeris Sync`. Status shows "Last synced" with the current time and a Devices list: "This device" plus one "Device <last 6>" per Mac file (DESKTOP, CLI A, CLI B, and the browser), with no red text. Bank data shows "Fetched through <date>" and "Device <last 6 of DESKTOP> fetches from the bank.", and a **Show synced data** button appears. If a row says "not downloaded from iCloud yet…", its download has started: tap **Sync now** after a few seconds and the row clears. |
+| 9.8 | On the Mac: `ls "$SYNC"; for f in "$SYNC"/*.ephsync; do printf '%s  ' "$(head -c 4 "$f")"; basename "$f"; done` | One more file than before (five after section 8): the iPhone's `<16 hex>.ephsync`. Note its id as IPHONE. Every line starts with `EPHS`. If the iPhone's file is not there yet, iCloud is still uploading it: wait and repeat. |
+| 9.9 | `$E sync folder "$SYNC"` | A `merged` line for every file, including `<IPHONE>.ephsync`, and no `skipped` lines. |
+| 9.10 | Tap **Show synced data** | The sheet closes. The header reads `synced · through <date>`, the same date as the desktop's, and the cone is drawn from the synced data. |
+| 9.11 | In "Can I afford it?", enter `750`, any date, and the label `phone`, then tap **Save** | A chip, `$750.00 by <date> · phone`. The console prints `[sync] save query: ok`. |
+| 9.12 | Wait about 30 s for iCloud, then click **Sync now** in the desktop sheet | The desktop app shows the `phone` chip too. If it does not, iCloud has not uploaded the file yet: wait and click **Sync now** again. |
+| 9.13 | On the desktop, click **×** on the `phone` chip. Wait about 30 s, then on the iPhone pull down on the main screen (pull to refresh) | The chip goes on the iPhone too. The later write won, and no conflict dialog appeared. |
+| 9.14 | `$E sync folder "$SYNC" && $E sync set horizon-days 45 && $E sync folder "$SYNC"`. Wait about 30 s, then on the iPhone switch to another app and back | The cone is redrawn for 45 days: the horizon menu shows "45 days", the panel heading says "Forecast · 45 days", and the header still says `synced · through <date>`. Coming back to the app syncs it (there is no background sync). Undo with `$E sync set horizon-days 90 && $E sync folder "$SYNC"`. |
+| 9.15 | Quit the app (swipe it away in the app switcher), then open it from the Home Screen and tap **Sync** | Still paired, with no paste needed (the key is in the iPhone's Keychain). Folder is still `Ephemeris Sync`, and "Last synced" is a moment ago: the app syncs on launch. The app opens on the demo, as before; **Show synced data** is one tap. |
+| 9.16 | In Xcode: Window › Devices and Simulators › your iPhone › Ephemeris › the "…" menu › **Download Container…**, saved to the Desktop. Then `C=$(ls -d ~/Desktop/dev.ephemeris.ios*.xcappdata | head -1)/AppData/Library/"Application Support"/sync; ls "$C"; head -c 4 "$C/local.ephsync"; echo; LC_ALL=C grep -a -c '"clocks"' "$C/local.ephsync"; cat "$C/config.json"; echo` | `config.json  local.ephsync`, then `EPHS`, then `0` (no readable JSON in the local copy), then the config: `replica` (IPHONE), `folderBookmark` (a reference to the folder, base64), `folderName`, `lastSync`. There is no key in it: compare it with the desktop sheet's key. Afterwards delete the downloaded container: `rm -rf ~/Desktop/dev.ephemeris.ios*.xcappdata`. |
+
+## 10. Clean up
+
+On the iPhone first. App data can outlive deleting the app, Keychain items
+included, so remove the key in the app:
+- In the sheet, tap **Remove the key from this iPhone…**, then **Remove
+  the key**. Expect the console line `[sync] forget key: ok` and the
+  pairing sheet again.
+- Then delete the app from the Home Screen.
+
+On the Mac:
 
 ```sh
 python3 scripts/fetch_plaid_sandbox.py --out /tmp/ephemeris-fetch --forget   # removes the sandbox item and its token
