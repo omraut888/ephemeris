@@ -36,6 +36,14 @@ final class TempDir {
         goldenKeyText = try Golden.text("key.txt").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    func until(_ done: () -> Bool) async throws {
+        let end = ContinuousClock.now + .seconds(10)
+        while !done() {
+            guard ContinuousClock.now < end else { throw CancellationError() }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     func device(_ dir: URL, keys: SyncKeyStore = MemoryKeyStore(), log: LogLines = LogLines()) -> SyncModel {
         SyncModel(directory: dir, keys: keys, log: { log.add($0) })
     }
@@ -151,6 +159,17 @@ final class TempDir {
         changed.optionsJSON = #"{"horizon_days":45,"paths":400,"seed":11,"targets":[]}"#
         await model.refreshSynced(changed)
         #expect(model.report?.forecast.paths == 400)
+        #expect(model.horizon == 45)
+        // A horizon the user picks stays through a sync with other changes...
+        model.setHorizon(30)
+        try await until { model.status == .ready && model.report?.forecast.horizonDays == 30 }
+        changed.optionsJSON = #"{"horizon_days":45,"paths":500,"seed":11,"targets":[]}"#
+        await model.refreshSynced(changed)
+        #expect(model.report?.forecast.horizonDays == 30)
+        // ...and a new synced horizon replaces it.
+        changed.optionsJSON = #"{"horizon_days":60,"paths":500,"seed":11,"targets":[]}"#
+        await model.refreshSynced(changed)
+        #expect(model.horizon == 60 && model.report?.forecast.horizonDays == 60)
 
         // A demo afterwards uses the app's own options again.
         await model.runDemo()

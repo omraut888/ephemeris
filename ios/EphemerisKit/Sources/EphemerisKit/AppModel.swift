@@ -190,6 +190,8 @@ public final class AppModel {
         guard case .synced = source, let synced else { return }
         let opts = try? JSONDecoder().decode(ForecastOptions.self, from: Data(synced.optionsJSON.utf8))
         guard synced.feedJSON != feedJSON || opts != syncedOptions else { return }
+        // A new synced horizon is adopted; otherwise the one on screen stays.
+        if let h = opts?.horizonDays, h != syncedOptions?.horizonDays { horizon = h }
         syncedOptions = opts
         await run(.synced(through: synced.through), feed: { synced.feedJSON }, horizon: horizon)
     }
