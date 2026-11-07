@@ -196,12 +196,13 @@ impl Device {
     }
 
     fn status_of(&self, inner: &Inner) -> SyncStatus {
+        let keychain = self.keys.get();
         let s = inner.state.as_ref();
         let fetcher = s
             .and_then(|s| s.fetcher.as_ref())
             .map(|f| format!("{:016x}", f.value));
         SyncStatus {
-            paired: matches!(self.keys.get(), Ok(Some(_))),
+            paired: matches!(keychain, Ok(Some(_))),
             replica: inner.config.replica.clone(),
             folder: inner.config.folder.clone(),
             is_fetcher: fetcher.as_deref() == Some(inner.config.replica.as_str()),
@@ -210,7 +211,7 @@ impl Device {
             fetched_through: s.and_then(|s| s.fetched).map(|f| f.today.to_string()),
             devices: inner.devices.clone(),
             last_sync: inner.config.last_sync,
-            error: inner.error.clone(),
+            error: inner.error.clone().or(keychain.err()),
         }
     }
 
@@ -234,14 +235,22 @@ impl Device {
     /// Merge the folder's files and write this device's, recording what
     /// happened in the status rather than failing.
     fn sync_locked(&self, inner: &mut Inner) {
-        let (Some(dir), Ok(key)) = (inner.config.folder.clone(), self.key()) else {
-            return;
+        let Some(dir) = inner.config.folder.clone() else {
+            return; // no folder chosen yet: nothing to sync with
         };
-        let Ok(replica) = Self::replica(inner) else {
-            return;
+        let key = match self.key() {
+            Ok(k) => k,
+            Err(e) => return note(inner, e),
+        };
+        let replica = match Self::replica(inner) {
+            Ok(r) => r,
+            Err(e) => return note(inner, e),
         };
         let Some(state) = inner.state.as_mut() else {
-            return;
+            return note(
+                inner,
+                "this device's sync state is not open: pair it with the sync key".into(),
+            );
         };
         match folder::sync(Path::new(&dir), replica, state, &key) {
             Ok(report) => {
@@ -275,11 +284,27 @@ impl Device {
                     .save_state(inner)
                     .and_then(|()| write_config(&self.dir, &inner.config))
                 {
-                    inner.error = Some(e);
+                    note(inner, e);
                 }
             }
-            Err(e) => inner.error = Some(e),
+            Err(e) => note(inner, e),
         }
+    }
+
+    /// Run a user action: clear the last error, and if the action fails,
+    /// keep its message in the status (so the Sync sheet shows it, even
+    /// after being closed and reopened) and log it to the terminal.
+    fn act<T>(&self, what: &str, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        self.inner.lock().unwrap().error = None;
+        let result = f();
+        match &result {
+            Ok(_) => eprintln!("[sync] {what}: ok"),
+            Err(e) => {
+                eprintln!("[sync] {what} failed: {e}");
+                self.inner.lock().unwrap().error = Some(e.clone());
+            }
+        }
+        result
     }
 
     pub fn status(&self) -> SyncStatus {
@@ -288,12 +313,12 @@ impl Device {
 
     /// A new random key, for the first device. Refused when one exists.
     pub fn create_key(&self) -> Result<SyncStatus, String> {
-        self.set_key(folder::new_key()?)
+        self.act("create key", || self.set_key(folder::new_key()?))
     }
 
     /// The key from another device's text. Refused when one exists.
     pub fn pair(&self, text: &str) -> Result<SyncStatus, String> {
-        self.set_key(envelope::key_from_text(text)?)
+        self.act("pair", || self.set_key(envelope::key_from_text(text)?))
     }
 
     fn set_key(&self, key: Key) -> Result<SyncStatus, String> {
@@ -312,22 +337,27 @@ impl Device {
 
     /// The key as text, to pair another device.
     pub fn show_key(&self) -> Result<String, String> {
-        Ok(envelope::key_to_text(&self.key()?))
+        self.act("show key", || Ok(envelope::key_to_text(&self.key()?)))
     }
 
     pub fn set_folder(&self, dir: &Path) -> Result<SyncStatus, String> {
-        if !dir.is_dir() {
-            return Err(format!("{} is not a folder", dir.display()));
-        }
-        let mut inner = self.inner.lock().unwrap();
-        inner.config.folder = Some(
-            dir.to_str()
-                .ok_or("the folder's path is not valid UTF-8")?
-                .to_owned(),
-        );
-        write_config(&self.dir, &inner.config)?;
-        self.sync_locked(&mut inner);
-        Ok(self.status_of(&inner))
+        self.act(&format!("choose folder {}", dir.display()), || {
+            if !dir.is_dir() {
+                return Err(format!(
+                    "{} is not a folder this app can open",
+                    dir.display()
+                ));
+            }
+            let mut inner = self.inner.lock().unwrap();
+            inner.config.folder = Some(
+                dir.to_str()
+                    .ok_or("the folder's path is not valid UTF-8")?
+                    .to_owned(),
+            );
+            write_config(&self.dir, &inner.config)?;
+            self.sync_locked(&mut inner);
+            Ok(self.status_of(&inner))
+        })
     }
 
     pub fn sync_now(&self) -> SyncStatus {
@@ -337,13 +367,21 @@ impl Device {
     }
 
     pub fn take_fetcher(&self) -> Result<SyncStatus, String> {
-        self.change(|s, r| s.edit(&Edit::TakeFetcher, r, now_ms()).map(|_| ()))?;
+        self.act("take fetcher", || {
+            self.change(|s, r| s.edit(&Edit::TakeFetcher, r, now_ms()).map(|_| ()))
+        })?;
         Ok(self.status())
     }
 
     /// Record a Plaid fetch from the fetch script's folder (design §1.4).
     /// Only the fetcher may; the state refuses anyone else.
     pub fn import_fetch(&self, raw: &Path) -> Result<SyncStatus, String> {
+        self.act(&format!("import fetch {}", raw.display()), || {
+            self.import_fetch_from(raw)
+        })
+    }
+
+    fn import_fetch_from(&self, raw: &Path) -> Result<SyncStatus, String> {
         let sync: SyncFile = read_json(
             &raw.join("transactions_sync.json"),
             "/transactions/sync dump",
@@ -408,15 +446,28 @@ impl Device {
             by,
             label: label.to_string(),
         };
-        self.change(|s, r| s.edit(&Edit::AddQuery { query }, r, now_ms()).map(|_| ()))?;
+        self.act("save query", || {
+            self.change(|s, r| s.edit(&Edit::AddQuery { query }, r, now_ms()).map(|_| ()))
+        })?;
         Ok(self.queries())
     }
 
     pub fn delete_query(&self, id: &str) -> Result<Vec<Query>, String> {
         let edit = Edit::DeleteQuery { id: id.into() };
-        self.change(|s, r| s.edit(&edit, r, now_ms()).map(|_| ()))?;
+        self.act("delete query", || {
+            self.change(|s, r| s.edit(&edit, r, now_ms()).map(|_| ()))
+        })?;
         Ok(self.queries())
     }
+}
+
+/// Keep a sync failure in the status, and log it to the terminal when it is
+/// new (the app syncs every 10 s with focus; one line per change, not per try).
+fn note(inner: &mut Inner, e: String) {
+    if inner.error.as_deref() != Some(e.as_str()) {
+        eprintln!("[sync] sync failed: {e}");
+    }
+    inner.error = Some(e);
 }
 
 fn write_config(dir: &Path, c: &Config) -> Result<(), String> {
@@ -555,6 +606,97 @@ mod tests {
         let s = d.sync_now();
         assert!(s.error.unwrap().contains("cannot read the sync folder"));
         assert!(d.set_folder(&base.join("nope")).is_err());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A Keychain that refuses to store, as a locked or unreachable one does.
+    struct RefusingKeys;
+    impl KeyStore for RefusingKeys {
+        fn get(&self) -> Result<Option<Key>, String> {
+            Ok(None)
+        }
+        fn set(&self, _: &Key) -> Result<(), String> {
+            Err(
+                "could not store the sync key in the Keychain: User interaction is not allowed."
+                    .into(),
+            )
+        }
+        fn delete(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// A Keychain that holds a key until told to fail reading it.
+    #[derive(Default)]
+    struct FlakyKeys {
+        keys: MemoryKeys,
+        fail: std::sync::atomic::AtomicBool,
+    }
+    #[derive(Clone)]
+    struct Flaky(std::sync::Arc<FlakyKeys>);
+    impl KeyStore for Flaky {
+        fn get(&self) -> Result<Option<Key>, String> {
+            if self.0.fail.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err("could not read the sync key from the Keychain: The user name or passphrase you entered is not correct.".into());
+            }
+            self.0.keys.get()
+        }
+        fn set(&self, k: &Key) -> Result<(), String> {
+            self.0.keys.set(k)
+        }
+        fn delete(&self) -> Result<(), String> {
+            self.0.keys.delete()
+        }
+    }
+
+    /// No silent failures (the Nov 4 report): whatever create key, pair or
+    /// choose folder refuses, the status the Sync sheet shows says so, and
+    /// keeps saying so after the sheet is closed and reopened.
+    #[test]
+    fn failures_stay_in_the_status_the_sheet_shows() {
+        let base = temp("fail");
+        let d = Device::open(base.join("app"), Box::new(RefusingKeys)).unwrap();
+        let err = d.create_key().unwrap_err();
+        assert!(err.contains("User interaction is not allowed"), "{err}");
+        let s = d.status();
+        assert!(!s.paired);
+        assert!(
+            s.error
+                .as_deref()
+                .is_some_and(|e| e.contains("User interaction is not allowed")),
+            "{s:?}"
+        );
+
+        let err = d.pair("not a key").unwrap_err();
+        assert!(d.status().error.as_deref() == Some(err.as_str()), "{err}");
+
+        let err = d.set_folder(&base.join("no such folder")).unwrap_err();
+        assert!(err.contains("is not a folder"), "{err}");
+        assert!(d.status().error.as_deref() == Some(err.as_str()));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A key that cannot be read when it is time to sync is reported, not
+    /// skipped.
+    #[test]
+    fn an_unreadable_key_at_sync_time_is_reported() {
+        let base = temp("flaky");
+        let shared = base.join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        let keys = Flaky(std::sync::Arc::new(FlakyKeys::default()));
+        let d = Device::open(base.join("app"), Box::new(keys.clone())).unwrap();
+        d.create_key().unwrap();
+        assert!(d.set_folder(&shared).unwrap().error.is_none());
+        keys.0
+            .fail
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let s = d.sync_now();
+        assert!(
+            s.error
+                .as_deref()
+                .is_some_and(|e| e.contains("passphrase you entered is not correct")),
+            "{s:?}"
+        );
         std::fs::remove_dir_all(&base).unwrap();
     }
 }

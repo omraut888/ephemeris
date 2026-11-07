@@ -166,6 +166,7 @@ async fn sync_choose_folder<R: Runtime>(
         .set_title("Choose the folder to sync through (iCloud Drive, Dropbox…)")
         .blocking_pick_folder()
     else {
+        eprintln!("[sync] choose folder: the dialog was cancelled; no folder chosen");
         return Ok(d.status());
     };
     d.set_folder(&picked.into_path().map_err(|e| e.to_string())?)
@@ -193,6 +194,7 @@ async fn sync_import_fetch<R: Runtime>(
         .set_title("Choose the Plaid fetch folder (scripts/fetch_plaid_sandbox.py --out)")
         .blocking_pick_folder()
     else {
+        eprintln!("[sync] import fetch: the dialog was cancelled");
         return Ok(d.status());
     };
     d.import_fetch(&picked.into_path().map_err(|e| e.to_string())?)
@@ -353,6 +355,12 @@ mod tests {
     }
 
     fn app() -> (tauri::App<MockRuntime>, tauri::WebviewWindow<MockRuntime>) {
+        app_with(Box::new(ephemeris_sync_folder::MemoryKeys::default()))
+    }
+
+    fn app_with(
+        keys: Box<dyn ephemeris_sync_folder::KeyStore + Send + Sync>,
+    ) -> (tauri::App<MockRuntime>, tauri::WebviewWindow<MockRuntime>) {
         let app = configure(mock_builder())
             .build(mock_context(tauri::test::noop_assets()))
             .unwrap();
@@ -368,13 +376,7 @@ mod tests {
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let _ = std::fs::remove_dir_all(&sync_dir);
-        app.manage(
-            Device::open(
-                sync_dir,
-                Box::new(ephemeris_sync_folder::MemoryKeys::default()),
-            )
-            .unwrap(),
-        );
+        app.manage(Device::open(sync_dir, keys).unwrap());
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .unwrap();
