@@ -2,6 +2,9 @@
 // Sync sheet, the synced data in the app, saved queries, and the desktop
 // host's command mapping.
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +14,8 @@ import { SyncSheet } from "../src/components/SyncSheet";
 import { tauriSync } from "../src/desktop/sync";
 import type { Invoke } from "../src/desktop/shell";
 import type { SavedQuery, SyncHost, SyncStatus } from "../src/sync/host";
-import { FOLDER_REFUSED } from "../src/sync/web";
+import { FOLDER_REFUSED, setSyncWasm, webSync } from "../src/sync/web";
+import * as syncWasm from "../src/wasm/sync-pkg/ephemeris_sync_wasm.js";
 import { directEngine } from "../src/wasm/engine";
 import { FEED_JSON } from "./fixtures";
 
@@ -184,6 +188,27 @@ describe("SyncSheet", () => {
     await waitFor(() => expect(host.importFiles).toHaveBeenCalledWith([file]));
     await userEvent.click(screen.getByRole("button", { name: "Export this device's file" }));
     expect(host.exportFile).toHaveBeenCalledOnce();
+  });
+
+  it("the real browser host, after importing the golden files: Bank data names the fetcher as the desktop does", async () => {
+    syncWasm.initSync({
+      module: readFileSync(resolve("src/wasm/sync-pkg/ephemeris_sync_wasm_bg.wasm")),
+    });
+    setSyncWasm(syncWasm);
+    const golden = resolve("../crates/ephemeris-sync/tests/golden");
+    const host = webSync({ storage: null });
+    await host.pair(readFileSync(resolve(golden, "key.txt"), "utf8").trim());
+    const files = ["replica-a.ephsync", "replica-b.ephsync"].map(
+      (n) => new File([readFileSync(resolve(golden, n))], n),
+    );
+    const s = await host.importFiles!(files);
+    sheet(host, s);
+    // Golden replica A (…0000aa) is the fetcher, so the same text as the
+    // desktop's sheet for a fetcher elsewhere.
+    expect(screen.getByText("Device 0000aa fetches from the bank.")).toBeTruthy();
+    expect(screen.getByText(`Fetched through ${s.fetchedThrough}`)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Make this device the fetcher" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Show synced data" })).toBeTruthy();
   });
 });
 
