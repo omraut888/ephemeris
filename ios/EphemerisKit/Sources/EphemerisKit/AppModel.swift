@@ -16,11 +16,14 @@ public final class AppModel {
     public enum Source: Equatable, Sendable {
         case demo(mode: SimMode, seed: UInt64)
         case file(name: String)
+        /// The feed the sync state materializes (docs/phase4b-design.md §10).
+        case synced(through: IsoDate?)
 
         public var label: String {
             switch self {
             case let .demo(mode, seed): "demo · \(mode == .matched ? "model-matched" : "realistic") · seed \(seed)"
             case let .file(name): "file · \(name)"
+            case let .synced(through): "synced · through \(through ?? "?")"
             }
         }
     }
@@ -59,9 +62,28 @@ public final class AppModel {
         client = EngineClient(engine: engine)
     }
 
+    /// The synced settings' options, used while synced data is on screen.
+    public private(set) var syncedOptions: ForecastOptions?
+
+    /// The horizons to offer: the usual three, and the synced one if it differs.
+    public var horizonChoices: [Int] {
+        Set(Self.horizons + [horizon]).sorted()
+    }
+
     public func options(horizon: Int, targets: [Double] = [Risk.overdrawnTarget]) -> ForecastOptions {
+        options(for: source, horizon: horizon, targets: targets)
+    }
+
+    /// The synced settings' paths and seed for synced data, so every device
+    /// draws the same cone; the app's own otherwise.
+    func options(for source: Source?, horizon: Int, targets: [Double] = [Risk.overdrawnTarget]) -> ForecastOptions {
         // Target 0 gives the report its P(below $0 on some day) curve.
-        ForecastOptions(horizonDays: horizon, paths: Self.paths, seed: Self.forecastSeed, targets: targets)
+        if case .synced = source, let synced = syncedOptions {
+            return ForecastOptions(
+                horizonDays: horizon, paths: synced.paths ?? Self.paths,
+                seed: synced.seed ?? Self.forecastSeed, targets: targets)
+        }
+        return ForecastOptions(horizonDays: horizon, paths: Self.paths, seed: Self.forecastSeed, targets: targets)
     }
 
     private func run(_ source: Source, feed: () async throws -> String, horizon: Int) async {
@@ -71,7 +93,7 @@ public final class AppModel {
         status = .loading
         do {
             let json = try await feed()
-            let report = try await client.forecast(json, options(horizon: horizon), lane: "cone")
+            let report = try await client.forecast(json, options(for: source, horizon: horizon), lane: "cone")
             guard ticket == latest else { return }
             self.source = source
             feedJSON = json
@@ -141,6 +163,28 @@ public final class AppModel {
             latest += 1
             fail("\(name): \(errorMessage(error))")
         }
+    }
+
+    /// Show the synced data, with the synced horizon, paths and seed.
+    public func showSynced(_ synced: SyncedFeed) async {
+        do {
+            let opts = try JSONDecoder().decode(ForecastOptions.self, from: Data(synced.optionsJSON.utf8))
+            syncedOptions = opts
+            horizon = opts.horizonDays ?? horizon
+            await run(.synced(through: synced.through), feed: { synced.feedJSON }, horizon: horizon)
+        } catch {
+            latest += 1
+            fail("the synced settings: \(errorMessage(error))")
+        }
+    }
+
+    /// After a sync: redraw if synced data is on screen and it changed.
+    public func refreshSynced(_ synced: SyncedFeed?) async {
+        guard case .synced = source, let synced else { return }
+        let opts = try? JSONDecoder().decode(ForecastOptions.self, from: Data(synced.optionsJSON.utf8))
+        guard synced.feedJSON != feedJSON || opts != syncedOptions else { return }
+        syncedOptions = opts
+        await run(.synced(through: synced.through), feed: { synced.feedJSON }, horizon: horizon)
     }
 
     /// "Can I afford X by D?": the same forecast with X as the target, so the
