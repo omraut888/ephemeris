@@ -65,6 +65,10 @@ pub enum HolidayCalendar {
     Us,
     /// Czech public holidays ([`is_czech_holiday`]).
     Cz,
+    /// No business-day calendar: every day books, weekends and holidays
+    /// included, so nothing is ever shifted. For a bank whose records are
+    /// dated on whatever day they fall (the Berka data, paper/PLAN.md §8).
+    EveryDay,
 }
 
 impl HolidayCalendar {
@@ -72,10 +76,14 @@ impl HolidayCalendar {
         match self {
             HolidayCalendar::Us => is_bank_holiday(day),
             HolidayCalendar::Cz => is_czech_holiday(day),
+            HolidayCalendar::EveryDay => false,
         }
     }
 
     pub fn is_business_day(self, day: Day) -> bool {
+        if self == HolidayCalendar::EveryDay {
+            return true;
+        }
         !is_weekend(day) && !self.is_holiday(day)
     }
 
@@ -431,6 +439,16 @@ mod tests {
             cz.add_business_days(ymd(1996, 12, 23), 1),
             ymd(1996, 12, 27)
         );
+    }
+
+    #[test]
+    fn every_day_calendar_never_shifts() {
+        let e = HolidayCalendar::EveryDay;
+        let sun = ymd(1996, 8, 11);
+        assert!(is_weekend(sun) && e.is_business_day(sun));
+        assert_eq!(e.pay_date(sun), sun);
+        assert_eq!(e.on_or_after(ymd(1996, 12, 25)), ymd(1996, 12, 25));
+        assert_eq!(e.add_business_days(sun, 3), sun + 3);
     }
 
     #[test]

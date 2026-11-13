@@ -344,13 +344,18 @@ pub fn fit_pay_schedule_in(paydays: &[Day], calendar: HolidayCalendar) -> Option
 /// [`REGULAR_MAX_COST_PER_PAYDAY`] per payday fitted. One missed paycheck in
 /// ten already fails; a day of jitter on every paycheck does not.
 pub fn regular_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
+    regular_pay_schedule_in(paydays, HolidayCalendar::Us)
+}
+
+/// [`regular_pay_schedule`] under a given business-day calendar.
+pub fn regular_pay_schedule_in(paydays: &[Day], calendar: HolidayCalendar) -> Option<PayTiming> {
     let mut distinct = paydays.to_vec();
     distinct.sort_unstable();
     distinct.dedup();
     if distinct.len() < REGULAR_MIN_PAYDAYS {
         return None;
     }
-    let timing = fit_pay_schedule(&distinct)?;
+    let timing = fit_pay_schedule_in(&distinct, calendar)?;
     let fitted = distinct.len().min(MAX_PAYDAYS) as f64;
     (f64::from(timing.fit_cost) <= REGULAR_MAX_COST_PER_PAYDAY * fitted).then_some(timing)
 }

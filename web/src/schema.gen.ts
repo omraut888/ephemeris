@@ -38,7 +38,7 @@ export type FlowKind = "income" | "scheduled" | "discretionary" | "transfer";
 
 export type TxnStatus = "pending" | "posted";
 
-export type HolidayCalendar = "us" | "cz";
+export type HolidayCalendar = "us" | "cz" | "every_day";
 
 export type ForecastReport = { schema_version: number, 
 /**
