@@ -255,10 +255,140 @@ pub fn pit_table(rows: &[Row], order: &[&str]) -> String {
     out
 }
 
+/// The selection rule of paper/PLAN.md §9, applied to `candidates`, with
+/// `others` listed for comparison. Returns the table and the chosen method.
+///
+/// Per (method, h): pooled mean CRPS (normalized units), pooled 50% and 90%
+/// coverage, and the PIT shape: the share of forecasts in the outer two
+/// deciles (20% if calibrated) and the mean PIT (0.5 if unbiased). The
+/// score is the mean CRPS averaged over the horizons; a method qualifies if
+/// its 90% coverage is within ±5 points at every horizon. The lowest-score
+/// qualifying candidate is chosen; if none qualifies, the one whose worst
+/// 90%-coverage error is smallest (ties to the lower score).
+pub fn selection_table(
+    rows: &[Row],
+    candidates: &[&str],
+    others: &[&str],
+) -> (String, String, bool) {
+    #[derive(Default, Clone, Copy)]
+    struct S {
+        n: f64,
+        crps: f64,
+        in50: f64,
+        in90: f64,
+        outer: f64,
+        pit: f64,
+    }
+    let mut cells: BTreeMap<(String, i32), S> = BTreeMap::new();
+    for r in rows {
+        let s = cells.entry((r.method.clone(), r.h)).or_default();
+        s.n += 1.0;
+        s.crps += r.score.crps;
+        s.in50 += f64::from(u8::from(r.score.inside[0]));
+        s.in90 += f64::from(u8::from(r.score.inside[2]));
+        s.outer += f64::from(u8::from(r.score.pit < 0.1 || r.score.pit >= 0.9));
+        s.pit += r.score.pit;
+    }
+    let mut out = String::from(
+        "method,candidate,h,forecasts,mean_crps_norm,cov50,cov90,pit_outer_share,pit_mean,score,worst_cov90_error,qualifies,selected\n",
+    );
+    struct Summary {
+        name: String,
+        candidate: bool,
+        score: f64,
+        worst: f64,
+    }
+    let mut summaries = Vec::new();
+    for m in candidates.iter().chain(others) {
+        let per: Vec<(i32, S)> = [7, 30, 90]
+            .iter()
+            .filter_map(|&h| cells.get(&(m.to_string(), h)).map(|s| (h, *s)))
+            .collect();
+        if per.len() != 3 {
+            continue;
+        }
+        let score = per.iter().map(|(_, s)| s.crps / s.n).sum::<f64>() / 3.0;
+        let worst = per
+            .iter()
+            .map(|(_, s)| (s.in90 / s.n - 0.9).abs())
+            .fold(0.0, f64::max);
+        summaries.push(Summary {
+            name: m.to_string(),
+            candidate: candidates.contains(m),
+            score,
+            worst,
+        });
+    }
+    let qualifies = |s: &Summary| s.worst <= 0.05 + 1e-12;
+    let pool: Vec<&Summary> = summaries.iter().filter(|s| s.candidate).collect();
+    let qualified: Vec<&&Summary> = pool.iter().filter(|s| qualifies(s)).collect();
+    let any = !qualified.is_empty();
+    let chosen = if any {
+        qualified
+            .iter()
+            .min_by(|a, b| a.score.total_cmp(&b.score))
+            .map(|s| s.name.clone())
+    } else {
+        pool.iter()
+            .min_by(|a, b| {
+                a.worst
+                    .total_cmp(&b.worst)
+                    .then(a.score.total_cmp(&b.score))
+            })
+            .map(|s| s.name.clone())
+    }
+    .unwrap_or_default();
+    for s in &summaries {
+        for h in [7, 30, 90] {
+            let c = cells[&(s.name.clone(), h)];
+            writeln!(
+                out,
+                "{},{},{h},{},{},{},{},{},{},{},{},{},{}",
+                s.name,
+                u8::from(s.candidate),
+                c.n,
+                fmt(c.crps / c.n),
+                fmt(c.in50 / c.n),
+                fmt(c.in90 / c.n),
+                fmt(c.outer / c.n),
+                fmt(c.pit / c.n),
+                fmt(s.score),
+                fmt(s.worst),
+                u8::from(qualifies(s)),
+                u8::from(s.name == chosen),
+            )
+            .unwrap();
+        }
+    }
+    (out, chosen, any)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dist::Score;
+
+    #[test]
+    fn selection_prefers_qualifying_then_lowest_score() {
+        // a: 90% coverage 100% (error 10 points), CRPS 1. b: 90% coverage
+        // exactly 90% (ten rows, nine inside), CRPS 2. Only b qualifies.
+        let mut rows = Vec::new();
+        for h in [7, 30, 90] {
+            for i in 0..10 {
+                let mut a = row(i, "a", 1.0, true);
+                a.h = h;
+                let mut b = row(i, "b", 2.0, i < 9);
+                b.h = h;
+                rows.extend([a, b]);
+            }
+        }
+        let (_, chosen, any) = selection_table(&rows, &["a", "b"], &[]);
+        assert_eq!((chosen.as_str(), any), ("b", true));
+        // Without b, nothing qualifies: the fallback is the closest, a.
+        let (t, chosen, any) = selection_table(&rows, &["a"], &["b"]);
+        assert_eq!((chosen.as_str(), any), ("a", false));
+        assert!(t.lines().any(|l| l.starts_with("b,0,7,10,2.0000,")));
+    }
 
     fn row(account: u64, method: &str, crps: f64, inside: bool) -> Row {
         Row {

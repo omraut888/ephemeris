@@ -68,6 +68,25 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// The revision candidates V0–V4 (PLAN §9), development split only.
+    Variants {
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
+    /// Tables and the selection rule for V0–V4 (PLAN §9).
+    VariantTables {
+        /// The variants' rows, then the main backtest's (for the baselines).
+        #[arg(long, required = true)]
+        rows: Vec<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Aggregate rows into the tables.
     Tables {
         #[arg(long, required = true)]
@@ -100,6 +119,13 @@ fn main() -> ExitCode {
             out,
         } => score_quantiles(&features, &quantiles, &method, &out),
         Cmd::Tables { rows, out } => tables(&rows, &out),
+        Cmd::Variants {
+            data,
+            out,
+            limit,
+            threads,
+        } => variants(&data, &out, limit, threads),
+        Cmd::VariantTables { rows, out } => variant_tables(&rows, &out),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -392,6 +418,88 @@ fn score_quantiles(
     }
     write(out, &text)?;
     eprintln!("scored {n} {method} forecasts into {}", out.display());
+    Ok(())
+}
+
+/// V0–V4 on the development accounts (the same exclusion as `berka`).
+fn variants(data: &Path, out: &Path, limit: Option<usize>, threads: usize) -> Result<(), String> {
+    use ephemeris_eval::variants::run_all as run_variants;
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    let mut chosen: Vec<&Account> = accounts
+        .values()
+        .filter(|a| split_of(a.id) == Split::Dev)
+        .filter(|a| a.stats().max_drift <= MAX_DRIFT_CZK)
+        .collect();
+    if let Some(n) = limit {
+        chosen.truncate(n);
+    }
+    eprintln!("variants V0–V4 on {} development accounts", chosen.len());
+    let t0 = std::time::Instant::now();
+    let (results, priors) = run_variants(&chosen, threads);
+    let secs = t0.elapsed().as_secs_f64();
+    let mut rows = String::from(HEADER);
+    rows.push('\n');
+    let (mut origins, mut sparse) = (0, 0);
+    for r in &results {
+        origins += r.origins;
+        sparse += r.sparse_origins;
+        for row in &r.rows {
+            rows.push_str(&row.csv());
+            rows.push('\n');
+        }
+    }
+    let mut summary = format!(
+        "key,value\naccounts,{}\norigins,{origins}\norigins_sparse_v2,{sparse}\nwall_seconds,{secs:.1}\n",
+        chosen.len()
+    );
+    for (k, p) in priors.iter().enumerate() {
+        writeln!(
+            summary,
+            "fold{k}_priors,c {:.4} sd {:.4} | m {:.4} sd {:.4} | spend_var {:.4} | income_var {:.4}",
+            p.c_mean, p.c_sd, p.m_mean, p.m_sd, p.spend_var, p.income_var
+        )
+        .unwrap();
+    }
+    write(&out.join("rows.csv"), &rows)?;
+    write(&out.join("data.csv"), &summary)?;
+    eprintln!("{summary}wrote {}", out.display());
+    Ok(())
+}
+
+fn variant_tables(paths: &[PathBuf], out: &Path) -> Result<(), String> {
+    use ephemeris_eval::aggregate::selection_table;
+    use ephemeris_eval::variants::VARIANTS;
+    let mut rows = Vec::new();
+    for p in paths {
+        rows.extend(read_rows(&read(p)?)?);
+    }
+    let shown: Vec<&str> = ["B-SA+"]
+        .into_iter()
+        .chain(VARIANTS)
+        .chain(["B-EQ", "B-GLOBAL"])
+        .collect();
+    let keep = |r: &Row| shown.contains(&r.method.as_str());
+    write(
+        &out.join("variants.csv"),
+        &main_table(&rows, "B-SA+", &shown, keep),
+    )?;
+    let strata_methods: Vec<&str> = VARIANTS.iter().copied().chain(["B-GLOBAL"]).collect();
+    write(
+        &out.join("variants-strata.csv"),
+        &strata_table(&rows, "B-SA+", &strata_methods),
+    )?;
+    let pit_rows: Vec<Row> = rows.iter().filter(|r| keep(r)).cloned().collect();
+    write(&out.join("variants-pit.csv"), &pit_table(&pit_rows, &shown))?;
+    let (sel, chosen, any) = selection_table(&rows, &VARIANTS[1..], &["V0", "B-EQ", "B-GLOBAL"]);
+    write(&out.join("selection.csv"), &sel)?;
+    eprintln!(
+        "selected {chosen}{}",
+        if any {
+            " (qualifies: 90% coverage within ±5 points at every horizon)"
+        } else {
+            " (NO variant qualified; chosen as closest to nominal 90% coverage)"
+        }
+    );
     Ok(())
 }
 
