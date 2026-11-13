@@ -269,6 +269,8 @@ pub fn to_feed_with(
         today,
         ledger_balance: ledger,
         transactions: out,
+        // Plaid feeds are US banks: the default calendar, not written.
+        holidays: None,
     };
     Ok((feed.rounded_to_cents(), notes))
 }

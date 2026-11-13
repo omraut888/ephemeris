@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::EngineError;
 use crate::forecast::{ForecastConfig, ForecastModel, forecast};
-use crate::schedule::detect_schedule;
+use crate::schedule::detect_schedule_in;
 use crate::schema::{Date, Feed, ForecastReport, SCHEMA_VERSION};
 use crate::synth::{INCOME_NAME, INCOME_STREAM, SynthConfig, generate, subscription_stream};
 use crate::tracker::{Tracker, TrackerConfig};
@@ -127,13 +127,15 @@ pub fn forecast_feed(feed: &Feed, opts: &ForecastOptions) -> Result<ForecastRepo
         ));
     }
     let txns = feed.transactions()?;
-    let tcfg = TrackerConfig::new(feed.history_start.0);
+    let calendar = feed.calendar();
+    let mut tcfg = TrackerConfig::new(feed.history_start.0);
+    tcfg.observe.holidays = calendar;
     let mut tracker = Tracker::new(tcfg)?;
     let ingest = tracker.ingest(&txns, feed.ledger_balance, feed.today.0)?;
     let est = tracker
         .estimate()
         .ok_or(EngineError::InvalidInput("tracker produced no estimate"))?;
-    let schedule = detect_schedule(&txns);
+    let schedule = detect_schedule_in(&txns, calendar);
     let fcfg = ForecastConfig {
         n_paths: opts.paths,
         targets: opts.targets.clone(),

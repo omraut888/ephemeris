@@ -1,9 +1,11 @@
 //! Calendar arithmetic on [`Day`] indices: civil dates, business days, and pay
 //! schedules (design §1, "Pay schedules").
 //!
-//! Business days follow the US Federal Reserve holiday calendar: a fixed-date
+//! Business days follow a [`HolidayCalendar`] chosen per feed. The default,
+//! [`HolidayCalendar::Us`], is the US Federal Reserve calendar: a fixed-date
 //! holiday on a Sunday is observed the following Monday, and one on a Saturday
-//! is not observed (banks open the Friday before).
+//! is not observed (banks open the Friday before). The free functions below
+//! (`is_business_day`, `business_day_on_or_before`, …) use the US calendar.
 
 use crate::error::EngineError;
 use crate::types::Day;
@@ -51,6 +53,66 @@ pub fn days_in_month(year: i32, month: u32) -> u32 {
     }
 }
 
+/// Which bank holidays a feed's business days skip. Chosen per feed (the
+/// feed's optional `holidays` field); absent means [`HolidayCalendar::Us`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HolidayCalendar {
+    /// US Federal Reserve holidays ([`is_bank_holiday`]).
+    #[default]
+    Us,
+    /// Czech public holidays ([`is_czech_holiday`]).
+    Cz,
+}
+
+impl HolidayCalendar {
+    pub fn is_holiday(self, day: Day) -> bool {
+        match self {
+            HolidayCalendar::Us => is_bank_holiday(day),
+            HolidayCalendar::Cz => is_czech_holiday(day),
+        }
+    }
+
+    pub fn is_business_day(self, day: Day) -> bool {
+        !is_weekend(day) && !self.is_holiday(day)
+    }
+
+    /// The latest business day `<= day`.
+    pub fn on_or_before(self, day: Day) -> Day {
+        let mut d = day;
+        while !self.is_business_day(d) {
+            d -= 1;
+        }
+        d
+    }
+
+    /// The earliest business day `>= day`.
+    pub fn on_or_after(self, day: Day) -> Day {
+        let mut d = day;
+        while !self.is_business_day(d) {
+            d += 1;
+        }
+        d
+    }
+
+    /// `n` business days after the first business day on or after `day`.
+    pub fn add_business_days(self, day: Day, n: u32) -> Day {
+        let mut d = self.on_or_after(day);
+        for _ in 0..n {
+            d = self.on_or_after(d + 1);
+        }
+        d
+    }
+
+    /// The day a paycheck nominally due on `nominal` lands: the same day, or
+    /// the previous business day.
+    pub fn pay_date(self, nominal: Day) -> Day {
+        self.on_or_before(nominal)
+    }
+}
+
 /// Whether `day` is a Federal Reserve bank holiday (as observed).
 pub fn is_bank_holiday(day: Day) -> bool {
     let (year, month, dom) = civil_from_day(day);
@@ -79,36 +141,61 @@ pub fn is_bank_holiday(day: Day) -> bool {
     }
 }
 
+/// Whether `day` is a Czech public holiday (state and other holidays, from
+/// 1993). A holiday on a weekend is not moved. Fixed dates: 1 Jan, 1 May,
+/// 8 May, 5 and 6 Jul, 28 Oct, 24–26 Dec; 28 Sep and 17 Nov from 2000.
+/// Moving: Easter Monday, and Good Friday from 2016.
+pub fn is_czech_holiday(day: Day) -> bool {
+    let (year, month, dom) = civil_from_day(day);
+    let fixed = matches!(
+        (month, dom),
+        (1, 1) | (5, 1) | (5, 8) | (7, 5) | (7, 6) | (10, 28) | (12, 24) | (12, 25) | (12, 26)
+    ) || (year >= 2000 && matches!((month, dom), (9, 28) | (11, 17)));
+    if fixed {
+        return true;
+    }
+    let easter = easter_sunday(year);
+    day == easter + 1 || (year >= 2016 && day == easter - 2)
+}
+
+/// Gregorian Easter Sunday of `year` (the anonymous Gregorian algorithm,
+/// Meeus/Jones/Butcher).
+pub fn easter_sunday(year: i32) -> Day {
+    let y = year;
+    let a = y.rem_euclid(19);
+    let (b, c) = (y.div_euclid(100), y.rem_euclid(100));
+    let (d, e) = (b / 4, b % 4);
+    let f = (b + 8) / 25;
+    let g = (b - f + 1) / 3;
+    let h = (19 * a + b - d - g + 15).rem_euclid(30);
+    let (i, k) = (c / 4, c % 4);
+    let l = (32 + 2 * e + 2 * i - h - k).rem_euclid(7);
+    let m = (a + 11 * h + 22 * l) / 451;
+    let month = (h + l - 7 * m + 114) / 31;
+    let dom = (h + l - 7 * m + 114) % 31 + 1;
+    day_from_civil(y, month as u32, dom as u32)
+}
+
+/// US calendar: [`HolidayCalendar::is_business_day`].
 pub fn is_business_day(day: Day) -> bool {
-    !is_weekend(day) && !is_bank_holiday(day)
+    HolidayCalendar::Us.is_business_day(day)
 }
 
-/// The latest business day `<= day`. Payroll moves weekend and holiday paydays earlier.
+/// US calendar: the latest business day `<= day`. Payroll moves weekend and
+/// holiday paydays earlier.
 pub fn business_day_on_or_before(day: Day) -> Day {
-    let mut d = day;
-    while !is_business_day(d) {
-        d -= 1;
-    }
-    d
+    HolidayCalendar::Us.on_or_before(day)
 }
 
-/// The earliest business day `>= day`.
+/// US calendar: the earliest business day `>= day`.
 pub fn business_day_on_or_after(day: Day) -> Day {
-    let mut d = day;
-    while !is_business_day(d) {
-        d += 1;
-    }
-    d
+    HolidayCalendar::Us.on_or_after(day)
 }
 
-/// `n` business days after the first business day on or after `day`.
-/// This is when a transaction authorized on `day` posts with a lag of `n`.
+/// US calendar: `n` business days after the first business day on or after
+/// `day`. This is when a transaction authorized on `day` posts with a lag of `n`.
 pub fn add_business_days(day: Day, n: u32) -> Day {
-    let mut d = business_day_on_or_after(day);
-    for _ in 0..n {
-        d = business_day_on_or_after(d + 1);
-    }
-    d
+    HolidayCalendar::Us.add_business_days(day, n)
 }
 
 /// When a recurring paycheck is nominally due. Actual pay dates move to the
@@ -179,10 +266,11 @@ impl PaySchedule {
         out
     }
 
-    /// The day a paycheck nominally due on `nominal` actually lands: the same
-    /// day, or the previous business day if it is a weekend or bank holiday.
+    /// The day a paycheck nominally due on `nominal` actually lands under the
+    /// US calendar: the same day, or the previous business day if it is a
+    /// weekend or bank holiday. See [`HolidayCalendar::pay_date`].
     pub fn pay_date(nominal: Day) -> Day {
-        business_day_on_or_before(nominal)
+        HolidayCalendar::Us.pay_date(nominal)
     }
 }
 
@@ -282,6 +370,77 @@ mod tests {
         assert!(!is_bank_holiday(ymd(2021, 12, 24))); // Christmas on Saturday
         assert!(is_business_day(ymd(2021, 12, 24)));
         assert!(!is_bank_holiday(ymd(2021, 6, 18))); // before Juneteenth existed
+    }
+
+    #[test]
+    fn easter_hand_cases() {
+        assert_eq!(easter_sunday(1993), ymd(1993, 4, 11));
+        assert_eq!(easter_sunday(1996), ymd(1996, 4, 7));
+        assert_eq!(easter_sunday(1998), ymd(1998, 4, 12));
+        assert_eq!(easter_sunday(2000), ymd(2000, 4, 23));
+        assert_eq!(easter_sunday(2016), ymd(2016, 3, 27));
+        assert_eq!(easter_sunday(2024), ymd(2024, 3, 31));
+        assert_eq!(easter_sunday(2038), ymd(2038, 4, 25)); // the latest possible
+        assert_eq!(easter_sunday(2285), ymd(2285, 3, 22)); // the earliest possible
+    }
+
+    #[test]
+    fn czech_holidays_1996_and_2024() {
+        let found = |y: i32| -> Vec<Day> {
+            (ymd(y, 1, 1)..ymd(y + 1, 1, 1))
+                .filter(|&d| is_czech_holiday(d))
+                .collect()
+        };
+        assert_eq!(
+            found(1996),
+            vec![
+                ymd(1996, 1, 1),
+                ymd(1996, 4, 8), // Easter Monday
+                ymd(1996, 5, 1),
+                ymd(1996, 5, 8),
+                ymd(1996, 7, 5),
+                ymd(1996, 7, 6),
+                ymd(1996, 10, 28),
+                ymd(1996, 12, 24),
+                ymd(1996, 12, 25),
+                ymd(1996, 12, 26),
+            ]
+        );
+        // From 2000 St Wenceslas and 17 Nov; from 2016 Good Friday.
+        let y2024 = found(2024);
+        assert_eq!(y2024.len(), 13);
+        assert!(y2024.contains(&ymd(2024, 3, 29))); // Good Friday
+        assert!(y2024.contains(&ymd(2024, 9, 28)));
+        assert!(y2024.contains(&ymd(2024, 11, 17)));
+        assert!(!found(1999).contains(&ymd(1999, 9, 28)));
+    }
+
+    #[test]
+    fn czech_calendar_does_not_move_weekend_holidays() {
+        let cz = HolidayCalendar::Cz;
+        // 1996-07-06 is a Saturday: no Monday substitute.
+        assert!(cz.is_business_day(ymd(1996, 7, 8)));
+        // 1996-07-05 (Friday) is a holiday, so a Monday-before payday rolls to
+        // Thursday the 4th.
+        assert_eq!(cz.pay_date(ymd(1996, 7, 7)), ymd(1996, 7, 4));
+        // US Independence Day is an ordinary Czech business day …
+        assert!(cz.is_business_day(ymd(1996, 7, 4)));
+        // … and Easter Monday an ordinary US one.
+        assert!(HolidayCalendar::Us.is_business_day(ymd(1996, 4, 8)));
+        assert_eq!(
+            cz.add_business_days(ymd(1996, 12, 23), 1),
+            ymd(1996, 12, 27)
+        );
+    }
+
+    #[test]
+    fn us_wrappers_match_the_us_calendar() {
+        let us = HolidayCalendar::Us;
+        for d in ymd(2020, 1, 1)..ymd(2026, 1, 1) {
+            assert_eq!(is_business_day(d), us.is_business_day(d));
+            assert_eq!(PaySchedule::pay_date(d), us.pay_date(d));
+            assert_eq!(add_business_days(d, 2), us.add_business_days(d, 2));
+        }
     }
 
     #[test]

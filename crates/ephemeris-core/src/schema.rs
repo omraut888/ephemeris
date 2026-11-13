@@ -18,7 +18,9 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::calendar::{PaySchedule, civil_from_day, day_from_civil, days_in_month};
+use crate::calendar::{
+    HolidayCalendar, PaySchedule, civil_from_day, day_from_civil, days_in_month,
+};
 use crate::error::EngineError;
 use crate::forecast::{Cone, CycleBasis, ForecastConfig};
 use crate::model::{IDX_B, IDX_C, IDX_M};
@@ -94,6 +96,12 @@ pub struct Feed {
     /// end of `today` (pending records excluded).
     pub ledger_balance: f64,
     pub transactions: Vec<FeedTransaction>,
+    /// The bank's business-day calendar (`"us"` or `"cz"`). Absent means
+    /// `"us"`, and an absent value is not written, so feeds without one
+    /// serialize exactly as before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub holidays: Option<HolidayCalendar>,
 }
 
 /// A [`Transaction`] on the wire. Amounts are signed, **inflows positive**.
@@ -175,7 +183,13 @@ impl Feed {
             today: Date(today),
             ledger_balance,
             transactions: txns.iter().map(FeedTransaction::from).collect(),
+            holidays: None,
         }
+    }
+
+    /// The feed's business-day calendar (US when absent).
+    pub fn calendar(&self) -> HolidayCalendar {
+        self.holidays.unwrap_or_default()
     }
 
     /// The same feed with every amount and the ledger balance rounded to
@@ -552,7 +566,7 @@ impl ForecastReport {
                 .schedule
                 .nominal_dates(t.last_paid_nominal + 1, t.last_paid_nominal + 62)
                 .first()
-                .map(|&n| Date(PaySchedule::pay_date(n))),
+                .map(|&n| Date(t.pay_date(n))),
             offset_probabilities: *t.offsets.probabilities(),
             fit_cost: t.fit_cost,
         });
@@ -651,6 +665,7 @@ mod tests {
         assert!((r.below_floor - 0.031_422_647_9).abs() < 1e-9);
     }
     use crate::adaptive::VarianceEstimate;
+    use crate::calendar::HolidayCalendar;
     use crate::forecast::{ForecastModel, forecast};
     use crate::schedule::{BillStream, OffsetDist, PayTiming};
     use crate::tracker::LumpHistory;
@@ -729,6 +744,26 @@ mod tests {
     }
 
     #[test]
+    fn holiday_calendar_is_optional_and_omitted_when_absent() {
+        let feed = Feed::new(0, 0, 0.0, &[]);
+        let json = serde_json::to_string(&feed).unwrap();
+        assert!(!json.contains("holidays"), "{json}");
+        assert_eq!(feed.calendar(), HolidayCalendar::Us);
+
+        let cz = Feed {
+            holidays: Some(HolidayCalendar::Cz),
+            ..feed
+        };
+        let json = serde_json::to_string(&cz).unwrap();
+        assert!(json.ends_with(r#""holidays":"cz"}"#), "{json}");
+        let back: Feed = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.calendar(), HolidayCalendar::Cz);
+        let us: Feed = serde_json::from_str(&json.replace("\"cz\"", "\"us\"")).unwrap();
+        assert_eq!(us.holidays, Some(HolidayCalendar::Us));
+        assert!(serde_json::from_str::<Feed>(&json.replace("\"cz\"", "\"de\"")).is_err());
+    }
+
+    #[test]
     fn rounding_to_cents() {
         let mut feed = Feed::new(0, 0, 1234.5678, &[]);
         feed.transactions = [48.2542, -0.004, 2.675, -15.607_323]
@@ -786,6 +821,7 @@ mod tests {
                 last_paid_nominal: t0,
                 offsets: OffsetDist::exact(),
                 fit_cost: 0,
+                calendar: HolidayCalendar::Us,
             }),
             bills: vec![BillStream {
                 stream: StreamId(3),

@@ -20,7 +20,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::calendar::add_business_days;
+use crate::calendar::HolidayCalendar;
 use crate::error::EngineError;
 use crate::types::{Day, FlowKind, Transaction, TxnStatus};
 
@@ -40,6 +40,8 @@ pub struct ObserveConfig {
     /// Transfer legs match when their days are within this many business days.
     /// An unmatched leg older than this is reclassified as spending.
     pub transfer_window: u32,
+    /// The business-day calendar for both windows above.
+    pub holidays: HolidayCalendar,
 }
 
 impl ObserveConfig {
@@ -56,6 +58,7 @@ impl Default for ObserveConfig {
             missing_auth_rel_sd: 0.5,
             missing_auth_window: 3,
             transfer_window: Self::DEFAULT_TRANSFER_WINDOW,
+            holidays: HolidayCalendar::Us,
         }
     }
 }
@@ -275,7 +278,10 @@ impl ObservedFeed {
     }
 
     fn missing_auth_var(&self, d: Day) -> f64 {
-        let reach = add_business_days(d, self.cfg.missing_auth_window);
+        let reach = self
+            .cfg
+            .holidays
+            .add_business_days(d, self.cfg.missing_auth_window);
         let first = self.missing_auth.partition_point(|&(p, _)| p <= d);
         self.missing_auth[first..]
             .iter()
@@ -327,8 +333,8 @@ impl ObservedFeed {
     }
 }
 
-fn within_business_days(a: Day, b: Day, window: u32) -> bool {
-    add_business_days(a.min(b), window) >= a.max(b)
+fn within_business_days(a: Day, b: Day, window: u32, cal: HolidayCalendar) -> bool {
+    cal.add_business_days(a.min(b), window) >= a.max(b)
 }
 
 fn assign_roles(txns: &[Transaction], today: Day, cfg: &ObserveConfig) -> Vec<Role> {
@@ -357,7 +363,7 @@ fn assign_roles(txns: &[Transaction], today: Day, cfg: &ObserveConfig) -> Vec<Ro
                 && inc.amount > 0.0
                 && inc.account != out.account
                 && (inc.amount + out.amount).abs() < 0.005
-                && within_business_days(out.day(), inc.day(), cfg.transfer_window)
+                && within_business_days(out.day(), inc.day(), cfg.transfer_window, cfg.holidays)
         });
         if let Some((_, &j)) = partner {
             roles[i] = Role::MatchedTransfer;
@@ -366,7 +372,7 @@ fn assign_roles(txns: &[Transaction], today: Day, cfg: &ObserveConfig) -> Vec<Ro
     }
     for &i in &legs {
         if roles[i] == Role::HeldTransfer
-            && !within_business_days(txns[i].day(), today, cfg.transfer_window)
+            && !within_business_days(txns[i].day(), today, cfg.transfer_window, cfg.holidays)
         {
             roles[i] = Role::Spend;
         }

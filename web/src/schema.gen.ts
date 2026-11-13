@@ -16,7 +16,13 @@ history_start: IsoDate, today: IsoDate,
  * The bank's posted balance across all linked depository accounts at the
  * end of `today` (pending records excluded).
  */
-ledger_balance: number, transactions: Array<FeedTransaction>, };
+ledger_balance: number, transactions: Array<FeedTransaction>, 
+/**
+ * The bank's business-day calendar (`"us"` or `"cz"`). Absent means
+ * `"us"`, and an absent value is not written, so feeds without one
+ * serialize exactly as before the field existed.
+ */
+holidays?: HolidayCalendar, };
 
 export type FeedTransaction = { id: number, account: number, date: IsoDate, authorized_date: IsoDate | null, status: TxnStatus, amount: number, kind: FlowKind, stream: number | null, pending_id: number | null, 
 /**
@@ -31,6 +37,8 @@ description: string | null, };
 export type FlowKind = "income" | "scheduled" | "discretionary" | "transfer";
 
 export type TxnStatus = "pending" | "posted";
+
+export type HolidayCalendar = "us" | "cz";
 
 export type ForecastReport = { schema_version: number, 
 /**

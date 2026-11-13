@@ -59,6 +59,7 @@ all linked depository accounts.
 | `today` | date | The snapshot describes the end of this day. No record is dated later. |
 | `ledger_balance` | number | The bank's **posted** balance across linked accounts at the end of `today`. Pending records are not in it. |
 | `transactions[]` | array | Every record the feed shows, pending and posted, in any order. |
+| `holidays` | `"us"` \| `"cz"`, optional | The bank's business-day calendar: the holidays that paydays, bill shifts and posting windows skip. Absent means `"us"` (US Federal Reserve). It is not written when absent, so feeds without it are byte-identical to feeds from before the field existed. `"cz"` (Czech public holidays) is used for the Berka backtest (paper/PLAN.md §8). |
 
 Each transaction:
 

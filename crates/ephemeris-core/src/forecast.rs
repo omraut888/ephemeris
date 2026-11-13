@@ -48,7 +48,7 @@ use rand_chacha::ChaCha8Rng;
 use rand_distr::{ChiSquared, Distribution, Exp, StandardNormal};
 
 use crate::adaptive::VarianceEstimate;
-use crate::calendar::{PaySchedule, business_day_on_or_after};
+use crate::calendar::HolidayCalendar;
 use crate::error::EngineError;
 use crate::linalg::is_psd;
 use crate::model::{IDX_B, IDX_C, IDX_M};
@@ -308,7 +308,7 @@ fn pay_cycles(schedule: &Schedule, t0: Day, horizon: u32) -> (CycleBasis, Vec<(D
         .schedule
         .nominal_dates(timing.last_paid_nominal + 1, last + 70)
         .into_iter()
-        .map(PaySchedule::pay_date)
+        .map(|n| timing.pay_date(n))
         .filter(|&d| d > first)
         .collect();
     paydays.dedup();
@@ -335,7 +335,7 @@ fn timing_is_payday(timing: &crate::schedule::PayTiming, day: Day) -> bool {
         .schedule
         .nominal_dates(day - 7, day + 7)
         .into_iter()
-        .any(|n| PaySchedule::pay_date(n) == day)
+        .any(|n| timing.pay_date(n) == day)
 }
 
 /// Run the forecast from a tracker estimate.
@@ -473,6 +473,8 @@ struct Simulator<'a> {
     lump_exp: Exp<f64>,
     paydays: Vec<Day>,
     pay_offsets: Option<&'a OffsetDist>,
+    /// The business-day calendar of the paydays.
+    pay_calendar: HolidayCalendar,
     bills: &'a [BillStream],
 }
 
@@ -540,6 +542,10 @@ impl<'a> Simulator<'a> {
                 .map_err(|_| EngineError::InvalidConfig("lump gate_sigmas rejected"))?,
             paydays,
             pay_offsets,
+            pay_calendar: schedule
+                .income
+                .as_ref()
+                .map_or(HolidayCalendar::Us, |t| t.calendar),
             bills: &schedule.bills,
         })
     }
@@ -634,9 +640,9 @@ impl<'a> Simulator<'a> {
     fn sample_pay_day(&self, idx: usize, after: Day, rng: &mut ChaCha8Rng) -> Day {
         match (self.paydays.get(idx), self.pay_offsets) {
             (Some(&nominal), Some(offsets)) => {
-                let d = PaySchedule::pay_date(nominal + offsets.sample(rng));
+                let d = self.pay_calendar.pay_date(nominal + offsets.sample(rng));
                 if d < after {
-                    business_day_on_or_after(after)
+                    self.pay_calendar.on_or_after(after)
                 } else {
                     d
                 }
@@ -751,6 +757,7 @@ fn chol_with_jitter(p: &Matrix3<f64>) -> Result<Matrix3<f64>, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calendar::PaySchedule;
     use crate::calendar::day_from_civil as ymd;
     use crate::schedule::PayTiming;
     use crate::tracker::LumpHistory;
@@ -785,6 +792,7 @@ mod tests {
                 last_paid_nominal: t0(),
                 offsets: OffsetDist::exact(),
                 fit_cost: 0,
+                calendar: HolidayCalendar::Us,
             }),
             bills: vec![BillStream {
                 stream: StreamId(1),
@@ -952,6 +960,7 @@ mod tests {
                 day_of_month: Some(MonthlyAnchor {
                     day: 1,
                     shift: DayShift::NextBusinessDay,
+                    calendar: HolidayCalendar::Us,
                 }),
             }],
         };

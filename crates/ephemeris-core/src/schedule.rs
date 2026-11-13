@@ -37,7 +37,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use rand::RngExt;
 
-use crate::calendar::{PaySchedule, business_day_on_or_after, business_day_on_or_before};
+use crate::calendar::{HolidayCalendar, PaySchedule};
 use crate::types::{Day, FlowKind, StreamId, Transaction, TxnStatus};
 
 /// Largest timing offset the detector and forecaster model, in days.
@@ -116,6 +116,15 @@ pub struct PayTiming {
     pub offsets: OffsetDist,
     /// Fit cost of the chosen schedule (0 = every payday explained exactly).
     pub fit_cost: u32,
+    /// The business-day calendar paydays roll back by.
+    pub calendar: HolidayCalendar,
+}
+
+impl PayTiming {
+    /// The day a paycheck nominally due on `nominal` lands.
+    pub fn pay_date(&self, nominal: Day) -> Day {
+        self.calendar.pay_date(nominal)
+    }
 }
 
 /// How a bill's nominal date moves when it is not a business day.
@@ -128,11 +137,16 @@ pub enum DayShift {
 }
 
 impl DayShift {
+    /// Under the US calendar.
     pub fn apply(self, nominal: Day) -> Day {
+        self.apply_in(nominal, HolidayCalendar::Us)
+    }
+
+    pub fn apply_in(self, nominal: Day, calendar: HolidayCalendar) -> Day {
         match self {
             DayShift::None => nominal,
-            DayShift::PreviousBusinessDay => business_day_on_or_before(nominal),
-            DayShift::NextBusinessDay => business_day_on_or_after(nominal),
+            DayShift::PreviousBusinessDay => calendar.on_or_before(nominal),
+            DayShift::NextBusinessDay => calendar.on_or_after(nominal),
         }
     }
 }
@@ -143,6 +157,8 @@ pub struct MonthlyAnchor {
     /// 1–31; a day past the end of a month means its last day.
     pub day: u32,
     pub shift: DayShift,
+    /// The business-day calendar `shift` moves by.
+    pub calendar: HolidayCalendar,
 }
 
 impl MonthlyAnchor {
@@ -151,7 +167,7 @@ impl MonthlyAnchor {
         PaySchedule::Monthly { day: self.day }
             .nominal_dates(from, to)
             .into_iter()
-            .map(|n| self.shift.apply(n))
+            .map(|n| self.shift.apply_in(n, self.calendar))
             .collect()
     }
 
@@ -202,23 +218,28 @@ pub struct Schedule {
     pub bills: Vec<BillStream>,
 }
 
-/// Detect recurring flows from the records in a feed snapshot.
+/// Detect recurring flows from the records in a feed snapshot, under the US
+/// business-day calendar.
 pub fn detect_schedule(txns: &[Transaction]) -> Schedule {
+    detect_schedule_in(txns, HolidayCalendar::Us)
+}
+
+/// [`detect_schedule`] under a given business-day calendar.
+pub fn detect_schedule_in(txns: &[Transaction], calendar: HolidayCalendar) -> Schedule {
     Schedule {
-        income: detect_income(txns),
-        bills: detect_bills(txns),
+        income: detect_income(txns, calendar),
+        bills: detect_bills(txns, calendar),
     }
 }
 
 /// The smallest-|k| offset that explains `payday` under `schedule`, with the
 /// nominal date it belongs to.
-fn explain(schedule: &PaySchedule, payday: Day) -> Option<(Day, i32)> {
+fn explain(schedule: &PaySchedule, payday: Day, cal: HolidayCalendar) -> Option<(Day, i32)> {
     let nominals = schedule.nominal_dates(payday - MAX_OFFSET - 4, payday + MAX_OFFSET + 4);
     let mut best: Option<(Day, i32)> = None;
     for n in nominals {
         for k in -MAX_OFFSET..=MAX_OFFSET {
-            if PaySchedule::pay_date(n + k) == payday && best.is_none_or(|(_, b)| k.abs() < b.abs())
-            {
+            if cal.pay_date(n + k) == payday && best.is_none_or(|(_, b)| k.abs() < b.abs()) {
                 best = Some((n, k));
             }
         }
@@ -232,13 +253,13 @@ struct Fit {
     offsets: Vec<i32>,
 }
 
-fn fit(schedule: &PaySchedule, paydays: &[Day]) -> Option<Fit> {
+fn fit(schedule: &PaySchedule, paydays: &[Day], cal: HolidayCalendar) -> Option<Fit> {
     let mut cost = 0;
     let mut offsets = Vec::with_capacity(paydays.len());
     let mut used = HashSet::new();
     let mut last_nominal = None;
     for &d in paydays {
-        match explain(schedule, d) {
+        match explain(schedule, d, cal) {
             Some((n, k)) if used.insert(n) => {
                 cost += k.unsigned_abs();
                 offsets.push(k);
@@ -273,18 +294,24 @@ fn candidates(last: Day) -> Vec<PaySchedule> {
     out
 }
 
-fn detect_income(txns: &[Transaction]) -> Option<PayTiming> {
+fn detect_income(txns: &[Transaction], cal: HolidayCalendar) -> Option<PayTiming> {
     let paydays: Vec<Day> = txns
         .iter()
         .filter(|t| t.kind == FlowKind::Income && t.status == TxnStatus::Posted)
         .map(Transaction::day)
         .collect();
-    fit_pay_schedule(&paydays)
+    fit_pay_schedule_in(&paydays, cal)
 }
 
 /// The cheapest [`PaySchedule`] for a series of paydays (any order,
-/// duplicates ignored), fitted to the last 26. `None` with fewer than two.
+/// duplicates ignored), fitted to the last 26, under the US calendar. `None`
+/// with fewer than two.
 pub fn fit_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
+    fit_pay_schedule_in(paydays, HolidayCalendar::Us)
+}
+
+/// [`fit_pay_schedule`] under a given business-day calendar.
+pub fn fit_pay_schedule_in(paydays: &[Day], calendar: HolidayCalendar) -> Option<PayTiming> {
     let mut paydays = paydays.to_vec();
     paydays.sort_unstable();
     paydays.dedup();
@@ -296,7 +323,7 @@ pub fn fit_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
 
     let mut best: Option<(PaySchedule, Fit)> = None;
     for c in candidates(last) {
-        if let Some(f) = fit(&c, paydays)
+        if let Some(f) = fit(&c, paydays, calendar)
             && best.as_ref().is_none_or(|(_, b)| f.cost < b.cost)
         {
             best = Some((c, f));
@@ -308,6 +335,7 @@ pub fn fit_pay_schedule(paydays: &[Day]) -> Option<PayTiming> {
         last_paid_nominal: f.last_nominal,
         offsets: OffsetDist::from_offsets(&f.offsets),
         fit_cost: f.cost,
+        calendar,
     })
 }
 
@@ -351,7 +379,7 @@ pub fn is_regular_interval(days: &[Day]) -> bool {
     close as f64 >= REGULAR_GAP_SHARE * gaps.len() as f64
 }
 
-fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
+fn detect_bills(txns: &[Transaction], cal: HolidayCalendar) -> Vec<BillStream> {
     let mut by_stream: BTreeMap<StreamId, Vec<&Transaction>> = BTreeMap::new();
     for t in txns.iter().filter(|t| t.kind == FlowKind::Scheduled) {
         if let Some(s) = t.stream {
@@ -385,7 +413,7 @@ fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
                 drift: OffsetDist::from_offsets(&drift),
                 day_of_month: (28..=31)
                     .contains(&period)
-                    .then(|| detect_day_of_month(&days))
+                    .then(|| detect_day_of_month(&days, cal))
                     .flatten(),
             })
         })
@@ -394,7 +422,7 @@ fn detect_bills(txns: &[Transaction]) -> Vec<BillStream> {
 
 /// The (day, shift) that explains the most charge days, if it explains at
 /// least 80% of them. Ties go to no shift, then to the earlier day.
-fn detect_day_of_month(days: &[Day]) -> Option<MonthlyAnchor> {
+fn detect_day_of_month(days: &[Day], calendar: HolidayCalendar) -> Option<MonthlyAnchor> {
     if days.len() < MONTHLY_MIN_CHARGES {
         return None;
     }
@@ -405,7 +433,11 @@ fn detect_day_of_month(days: &[Day]) -> Option<MonthlyAnchor> {
         DayShift::NextBusinessDay,
     ] {
         for day in 1..=31 {
-            let anchor = MonthlyAnchor { day, shift };
+            let anchor = MonthlyAnchor {
+                day,
+                shift,
+                calendar,
+            };
             let hits = days.iter().filter(|&&d| anchor.explains(d)).count();
             if best.is_none_or(|(b, _)| hits > b) {
                 best = Some((hits, anchor));
@@ -607,6 +639,7 @@ mod tests {
         let rent = MonthlyAnchor {
             day: 1,
             shift: DayShift::NextBusinessDay,
+            calendar: HolidayCalendar::Us,
         };
         assert_eq!(rent.next_after(ymd(2024, 5, 31)), ymd(2024, 6, 3));
         assert_eq!(rent.next_after(ymd(2024, 6, 3)), ymd(2024, 7, 1));
@@ -614,6 +647,7 @@ mod tests {
         let end = MonthlyAnchor {
             day: 31,
             shift: DayShift::PreviousBusinessDay,
+            calendar: HolidayCalendar::Us,
         };
         assert_eq!(end.next_after(ymd(2024, 6, 1)), ymd(2024, 6, 28));
         assert_eq!(end.next_after(ymd(2024, 6, 28)), ymd(2024, 7, 31));
@@ -625,7 +659,14 @@ mod tests {
             let days: Vec<Day> = (1..=12).map(|m| shift.apply(ymd(2024, m, 1))).collect();
             // Several firsts of 2024 fall on weekends or holidays.
             assert!(days.iter().filter(|&&d| civil_dom(d) != 1).count() >= 3);
-            assert_eq!(anchor_of(&days), Some(MonthlyAnchor { day: 1, shift }));
+            assert_eq!(
+                anchor_of(&days),
+                Some(MonthlyAnchor {
+                    day: 1,
+                    shift,
+                    calendar: HolidayCalendar::Us
+                })
+            );
         }
     }
 
@@ -641,7 +682,8 @@ mod tests {
             anchor_of(&days),
             Some(MonthlyAnchor {
                 day: 31,
-                shift: DayShift::None
+                shift: DayShift::None,
+                calendar: HolidayCalendar::Us,
             })
         );
     }
@@ -755,5 +797,31 @@ mod tests {
         for (c, p) in counts.iter().zip(dist.probabilities()) {
             assert!((*c as f64 / 60_000.0 - p).abs() < 0.01);
         }
+    }
+
+    #[test]
+    fn paydays_fit_exactly_only_under_their_own_calendar() {
+        // Paid on the 8th, rolled back by Czech holidays: 1996-05-08 is
+        // Liberation Day (a Wednesday), so May pays on the 7th.
+        let cz = HolidayCalendar::Cz;
+        let days: Vec<Day> = PaySchedule::Monthly { day: 8 }
+            .nominal_dates(ymd(1996, 1, 1), ymd(1996, 12, 31))
+            .into_iter()
+            .map(|n| cz.pay_date(n))
+            .collect();
+        assert!(days.contains(&ymd(1996, 5, 7)));
+        let txns: Vec<Transaction> = days
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| pay(i as u64, d))
+            .collect();
+        let under_cz = detect_schedule_in(&txns, cz).income.unwrap();
+        assert_eq!(under_cz.schedule, PaySchedule::Monthly { day: 8 });
+        assert_eq!((under_cz.fit_cost, under_cz.calendar), (0, cz));
+        // The US calendar has to explain 7 May as a day early.
+        let under_us = detect_schedule(&txns).income.unwrap();
+        assert_eq!(under_us.schedule, PaySchedule::Monthly { day: 8 });
+        assert!(under_us.fit_cost > 0);
+        assert_eq!(under_us.calendar, HolidayCalendar::Us);
     }
 }

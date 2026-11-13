@@ -8,6 +8,7 @@
 
 use std::path::Path;
 
+use ephemeris_core::calendar::HolidayCalendar;
 use ephemeris_core::pipeline::{ForecastOptions, SimMode, SimulateOptions};
 use ephemeris_core::schema::Date as IsoDate;
 use ephemeris_core::schema::{
@@ -36,6 +37,7 @@ fn generated() -> String {
         FeedTransaction::decl(&cfg),
         FlowKind::decl(&cfg),
         TxnStatus::decl(&cfg),
+        HolidayCalendar::decl(&cfg),
         // Report (out).
         ForecastReport::decl(&cfg),
         Estimate::decl(&cfg),
