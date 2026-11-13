@@ -1,0 +1,9 @@
+key,value
+accounts,871
+origins,27855
+origins_sparse_v2,27855
+fold0_priors,c 2.7261 sd 4.7757 | m 4525.9022 sd 402.1620 | spend_var 1341.7000 | income_var 79163.8668
+fold1_priors,c 3.0485 sd 5.0284 | m 4517.3513 sd 417.4173 | spend_var 1536.6397 | income_var 74616.6743
+fold2_priors,c 2.9051 sd 4.5216 | m 4518.0415 sd 416.3941 | spend_var 1341.7000 | income_var 46676.0621
+fold3_priors,c 3.0110 sd 4.9508 | m 4520.8224 sd 432.3784 | spend_var 1359.5433 | income_var 42743.9460
+fold4_priors,c 3.0889 sd 4.5796 | m 4509.3641 sd 430.1291 | spend_var 1256.9818 | income_var 73235.6561

@@ -2,6 +2,7 @@
 # Rebuild the paper's results from the pinned datasets (paper/PLAN.md §6).
 #
 #   scripts/paper.sh            development split: Berka backtest, B-GLOBAL,
+#                               the revision candidates V0-V4 (PLAN §9),
 #                               tables into paper/results/dev/
 #
 # Stages still to come (PLAN §7): synthetic tables, MoneyData, the held-out
@@ -55,4 +56,11 @@ EVAL=target/release/ephemeris-eval
 "$EVAL" tables --rows "$BUILD/berka-dev/rows.csv" --rows "$BUILD/berka-dev/rows-lgbm.csv" \
   --out "$RESULTS/dev"
 grep -v '^wall_seconds\|^threads' "$BUILD/berka-dev/data.csv" > "$RESULTS/dev/data.csv"
+
+# 5. The revision candidates V0–V4 (PLAN §9) and the selection rule.
+"$EVAL" variants --out "$BUILD/variants-dev"
+"$EVAL" variant-tables --rows "$BUILD/variants-dev/rows.csv" \
+  --rows "$BUILD/berka-dev/rows.csv" --rows "$BUILD/berka-dev/rows-lgbm.csv" \
+  --out "$RESULTS/dev"
+grep -v '^wall_seconds' "$BUILD/variants-dev/data.csv" > "$RESULTS/dev/variants-data.csv"
 echo "development results in $RESULTS/dev" >&2
