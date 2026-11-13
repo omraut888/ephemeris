@@ -515,9 +515,11 @@ from what §2–§6 say, this section wins.
    `paper/requirements.txt`.
 8. **Venue:** arXiv stat.AP (cross-list cs.LG, q-fin.GN), then ICAIF.
 
-**Deviations found on development data (2026-11-13, for review).** Both
-were fixed before any development result was read, and neither touched
-held-out data.
+**Deviations found on development data (2026-11-13; approved
+2026-11-13).** Both were fixed before any development result was read,
+and neither touched held-out data. The paper reports the exclusion count
+(19 of 890 development accounts; the held-out count when it runs) and the
+reason.
 
 1. **Berka's calendar is `every_day`, not Czech.** A first run over 16
    development accounts detected income at none of 541 origins. The dates
@@ -554,6 +556,113 @@ held-out data.
   whether the held-out set was run once.
 
 ---
+
+## 9. Revision on the development split (2026-11-13)
+
+**Why.** On the development split (§8, `paper/results/dev/`), the original
+model fails claim A2: the 90% interval covers 71% at 90 days and the 50%
+interval 27–28% at 30 and 90 days. It also fails B1 against B-EQ and
+B-GLOBAL. The user chose to revise on the development split before any
+held-out run. This section fixes everything about that revision before
+any revision code is written. Nothing here was tuned on development
+results; where a constant is chosen, the reason is given.
+
+**The candidates. Exactly these, no others.** V0 is the original model,
+unchanged (the `EPHEMERIS` rows).
+
+- **V1: online conformal recalibration of V0's cone**, per account and
+  horizon, by adaptive conformal inference (Gibbs & Candès, *Adaptive
+  Conformal Inference Under Distribution Shift*, NeurIPS 2021).
+  - *Levels:* one ACI recursion per central level
+    ℓ ∈ {0.1, 0.2, …, 0.9, 0.95, 0.98}, started at `α = 1 − ℓ`, with
+    step `γ = 0.05`, updated as `α ← α + γ(1 − ℓ − err)`. The paper's
+    γ = 0.005 is for thousands of steps; an account here has about 50–130.
+  - *Calibration stream:* the same model's forecasts at pseudo-origins
+    every 14 days from day 90 of the account's history. A pseudo-origin
+    `g` updates the recursion for horizon h only if `g + h ≤ origin`, so
+    only forecasts whose horizon has already elapsed are used, with no
+    look-ahead. Updates run in order of `g`.
+  - *Error:* `err = 1` if the realized balance falls outside the
+    pseudo-origin cone's central interval at the adjusted level
+    `ℓ' = clamp(1 − α, 0, 0.995)`, else 0.
+  - *Recalibrated forecast at the origin:* quantiles at the 23 levels
+    `(1 ± ℓ)/2` and 0.5. Each level takes the origin cone's quantile at
+    `(1 ± ℓ')/2`, with ℓ' from that recursion's current `α`. The values
+    are sorted, so crossing is repaired by rearrangement. Interpolation
+    and CRPS are as for B-GLOBAL (§2).
+  - *Stated limitation:* ℓ' is capped at 0.995 (the cone's widest
+    quantiles), so an interval can never become infinite, unlike in ACI
+    proper.
+- **V2: sparse spending.** For an account the rule marks as sparse,
+  discretionary flows are a compound Poisson process in place of the
+  smooth daily rate `−c + N(0, σ_s²)` and the lump draws.
+  - *Rate:* each path draws `λ ~ Gamma(n + ½, rate = D)`, the Jeffreys
+    posterior. Here n is the number of discretionary records in the
+    window, and D its length in days.
+  - *Amounts:* each event's amount is resampled from the window's signed
+    discretionary amounts, cash deposits included.
+  - *Window:* the 365 days up to the origin, or all history if shorter.
+  - *Rule, fixed now:* an account is sparse at an origin if the median,
+    over its complete calendar months in that window, of the number of
+    discretionary records per month is below 10, about one every three
+    days. Below that, most days have no discretionary record, and a
+    smooth Gaussian daily rate describes a zero-inflated daily flow
+    badly. The synthetic generators' accounts (about 75 a month) are
+    never sparse.
+  - Everything else (the tracker, `b₀ ~ N(x̂, P)`, income, bills, `m`'s
+    walk) is unchanged.
+  - V2 is built in the core as an **opt-in** forecast option, off by
+    default, so the shipped app's outputs and the golden files stay
+    byte-identical.
+- **V3: pooled priors (empirical Bayes).**
+  - *Folds:* development accounts are split into the same 5 folds as
+    B-GLOBAL (SplitMix64 of `0x5048415345362D33 ⊕ account id`, mod 5).
+  - *What is fitted:* for an account in fold k, the tracker's priors come
+    only from accounts in the other four folds:
+    - `c` prior mean: the median of their `ĉ`; sd: 1.4826 × MAD, at
+      least 1;
+    - `m` prior mean and sd: the same, over the accounts with income, sd
+      at least 10;
+    - spend-variance prior value: the median of their `σ̂_s²`;
+    - income-variance prior value: the median of their `R̂_inc`, over
+      accounts with income.
+    - Pseudo-counts, forgetting and clamps are unchanged.
+  - *Source of each training account's estimates:* the V0 tracker at that
+    account's last eligible origin, in its normalized units.
+  - No account's own data enters its own priors.
+  - *For held-out accounts (later):* priors from all development
+    accounts.
+- **V4: V1 + V2 + V3 combined.** The V2 + V3 model, recalibrated by V1's
+  procedure, with its calibration stream run under the same V2 + V3
+  model.
+
+Every variant uses V0's origins, eligibility, seeds (`seed_for`), 1000
+paths and scoring. As a check, the variant run's V0 must reproduce the
+`EPHEMERIS` rows exactly.
+
+**The selection rule, fixed now.**
+- *Candidates:* V1–V4.
+- *Score:* mean development CRPS, in normalized units: the mean over all
+  development forecasts at each horizon, then averaged over 7, 30 and 90
+  days.
+- *Qualifying:* a variant qualifies if its pooled 90%-interval coverage
+  (point estimate) is within ±5 points of 90% at every horizon.
+- *Choice:* the qualifying variant with the lowest score.
+- *Fallback:* if none qualifies, the variant whose worst-horizon
+  90%-coverage error is smallest, and the paper says that no variant met
+  the coverage bar.
+- *Ties:* broken by the lower score.
+
+**Reporting.** The paper reports every variant, V0 to V4, on the
+development and held-out splits:
+- coverage at 50/80/90/95%, CRPS skill against B-SA+, and PIT histograms;
+- the post-alarm and short-history strata.
+
+The selected variant is the primary model in the abstract and in claims
+A2 and B1. V0's development failure is stated with it.
+
+**Then:** stop and report. The held-out split runs only after the user
+reviews the selection.
 
 ## References found while planning
 
