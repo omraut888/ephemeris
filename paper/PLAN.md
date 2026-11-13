@@ -664,6 +664,104 @@ A2 and B1. V0's development failure is stated with it.
 **Then:** stop and report. The held-out split runs only after the user
 reviews the selection.
 
+## 10. Freeze before the held-out run (2026-11-13)
+
+**Selection.** Applying the §9 rule to the development results
+(`paper/results/dev/selection.csv`, commit `f0aa40b`):
+- V1 and V2 qualify, with worst-horizon 90%-coverage errors of 3.3 and
+  4.7 points.
+- V3 does not (19.7), and neither does V4 (5.7, from 95.7% at 90 days).
+- V2 has the lower score (2,137 against V1's 2,585).
+- The user accepted **V2 as the primary model** on 2026-11-13.
+
+**The frozen primary model: V2.** Compound-Poisson discretionary spending,
+with every parameter exactly as run on development:
+- *Code:*
+  - core at commit `69feb54` (`ForecastConfig::sparse_spending`, off by
+    default);
+  - `crates/ephemeris-eval/src/variants.rs` at `26ed672`.
+- *Sparse rule:*
+  - window: the 365 days up to the origin (`SPARSE_WINDOW`);
+  - sparse if the median number of discretionary records per complete
+    calendar month in the window is below 10 (`SPARSE_MAX_PER_MONTH`);
+  - rate `λ ~ Gamma(n + ½, rate = D)` per path;
+  - amounts resampled from the window's signed discretionary amounts.
+- *Everything else as V0:*
+  - `TrackerConfig::new` defaults, with the `every_day` calendar;
+  - spend floor 0;
+  - 1000 paths;
+  - seeds from `seed_for(account, origin)`;
+  - horizons 7/30/90;
+  - origins every 30 days from day 180, at least 12 records in the prior
+    180 days.
+- *Adapter (§8):*
+  - normalization by `REFERENCE_SCALE = 8412.542329576623`;
+  - causal tagging;
+  - the split salts in `split.rs`;
+  - the balance-drift exclusion at 100 crowns.
+
+No further change to any of these, for V2 or for any other variant or
+baseline. Commits after this section may add only the plumbing for the
+held-out run (below) and outputs. Any commit that changes a forecast
+would void the freeze, and the paper would have to say so.
+
+**What the held-out run reports.** Everything development reported, with
+the same metrics, strata and PIT outputs:
+- every variant, V0–V4, and every baseline: B-30, B-LIN, B-SA, B-SA+,
+  B-SEAS, B-EQ and B-GLOBAL;
+- per method and horizon: coverage at 50/80/90/95%, CRPS skill against
+  B-SA+ with account-bootstrap intervals, median CRPS and 90% width in
+  CZK, and PIT histograms and shape;
+- the strata (income detected or not, history length, a recent regime
+  alarm);
+- the eligibility funnel, including the number of accounts excluded for
+  balance drift.
+
+Held-out specifics, fixed now:
+- V3 (and V4) priors come from all development accounts, never from any
+  held-out account.
+- B-GLOBAL is trained on all development accounts
+  (`lgbm.py fit-predict`).
+- V1's and V4's calibration streams use each held-out account's own past
+  forecasts, as on development.
+
+**Added output.** The strata tables gain B-EQ's rows, so B-EQ's
+under-12-months-of-history results sit next to V2's. This applies to both
+splits; the development tables are regenerated from the existing rows,
+with no new forecasts.
+
+**Plumbing still to add (no forecast changes).**
+- `ephemeris-eval variants` gets a held-out mode: the same `--held-out`
+  flag, clean-tree check and logged single run as `berka`, with priors
+  from the development accounts.
+- `scripts/paper.sh` gets a held-out stage that runs `berka --held-out`,
+  `variants --held-out`, `lgbm.py fit-predict`, scoring and tables, into
+  `paper/results/heldout/`.
+- These are committed, and checked on development data, before the user
+  says to run.
+
+**Framing notes for the paper, recorded now.**
+1. **V2 is calibrated at the 90% level but too wide at 50%.** Its 50%
+   interval covers 63–71% on development, and its PIT is hump-shaped at
+   30 and 90 days. The selection rule tested 90% coverage only; the paper
+   says so.
+2. **V1 is the best-calibrated variant** (near-flat PIT; 90% coverage
+   89–93% and 50% coverage 51–53% on development) but lost on CRPS. The
+   paper reports it prominently, not as a footnote.
+3. **On Berka the sparse rule marked 100% of accounts sparse** (866 of
+   866 accounts, 27,855 of 27,855 development origins), so the rule's
+   choice was never exercised there. V2 on Berka is compound-Poisson
+   spending for every account.
+4. **B-GLOBAL pools training data across accounts.** EPHEMERIS is
+   local-first by design and uses only one account's own data. The paper
+   presents B-GLOBAL as a pooled-data reference point. B-EQ, which also
+   uses only the account's own history, is the like-for-like per-account
+   competitor.
+5. **Pooled priors (V3) changed nothing** (V3 ≈ V0 on every metric), so
+   B-GLOBAL's advantage does not come from better priors. Whatever it
+   learns from pooling is something else, such as how the shape of the
+   balance-change distribution depends on recent activity.
+
 ## References found while planning
 
 - Berka, P. *Guide to the Financial Data Set.* PKDD 2000 Discovery
