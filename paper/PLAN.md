@@ -471,32 +471,61 @@ direction is decided.
 
 ---
 
-## 8. Decisions for you
+## 8. Decisions (approved 2026-11-13)
 
-1. **Figures: matplotlib or pgfplots.** I recommend **matplotlib**
-   (installed, flexible for fan charts and PIT histograms), with versions
-   pinned in `paper/requirements.txt`. pgfplots needs no Python, but fan
-   charts in it are tedious.
-2. **Holidays for Berka:** add a Czech holiday calendar to the core (small
-   and testable, and needed for any non-US user anyway) or use
-   weekends-only for Berka. I recommend the **core calendar**. It is an
-   engine change, so it needs your approval.
-3. **Currency:** a fixed CZK→USD rescale before ingest (recommended), or
-   make the noise priors scale-relative (an engine change, and better in
-   the long run).
-4. **`authorized_date = date` for Berka** (recommended), against null,
-   which inflates R on every record.
-5. **B-GLOBAL** (LightGBM quantile regression in Python): it adds a
-   heavier dependency outside Rust, but reviewers at a forecasting venue
-   will ask for a learned baseline. I lean **yes**, confined to
-   `paper/baselines/` with pinned versions, and never in the app.
-6. **Ablations on all held-out accounts** (about 1 h) or on a 25% sample
-   (about 15 min).
-7. **x86_64 identity run** in Docker (`linux/amd64` under emulation on
-   this Mac, Docker is installed): it widens C1 at a cost of perhaps
-   20–30 min of emulated build. I recommend **yes**: it is the most
-   likely place for a byte to differ.
-8. **Venue:** arXiv plus ICAIF as proposed, or go straight for IJF.
+These replace the options this section listed. Where a decision differs
+from what §2–§6 say, this section wins.
+
+1. **Holidays: a pluggable calendar, chosen per feed.** The feed gets an
+   optional `holidays` field (`"us"`, the default when absent, or
+   `"cz"`). The core takes the calendar as a value; Czech rules are one
+   implementation, not hard-coded. Golden outputs for existing (US) feeds
+   must stay byte-identical, which the golden tests check.
+2. **Currency: per-account normalization in the Berka adapter, no global
+   rate.** The rule, fixed before any held-out run:
+   - At each origin, take every *complete* calendar month of the
+     account's history on or before the origin. The month's gross flow is
+     `F = Σ |amount|` over its transactions.
+   - The account's scale is `s = median(F)` over those months.
+   - Every amount and balance in the feed is multiplied by `R / s`. `R`
+     is a fixed reference: the median monthly gross flow of the realistic
+     synthetic generator (seeds 0–99, months fully inside its year),
+     computed once by a test and written into the code as a constant. So
+     a normalized Berka account has the flow scale that the engine's
+     priors and clamps were tuned on.
+   - Forecasts are made in normalized units and every output (quantiles,
+     truth, CRPS) is multiplied back by `s / R`. Coverage is unaffected
+     by the back-scaling; CRPS is then in CZK per account.
+   - The scale uses only data on or before the origin, so it leaks
+     nothing from the future.
+   - *Limitation, stated in the paper:* the engine's priors are absolute,
+     so the result depends on this rule. It is a choice made once, not
+     tuned.
+3. **Baselines.** Add B-GLOBAL, a LightGBM quantile model in Python in
+   `paper/` only, with pinned dependencies and never in the app. Also add
+   **B-EQ**, an empirical-quantile baseline: the quantiles of the
+   account's own past h-day balance changes, added to today's balance.
+4. **Berka `authorized_date = date`** (the booking date).
+5. **Ablations** run on a 25% sample of development accounts during
+   development, and on all held-out accounts for the final run.
+6. **x86_64 bit identity** runs in a GitHub Actions workflow on an x86
+   runner, not in Docker on this Mac. The repo gets the workflow file; the
+   user pushes it and checks the run.
+7. **matplotlib** for figures, with versions pinned in
+   `paper/requirements.txt`.
+8. **Venue:** arXiv stat.AP (cross-list cs.LG, q-fin.GN), then ICAIF.
+
+**Data rules.**
+- Raw Berka and MoneyData files are never committed. `data/berka/` and
+  `data/moneydata/` are gitignored. A download script fetches them and
+  checks their SHA-256s.
+- The 20/80 development / held-out split is enforced in code by a
+  deterministic hash of the account id.
+- Held-out evaluation needs an explicit `--held-out` flag. Every such run
+  is appended to the committed log `paper/results/heldout-runs.log`
+  (time, git commit, arguments). A second run is refused unless it is
+  given a `--rerun-reason`, which is logged too, so the log shows
+  whether the held-out set was run once.
 
 ---
 
