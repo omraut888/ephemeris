@@ -1,0 +1,19 @@
+[package]
+name = "ephemeris-eval"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Phase 6 evaluation: backtests, baselines and the paper's tables (paper/PLAN.md)"
+
+[[bin]]
+name = "ephemeris-eval"
+path = "src/main.rs"
+
+# Nothing new to the workspace: the core, the CLI's argument parser, and the
+# engine's own RNG for the bootstrap (so resamples are reproducible from a
+# seed on any platform, like the Monte Carlo).
+[dependencies]
+ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+rand = { version = "0.10", default-features = false }
+rand_chacha = "0.10"

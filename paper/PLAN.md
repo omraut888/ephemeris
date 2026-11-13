@@ -515,6 +515,32 @@ from what §2–§6 say, this section wins.
    `paper/requirements.txt`.
 8. **Venue:** arXiv stat.AP (cross-list cs.LG, q-fin.GN), then ICAIF.
 
+**Deviations found on development data (2026-11-13, for review).** Both
+were fixed before any development result was read, and neither touched
+held-out data.
+
+1. **Berka's calendar is `every_day`, not Czech.** A first run over 16
+   development accounts detected income at none of 541 origins. The dates
+   explain it. Berka books on weekends at the uniform rate: 28.5–30.5% of
+   records in every operation type, against 2/7 = 28.6%. A pension due on
+   the 11th lands on the 11th even on a Sunday, which no business-day
+   calendar can produce, so the regular-income test rejected every stream.
+   The core therefore has a third calendar, `every_day` (no business-day
+   shifts), and Berka uses it. Decision 1 stands as built (pluggable, per
+   feed, US default, Czech available and tested). Only the choice for
+   Berka changed. With `every_day`, income is detected at 357 of those 541
+   origins.
+2. **Accounts with inconsistent balances are excluded.** The CTU export
+   stores amounts and balances as whole crowns, rounded separately, so
+   the running sum drifts from the bank's balances by up to about 30
+   crowns. That is harmless, and the running sum is used as the truth.
+   But 19 of 890 development accounts (2%) differ by more than 50 crowns,
+   and 18 of them by more than 1,000: a reported balance that resets
+   mid-history. The rule: exclude an account whose running sum differs
+   from every balance the bank reported that day by more than 100 crowns
+   on any day (`berka::MAX_DRIFT_CZK`). It applies to both splits and is
+   counted in Table 3.
+
 **Data rules.**
 - Raw Berka and MoneyData files are never committed. `data/berka/` and
   `data/moneydata/` are gitignored. A download script fetches them and

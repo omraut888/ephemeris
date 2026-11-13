@@ -1004,6 +1004,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ephemeris-eval"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ephemeris-core",
+ "rand",
+ "rand_chacha",
+]
+
+[[package]]
 name = "ephemeris-ffi"
 version = "0.1.0"
 dependencies = [
