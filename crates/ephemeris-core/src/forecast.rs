@@ -45,7 +45,7 @@
 use nalgebra::{Cholesky, Matrix3, Vector3};
 use rand::{Rng, RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rand_distr::{ChiSquared, Distribution, Exp, StandardNormal};
+use rand_distr::{ChiSquared, Distribution, Exp, Gamma, Poisson, StandardNormal};
 
 use crate::adaptive::VarianceEstimate;
 use crate::calendar::HolidayCalendar;
@@ -124,6 +124,24 @@ pub struct ForecastConfig {
     /// Lower bound on the spend rate `c` in the simulation ($/day), or `None`
     /// for the untruncated Gaussian (design §7). Default `Some(0.0)`.
     pub spend_floor: Option<f64>,
+    /// Opt-in: discretionary flows as a compound Poisson process instead of
+    /// the smooth rate (paper/PLAN.md §9, V2). Default `None`.
+    pub sparse_spending: Option<SparseSpending>,
+}
+
+/// Discretionary spending as a compound Poisson process: each path draws an
+/// event rate `λ ~ Gamma(events + ½, rate = days)` (the Jeffreys posterior
+/// for a Poisson rate), then each day `N ~ Poisson(λ)` events whose signed
+/// amounts are resampled from `amounts`. It replaces `−c + N(0, σ_s²)` and
+/// the lump draws; `c` plays no part. For accounts with a few large
+/// discretionary flows a month, where most days have none.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SparseSpending {
+    /// Discretionary records in the window, and the window's length in days.
+    pub events: u32,
+    pub days: u32,
+    /// Their signed amounts (inflows positive).
+    pub amounts: Vec<f64>,
 }
 
 impl ForecastConfig {
@@ -137,6 +155,7 @@ impl ForecastConfig {
             targets: Vec::new(),
             lumps: LumpPrior::default(),
             spend_floor: Some(0.0),
+            sparse_spending: None,
         }
     }
 
@@ -156,6 +175,11 @@ impl ForecastConfig {
         }
         if self.spend_floor.is_some_and(|f| !f.is_finite()) {
             return Err(E("spend_floor must be finite"));
+        }
+        if let Some(s) = &self.sparse_spending
+            && (s.days == 0 || !s.amounts.iter().all(|a| a.is_finite()))
+        {
+            return Err(E("sparse spending needs days > 0 and finite amounts"));
         }
         let l = self.lumps;
         if !((0.0..=1.0).contains(&l.rate)
@@ -452,6 +476,8 @@ struct PathState {
     income_sd: f64,
     next_pay: usize,
     pay_day: Day,
+    /// Sparse spending only: this path's event rate per day.
+    rate: f64,
 }
 
 struct Simulator<'a> {
@@ -476,6 +502,8 @@ struct Simulator<'a> {
     /// The business-day calendar of the paydays.
     pay_calendar: HolidayCalendar,
     bills: &'a [BillStream],
+    /// Opt-in sparse spending, with its rate posterior.
+    sparse: Option<(&'a SparseSpending, Gamma<f64>)>,
 }
 
 impl<'a> Simulator<'a> {
@@ -483,7 +511,7 @@ impl<'a> Simulator<'a> {
         est: &'a StateEstimate,
         schedule: &'a Schedule,
         model: &ForecastModel,
-        cfg: &ForecastConfig,
+        cfg: &'a ForecastConfig,
     ) -> Result<Self, EngineError> {
         cfg.validate()?;
         validate_estimate(est)?;
@@ -547,6 +575,14 @@ impl<'a> Simulator<'a> {
                 .as_ref()
                 .map_or(HolidayCalendar::Us, |t| t.calendar),
             bills: &schedule.bills,
+            sparse: match &cfg.sparse_spending {
+                Some(s) => Some((
+                    s,
+                    Gamma::new(f64::from(s.events) + 0.5, 1.0 / f64::from(s.days))
+                        .map_err(|_| EngineError::InvalidConfig("sparse spending rate prior"))?,
+                )),
+                None => None,
+            },
         })
     }
 
@@ -623,6 +659,11 @@ impl<'a> Simulator<'a> {
             *next = first.max(self.t0 + 1);
         }
         let pay_day = self.sample_pay_day(0, self.t0 + 1, &mut rng);
+        // Drawn last, and only when opted in, so the default draws are as before.
+        let rate = self
+            .sparse
+            .as_ref()
+            .map_or(0.0, |(_, g)| g.sample(&mut rng));
         PathState {
             b: x0[IDX_B],
             c: x0[IDX_C],
@@ -631,6 +672,7 @@ impl<'a> Simulator<'a> {
             income_sd,
             next_pay: 0,
             pay_day,
+            rate,
         }
     }
 
@@ -653,22 +695,35 @@ impl<'a> Simulator<'a> {
 
     fn step(&self, p: &mut PathState, i: usize, h: u32, day: Day, bill_next: &mut [Day]) {
         let mut rng = self.rng(i, h);
-        let mut flow = -p.c + p.spend_sd * normal(&mut rng);
-        p.c += self.q_c_sd * normal(&mut rng);
-        if let Some((floor, _)) = self.floor
-            && p.c < floor
-        {
-            p.c = 2.0 * floor - p.c;
-        }
-        p.m += self.q_m_sd * normal(&mut rng);
+        let mut flow;
+        if let Some((s, _)) = &self.sparse {
+            // Compound Poisson discretionary flows; c plays no part.
+            flow = 0.0;
+            if p.rate > 0.0 && !s.amounts.is_empty() {
+                let n = Poisson::new(p.rate).map_or(0.0, |d| d.sample(&mut rng));
+                for _ in 0..n as u64 {
+                    flow += s.amounts[rng.random_range(0..s.amounts.len())];
+                }
+            }
+            p.m += self.q_m_sd * normal(&mut rng);
+        } else {
+            flow = -p.c + p.spend_sd * normal(&mut rng);
+            p.c += self.q_c_sd * normal(&mut rng);
+            if let Some((floor, _)) = self.floor
+                && p.c < floor
+            {
+                p.c = 2.0 * floor - p.c;
+            }
+            p.m += self.q_m_sd * normal(&mut rng);
 
-        if rng.random_bool(self.lump_rate) {
-            flow += if rng.random_bool(self.lump_empirical_weight) {
-                self.lumps[rng.random_range(0..self.lumps.len())]
-            } else {
-                let sign = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
-                sign * self.spend.value.sqrt() * self.lump_exp.sample(&mut rng)
-            };
+            if rng.random_bool(self.lump_rate) {
+                flow += if rng.random_bool(self.lump_empirical_weight) {
+                    self.lumps[rng.random_range(0..self.lumps.len())]
+                } else {
+                    let sign = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
+                    sign * self.spend.value.sqrt() * self.lump_exp.sample(&mut rng)
+                };
+            }
         }
 
         if day == p.pay_day {
@@ -1117,6 +1172,36 @@ mod tests {
             x: Vector3::new(1000.0, 10.0, 2000.0),
             ..quiet_estimate()
         }
+    }
+
+    #[test]
+    fn sparse_spending_is_compound_poisson_and_ignores_c() {
+        // λ ~ Gamma(999,999.5, rate 10⁶) ≈ 1 a day, each event −10, nothing
+        // else random: after 30 days b = 1000 − 10·N with N ~ Poisson(30),
+        // whose 5/50/95% points are 21, 30 and 39 (P(N ≤ 20) = 0.035,
+        // P(N ≤ 21) = 0.054, P(N ≤ 38) = 0.937, P(N ≤ 39) = 0.957). The
+        // estimate's c = 50/day would give 1000 − 1500 = −500 instead.
+        let cfg = no_lumps(ForecastConfig {
+            n_paths: 20_000,
+            levels: vec![0.05, 0.5, 0.95],
+            sparse_spending: Some(SparseSpending {
+                events: 999_999,
+                days: 1_000_000,
+                amounts: vec![-10.0],
+            }),
+            ..ForecastConfig::new(30, 9)
+        });
+        let cone = forecast(&quiet_estimate(), &no_schedule(), &STILL, &cfg).unwrap();
+        let band = cone.band(t0() + 30).unwrap();
+        assert!((600.0..=620.0).contains(&band[0]), "{band:?}");
+        assert!((690.0..=710.0).contains(&band[1]), "{band:?}");
+        assert!((780.0..=800.0).contains(&band[2]), "{band:?}");
+        // Deterministic, and invalid windows are rejected.
+        let again = forecast(&quiet_estimate(), &no_schedule(), &STILL, &cfg).unwrap();
+        assert_eq!(again.band(t0() + 30).unwrap(), band);
+        let mut bad = cfg.clone();
+        bad.sparse_spending.as_mut().unwrap().days = 0;
+        assert!(forecast(&quiet_estimate(), &no_schedule(), &STILL, &bad).is_err());
     }
 
     fn day_one_band(floor: Option<f64>, levels: Vec<f64>) -> Vec<f64> {
