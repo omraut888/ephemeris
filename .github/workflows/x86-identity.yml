@@ -1,0 +1,62 @@
+# Bit identity on x86_64 (paper/PLAN.md §1 claim C1, §8 decision 6).
+#
+# The golden feed and report in crates/ephemeris-wasm/tests/golden/ were
+# written on an arm64 Mac. This job recomputes them on an x86_64 Linux
+# runner, natively and inside WASM under Node, and fails on any differing
+# byte. The compiler is pinned to the version the golden files were made
+# with, because bit identity is a property of (source, lockfile, compiler).
+#
+# Runs only by hand (Actions tab, "Run workflow") or on a push that touches
+# the engine, so it costs nothing otherwise.
+
+name: x86_64 bit identity
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/ephemeris-core/**"
+      - "crates/ephemeris-wasm/**"
+      - "Cargo.lock"
+      - ".github/workflows/x86-identity.yml"
+
+permissions:
+  contents: read
+
+env:
+  # Same as the Mac that wrote the golden files (`rustc --version`).
+  RUST_VERSION: "1.99.1"
+  WASM_PACK_VERSION: "0.15.0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  golden-x86_64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin the Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-unknown
+          rustup override set "$RUST_VERSION"
+          rustc --version --verbose
+          test "$(uname -m)" = "x86_64"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked
+
+      - name: Native golden files (x86_64, debug and release)
+        run: |
+          cargo test --locked -p ephemeris-wasm --test golden
+          cargo test --locked --release -p ephemeris-wasm --test golden
+
+      - name: WASM golden files under Node (built on x86_64)
+        run: wasm-pack test --node --release crates/ephemeris-wasm
+
+      - name: Core tests (includes the calendar and schema checks)
+        run: cargo test --locked -p ephemeris-core --features serde
