@@ -27,6 +27,7 @@ use ephemeris_eval::dist::Dist;
 use ephemeris_eval::reference::{REFERENCE_SCALE, compute_reference_scale};
 use ephemeris_eval::rows::{HEADER, Row, read_rows};
 use ephemeris_eval::split::{Split, in_ablation_sample, split_of};
+use ephemeris_eval::variants::{Priors, VariantResult};
 
 #[derive(Parser)]
 #[command(name = "ephemeris-eval", about = "Phase 6 experiments (paper/PLAN.md)")]
@@ -58,6 +59,19 @@ enum Cmd {
         threads: usize,
     },
     /// Score a learned model's quantiles of the h-day balance change.
+    /// The held-out evaluation, once (PLAN §10): guarded and logged; runs
+    /// every method and V0–V4 on the held-out accounts.
+    Heldout {
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Why a held-out run is being repeated (required after the first).
+        #[arg(long)]
+        rerun_reason: Option<String>,
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -112,6 +126,12 @@ fn main() -> ExitCode {
             limit,
             threads,
         } => berka(&data, &out, held_out, rerun_reason, limit, threads),
+        Cmd::Heldout {
+            data,
+            out,
+            rerun_reason,
+            threads,
+        } => heldout(&data, &out, rerun_reason, threads),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -219,19 +239,69 @@ fn berka(
     if !REFERENCE_SCALE.is_finite() {
         return Err("REFERENCE_SCALE is not pinned yet (run reference-scale)".into());
     }
-    let split = if held_out { Split::HeldOut } else { Split::Dev };
-    if held_out {
-        if limit.is_some() {
-            return Err("--limit is not allowed on the held-out split".into());
-        }
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        guard_held_out(rerun_reason.as_deref(), &args.join(" "))?;
-    } else if rerun_reason.is_some() {
-        return Err("--rerun-reason only applies with --held-out".into());
+    if held_out || rerun_reason.is_some() {
+        // One guarded, logged run must cover the backtest and the variants
+        // together (PLAN §10), so the held-out split runs only through
+        // `heldout`.
+        return Err("the held-out split runs only through `ephemeris-eval heldout`".into());
     }
+    eprintln!("reading {}", data.display());
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    berka_split(&accounts, Split::Dev, limit, out, threads)
+}
+
+/// The held-out evaluation (PLAN §10), exactly once: the guard and its log
+/// entry, then the backtest of every method and the variants V0–V4 on the
+/// held-out accounts, with V3's priors from all development accounts.
+fn heldout(
+    data: &Path,
+    out: &Path,
+    rerun_reason: Option<String>,
+    threads: usize,
+) -> Result<(), String> {
+    use ephemeris_eval::variants::{pooled_priors, run_with_priors};
+    if !REFERENCE_SCALE.is_finite() {
+        return Err("REFERENCE_SCALE is not pinned yet (run reference-scale)".into());
+    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    guard_held_out(rerun_reason.as_deref(), &args.join(" "))?;
 
     eprintln!("reading {}", data.display());
     let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    berka_split(&accounts, Split::HeldOut, None, &out.join("berka"), threads)?;
+
+    let usable = |s: Split| -> Vec<&Account> {
+        accounts
+            .values()
+            .filter(|a| split_of(a.id) == s)
+            .filter(|a| a.stats().max_drift <= MAX_DRIFT_CZK)
+            .collect()
+    };
+    let dev = usable(Split::Dev);
+    let held = usable(Split::HeldOut);
+    eprintln!("V3 priors from {} development accounts", dev.len());
+    let t0 = std::time::Instant::now();
+    let priors = pooled_priors(&dev, threads);
+    eprintln!("variants V0–V4 on {} held-out accounts", held.len());
+    let results = run_with_priors(&held, threads, priors);
+    let secs = t0.elapsed().as_secs_f64();
+    write_variants(
+        &out.join("variants"),
+        &results,
+        held.len(),
+        secs,
+        &[("priors_from_all_development", priors)],
+    )
+}
+
+fn berka_split(
+    accounts: &std::collections::BTreeMap<u64, Account>,
+    split: Split,
+    limit: Option<usize>,
+    out: &Path,
+    threads: usize,
+) -> Result<(), String> {
+    let held_out = split == Split::HeldOut;
     let total = accounts.len();
     let mut chosen: Vec<&Account> = accounts
         .values()
@@ -437,10 +507,27 @@ fn variants(data: &Path, out: &Path, limit: Option<usize>, threads: usize) -> Re
     let t0 = std::time::Instant::now();
     let (results, priors) = run_variants(&chosen, threads);
     let secs = t0.elapsed().as_secs_f64();
+    let named: Vec<(String, Priors)> = priors
+        .iter()
+        .enumerate()
+        .map(|(k, p)| (format!("fold{k}_priors"), *p))
+        .collect();
+    let named: Vec<(&str, Priors)> = named.iter().map(|(n, p)| (n.as_str(), *p)).collect();
+    write_variants(out, &results, chosen.len(), secs, &named)
+}
+
+/// Write the variants' rows and summary (development and held-out alike).
+fn write_variants(
+    out: &Path,
+    results: &[VariantResult],
+    accounts: usize,
+    secs: f64,
+    priors: &[(&str, Priors)],
+) -> Result<(), String> {
     let mut rows = String::from(HEADER);
     rows.push('\n');
     let (mut origins, mut sparse) = (0, 0);
-    for r in &results {
+    for r in results {
         origins += r.origins;
         sparse += r.sparse_origins;
         for row in &r.rows {
@@ -449,13 +536,12 @@ fn variants(data: &Path, out: &Path, limit: Option<usize>, threads: usize) -> Re
         }
     }
     let mut summary = format!(
-        "key,value\naccounts,{}\norigins,{origins}\norigins_sparse_v2,{sparse}\nwall_seconds,{secs:.1}\n",
-        chosen.len()
+        "key,value\naccounts,{accounts}\norigins,{origins}\norigins_sparse_v2,{sparse}\nwall_seconds,{secs:.1}\n",
     );
-    for (k, p) in priors.iter().enumerate() {
+    for (name, p) in priors {
         writeln!(
             summary,
-            "fold{k}_priors,c {:.4} sd {:.4} | m {:.4} sd {:.4} | spend_var {:.4} | income_var {:.4}",
+            "{name},c {:.4} sd {:.4} | m {:.4} sd {:.4} | spend_var {:.4} | income_var {:.4}",
             p.c_mean, p.c_sd, p.m_mean, p.m_sd, p.spend_var, p.income_var
         )
         .unwrap();
@@ -483,7 +569,12 @@ fn variant_tables(paths: &[PathBuf], out: &Path) -> Result<(), String> {
         &out.join("variants.csv"),
         &main_table(&rows, "B-SA+", &shown, keep),
     )?;
-    let strata_methods: Vec<&str> = VARIANTS.iter().copied().chain(["B-GLOBAL"]).collect();
+    // B-EQ next to V2 in every stratum (PLAN §10, added output).
+    let strata_methods: Vec<&str> = VARIANTS
+        .iter()
+        .copied()
+        .chain(["B-EQ", "B-GLOBAL"])
+        .collect();
     write(
         &out.join("variants-strata.csv"),
         &strata_table(&rows, "B-SA+", &strata_methods),

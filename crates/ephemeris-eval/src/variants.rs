@@ -391,6 +391,24 @@ pub fn run_all(accounts: &[&Account], threads: usize) -> (Vec<VariantResult>, Ve
     (results, fold_priors)
 }
 
+/// Held-out (PLAN §10): V3's priors from every development account at once.
+pub fn pooled_priors(dev: &[&Account], threads: usize) -> Priors {
+    let estimates: Vec<Estimates> = parallel_map(dev, threads, account_estimates)
+        .into_iter()
+        .flatten()
+        .collect();
+    fit_priors(&estimates).expect("development accounts have estimates")
+}
+
+/// All variants for `accounts` with one set of V3 priors (the held-out run).
+pub fn run_with_priors(
+    accounts: &[&Account],
+    threads: usize,
+    priors: Priors,
+) -> Vec<VariantResult> {
+    parallel_map(accounts, threads, |a| run_account(a, priors))
+}
+
 fn parallel_map<T: Send>(
     accounts: &[&Account],
     threads: usize,
