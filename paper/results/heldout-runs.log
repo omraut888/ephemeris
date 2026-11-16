@@ -1,0 +1,2 @@
+# Every held-out evaluation run: UTC time, commit, arguments, reason.
+2026-11-16T20:05:33Z	a5cbc9fd065f639ec3c1d16580b06d5424149e33	heldout --out paper/build/heldout	first run
