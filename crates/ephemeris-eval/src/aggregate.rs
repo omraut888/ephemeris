@@ -363,10 +363,132 @@ pub fn selection_table(
     (out, chosen, any)
 }
 
+/// Per-account sums of one paired cell: a method and its reference over
+/// the forecasts both made.
+#[derive(Debug, Clone, Copy, Default)]
+struct Paired {
+    n: f64,
+    crps: [f64; 2],
+    in50: [f64; 2],
+    in90: [f64; 2],
+}
+
+/// Strata of the paired table: a name and a filter on the method's row.
+pub type Stratum<'a> = (&'a str, &'a dyn Fn(&Row) -> bool);
+
+/// Paired comparisons (post-hoc, paper/PLAN.md §11): for each `(method,
+/// reference)` pair, stratum and horizon, over the forecasts both methods
+/// made, the method's mean and pooled CRPS skill against the reference and
+/// its 50% and 90% coverage minus the reference's. Positive skill means the
+/// method is better. Every statistic of a cell comes from the same 2000
+/// account resamples; each cell's resampling starts from [`BOOTSTRAP_SEED`],
+/// so a cell does not depend on which other cells are in the table.
+pub fn pairwise_table(rows: &[Row], pairs: &[(&str, &str)], strata: &[Stratum]) -> String {
+    type Key<'a> = (u64, &'a str, i32, &'a str);
+    let index: HashMap<Key, &Row> = rows
+        .iter()
+        .map(|r| ((r.account, r.origin.as_str(), r.h, r.method.as_str()), r))
+        .collect();
+    let mut out = String::from(
+        "stratum,method,reference,h,forecasts,accounts,skill,skill_lo,skill_hi,pooled_skill,pooled_skill_lo,pooled_skill_hi,cov50_diff,cov50_diff_lo,cov50_diff_hi,cov90_diff,cov90_diff_lo,cov90_diff_hi,mean_crps_norm,mean_crps_norm_ref\n",
+    );
+    let stats = |a: &[&Paired]| -> [f64; 4] {
+        let sum = |f: &dyn Fn(&Paired) -> f64| a.iter().map(|x| f(x)).sum::<f64>();
+        let skills: Vec<f64> = a
+            .iter()
+            .filter(|x| x.crps[1] > 0.0)
+            .map(|x| 1.0 - x.crps[0] / x.crps[1])
+            .collect();
+        let n = sum(&|x| x.n);
+        [
+            skills.iter().sum::<f64>() / skills.len() as f64,
+            1.0 - sum(&|x| x.crps[0]) / sum(&|x| x.crps[1]),
+            (sum(&|x| x.in50[0]) - sum(&|x| x.in50[1])) / n,
+            (sum(&|x| x.in90[0]) - sum(&|x| x.in90[1])) / n,
+        ]
+    };
+    for &(name, pick) in strata {
+        for &(m, reference) in pairs {
+            for h in [7, 30, 90] {
+                let mut per: BTreeMap<u64, Paired> = BTreeMap::new();
+                for r in rows.iter().filter(|r| r.h == h && r.method == m && pick(r)) {
+                    let Some(q) = index.get(&(r.account, r.origin.as_str(), h, reference)) else {
+                        continue;
+                    };
+                    let p = per.entry(r.account).or_default();
+                    p.n += 1.0;
+                    for (i, s) in [&r.score, &q.score].into_iter().enumerate() {
+                        p.crps[i] += s.crps;
+                        p.in50[i] += f64::from(u8::from(s.inside[0]));
+                        p.in90[i] += f64::from(u8::from(s.inside[2]));
+                    }
+                }
+                if per.is_empty() {
+                    continue;
+                }
+                let accs: Vec<Paired> = per.into_values().collect();
+                let all: Vec<&Paired> = accs.iter().collect();
+                let point = stats(&all);
+                let mut rng = ChaCha8Rng::seed_from_u64(BOOTSTRAP_SEED);
+                let k = accs.len();
+                let mut draws: [Vec<f64>; 4] = Default::default();
+                for _ in 0..BOOTSTRAP {
+                    let sample: Vec<&Paired> =
+                        (0..k).map(|_| &accs[rng.random_range(0..k)]).collect();
+                    for (d, x) in draws.iter_mut().zip(stats(&sample)) {
+                        if x.is_finite() {
+                            d.push(x);
+                        }
+                    }
+                }
+                let n: f64 = accs.iter().map(|a| a.n).sum();
+                write!(out, "{name},{m},{reference},{h},{n},{k}").unwrap();
+                for (p, mut d) in point.into_iter().zip(draws) {
+                    d.sort_by(f64::total_cmp);
+                    let (lo, hi) = if d.is_empty() {
+                        (f64::NAN, f64::NAN)
+                    } else {
+                        (percentile(&d, 0.025), percentile(&d, 0.975))
+                    };
+                    write!(out, ",{},{},{}", fmt(p), fmt(lo), fmt(hi)).unwrap();
+                }
+                let mean = |i: usize| accs.iter().map(|a| a.crps[i]).sum::<f64>() / n;
+                writeln!(out, ",{},{}", fmt(mean(0)), fmt(mean(1))).unwrap();
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dist::Score;
+
+    #[test]
+    fn pairwise_matches_main_table_and_pairs_forecasts() {
+        // Account 1: m 1 vs ref 2 → 0.5. Account 2: m 3 vs ref 1 → −2.
+        // A third m forecast with no reference is left out.
+        let mut extra = row(3, "m", 9.0, true);
+        extra.origin = "1996-02-01".into();
+        let rows = vec![
+            row(1, "m", 1.0, true),
+            row(1, "ref", 2.0, true),
+            row(2, "m", 3.0, false),
+            row(2, "ref", 1.0, true),
+            extra,
+        ];
+        let all: &dyn Fn(&Row) -> bool = &|_| true;
+        let t = pairwise_table(&rows, &[("m", "ref")], &[("all", all)]);
+        let f: Vec<&str> = t.lines().nth(1).unwrap().split(',').collect();
+        assert_eq!(&f[..6], ["all", "m", "ref", "7", "2", "2"]);
+        assert_eq!(f[6], "-0.7500"); // mean of 0.5 and −2, as main_table
+        assert_eq!(f[9], "-0.3333"); // pooled: 1 − 4/3
+        assert_eq!(f[12], "-0.5000"); // cov50: 1/2 − 2/2
+        assert_eq!(f[15], "-0.5000"); // cov90 likewise
+        assert_eq!((f[18], f[19]), ("2.0000", "1.5000")); // mean CRPS
+        assert_eq!(t.lines().count(), 2); // only h = 7 has rows
+    }
 
     #[test]
     fn selection_prefers_qualifying_then_lowest_score() {

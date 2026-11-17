@@ -163,7 +163,8 @@ fn stats(xs: &[f64]) -> (f64, f64) {
     (mean, var.sqrt())
 }
 
-pub fn run_account(acct: &Account) -> AccountResult {
+/// One account, with the ablations if `ablate`.
+pub fn run_account(acct: &Account, ablate: bool) -> AccountResult {
     let mut out = AccountResult {
         account: acct.id,
         ..AccountResult::default()
@@ -171,7 +172,6 @@ pub fn run_account(acct: &Account) -> AccountResult {
     let first = acct.first_day();
     let end = last_day();
     let bal_raw = acct.daily_balance(end);
-    let ablate = in_ablation_sample(acct.id);
     // B-SA's past errors come from a weekly grid of pseudo-origins.
     let mut sa_cache: HashMap<Day, [f64; 3]> = HashMap::new();
 
@@ -342,8 +342,21 @@ pub fn run_account(acct: &Account) -> AccountResult {
     out
 }
 
-/// Run `accounts` on `threads` threads; results in account order.
+/// Run `accounts` on `threads` threads; results in account order. The
+/// ablations run on the development subsample ([`in_ablation_sample`]).
 pub fn run_all(accounts: &[&Account], threads: usize, progress: bool) -> Vec<AccountResult> {
+    run_all_with(accounts, threads, progress, &in_ablation_sample)
+}
+
+/// As [`run_all`], with the ablations on the accounts `ablate` picks (the
+/// held-out ablation run, paper/PLAN.md §11, picks all of them). Nothing
+/// else about an account's forecasts depends on it.
+pub fn run_all_with(
+    accounts: &[&Account],
+    threads: usize,
+    progress: bool,
+    ablate: &(dyn Fn(u64) -> bool + Sync),
+) -> Vec<AccountResult> {
     let next = AtomicUsize::new(0);
     let done = AtomicUsize::new(0);
     let results = Mutex::new(Vec::with_capacity(accounts.len()));
@@ -353,7 +366,7 @@ pub fn run_all(accounts: &[&Account], threads: usize, progress: bool) -> Vec<Acc
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(acct) = accounts.get(i) else { break };
-                    let r = run_account(acct);
+                    let r = run_account(acct, ablate(acct.id));
                     results.lock().expect("lock").push(r);
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
                     if progress && (n.is_multiple_of(50) || n == accounts.len()) {

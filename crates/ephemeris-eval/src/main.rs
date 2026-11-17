@@ -22,7 +22,7 @@ use clap::{Parser, Subcommand};
 use ephemeris_core::calendar::civil_from_day;
 use ephemeris_eval::aggregate::{main_table, pit_table, strata_table};
 use ephemeris_eval::berka::{Account, MAX_DRIFT_CZK, parse_trans};
-use ephemeris_eval::berka_run::{ABLATIONS, FEATURE_HEADER, METHODS, run_all};
+use ephemeris_eval::berka_run::{ABLATIONS, FEATURE_HEADER, METHODS, run_all_with};
 use ephemeris_eval::dist::Dist;
 use ephemeris_eval::reference::{REFERENCE_SCALE, compute_reference_scale};
 use ephemeris_eval::rows::{HEADER, Row, read_rows};
@@ -71,6 +71,40 @@ enum Cmd {
         rerun_reason: Option<String>,
         #[arg(long, default_value_t = 8)]
         threads: usize,
+    },
+    /// The pre-registered ablations (PLAN §3, D1) on every held-out
+    /// account: a separately guarded and logged held-out run (PLAN §11),
+    /// after the first run omitted them. Writes the full backtest of those
+    /// accounts, whose non-ablation rows must equal the first run's.
+    HeldoutAblations {
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Required: the held-out split has been run before.
+        #[arg(long)]
+        rerun_reason: Option<String>,
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
+    /// The ablation tables of one run's rows, against the full model
+    /// (EPHEMERIS): the main table, PIT, and paired differences overall and
+    /// by recent regime alarm.
+    AblationTables {
+        #[arg(long, required = true)]
+        rows: Vec<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Paired comparisons from scored rows, no new forecasts (post-hoc,
+    /// PLAN §11): `--pair METHOD/REFERENCE`, repeated.
+    Pairwise {
+        #[arg(long, required = true)]
+        rows: Vec<PathBuf>,
+        #[arg(long, required = true)]
+        pair: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
     },
     ScoreQuantiles {
         #[arg(long)]
@@ -132,6 +166,14 @@ fn main() -> ExitCode {
             rerun_reason,
             threads,
         } => heldout(&data, &out, rerun_reason, threads),
+        Cmd::HeldoutAblations {
+            data,
+            out,
+            rerun_reason,
+            threads,
+        } => heldout_ablations(&data, &out, rerun_reason, threads),
+        Cmd::AblationTables { rows, out } => ablation_tables(&rows, &out),
+        Cmd::Pairwise { rows, pair, out } => pairwise(&rows, &pair, &out),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -247,7 +289,14 @@ fn berka(
     }
     eprintln!("reading {}", data.display());
     let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
-    berka_split(&accounts, Split::Dev, limit, out, threads)
+    berka_split(
+        &accounts,
+        Split::Dev,
+        limit,
+        out,
+        threads,
+        &in_ablation_sample,
+    )
 }
 
 /// The held-out evaluation (PLAN §10), exactly once: the guard and its log
@@ -268,7 +317,14 @@ fn heldout(
 
     eprintln!("reading {}", data.display());
     let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
-    berka_split(&accounts, Split::HeldOut, None, &out.join("berka"), threads)?;
+    berka_split(
+        &accounts,
+        Split::HeldOut,
+        None,
+        &out.join("berka"),
+        threads,
+        &in_ablation_sample,
+    )?;
 
     let usable = |s: Split| -> Vec<&Account> {
         accounts
@@ -294,12 +350,108 @@ fn heldout(
     )
 }
 
+/// The held-out ablations (PLAN §11): guarded and logged like `heldout`,
+/// then the backtest of every held-out account with the ablations on all
+/// of them. No variant, no learned baseline.
+fn heldout_ablations(
+    data: &Path,
+    out: &Path,
+    rerun_reason: Option<String>,
+    threads: usize,
+) -> Result<(), String> {
+    if !REFERENCE_SCALE.is_finite() {
+        return Err("REFERENCE_SCALE is not pinned yet (run reference-scale)".into());
+    }
+    if rerun_reason.is_none() {
+        return Err("the held-out ablations are a second held-out run: --rerun-reason".into());
+    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    guard_held_out(rerun_reason.as_deref(), &args.join(" "))?;
+    eprintln!("reading {}", data.display());
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    berka_split(&accounts, Split::HeldOut, None, out, threads, &|_| true)
+}
+
+fn read_all_rows(paths: &[PathBuf]) -> Result<Vec<Row>, String> {
+    let mut rows = Vec::new();
+    for p in paths {
+        rows.extend(read_rows(&read(p)?)?);
+    }
+    Ok(rows)
+}
+
+fn ablation_tables(paths: &[PathBuf], out: &Path) -> Result<(), String> {
+    use ephemeris_eval::aggregate::{Stratum, pairwise_table};
+    let rows: Vec<Row> = read_all_rows(paths)?
+        .into_iter()
+        .filter(|r| r.method == "EPHEMERIS" || r.method.starts_with("abl:"))
+        .collect();
+    let abl_accounts: std::collections::HashSet<u64> = rows
+        .iter()
+        .filter(|r| r.method.starts_with("abl:"))
+        .map(|r| r.account)
+        .collect();
+    let rows: Vec<Row> = rows
+        .into_iter()
+        .filter(|r| abl_accounts.contains(&r.account))
+        .collect();
+    let mut order = vec!["EPHEMERIS"];
+    order.extend(ABLATIONS);
+    write(
+        &out.join("ablations.csv"),
+        &main_table(&rows, "EPHEMERIS", &order, |_| true),
+    )?;
+    write(&out.join("ablations-pit.csv"), &pit_table(&rows, &order))?;
+    let pairs: Vec<(&str, &str)> = ABLATIONS.iter().map(|&a| (a, "EPHEMERIS")).collect();
+    let all: &dyn Fn(&Row) -> bool = &|_| true;
+    let alarm: &dyn Fn(&Row) -> bool = &|r| r.alarm_recent;
+    let quiet: &dyn Fn(&Row) -> bool = &|r| !r.alarm_recent;
+    let strata: [Stratum; 3] = [
+        ("all", all),
+        ("regime alarm in last 28 days", alarm),
+        ("no recent alarm", quiet),
+    ];
+    write(
+        &out.join("ablations-paired.csv"),
+        &pairwise_table(&rows, &pairs, &strata),
+    )?;
+    eprintln!(
+        "{} rows, {} accounts → {}",
+        rows.len(),
+        abl_accounts.len(),
+        out.display()
+    );
+    Ok(())
+}
+
+fn pairwise(paths: &[PathBuf], pairs: &[String], out: &Path) -> Result<(), String> {
+    use ephemeris_eval::aggregate::pairwise_table;
+    let pairs: Vec<(&str, &str)> = pairs
+        .iter()
+        .map(|p| {
+            p.split_once('/')
+                .ok_or(format!("{p}: want METHOD/REFERENCE"))
+        })
+        .collect::<Result<_, _>>()?;
+    let rows = read_all_rows(paths)?;
+    let all: &dyn Fn(&Row) -> bool = &|_| true;
+    write(out, &pairwise_table(&rows, &pairs, &[("all", all)]))?;
+    eprintln!(
+        "{} pairs from {} rows → {}",
+        pairs.len(),
+        rows.len(),
+        out.display()
+    );
+    Ok(())
+}
+
 fn berka_split(
     accounts: &std::collections::BTreeMap<u64, Account>,
     split: Split,
     limit: Option<usize>,
     out: &Path,
     threads: usize,
+    ablate: &(dyn Fn(u64) -> bool + Sync),
 ) -> Result<(), String> {
     let held_out = split == Split::HeldOut;
     let total = accounts.len();
@@ -320,7 +472,7 @@ fn berka_split(
         chosen.len()
     );
     let t0 = std::time::Instant::now();
-    let results = run_all(&chosen, threads, true);
+    let results = run_all_with(&chosen, threads, true, ablate);
     let secs = t0.elapsed().as_secs_f64();
 
     let mut rows = String::from(HEADER);
@@ -351,7 +503,7 @@ fn berka_split(
             per_account,
             "{},{},{},{},{},{},{},{},{},{},{},{rpm:.3}",
             acct.id,
-            u8::from(in_ablation_sample(acct.id)),
+            u8::from(ablate(acct.id)),
             s.records,
             s.days_with_records,
             s.days_consistent,
@@ -397,7 +549,7 @@ fn berka_split(
          wall_seconds,{secs:.1}\n\
          threads,{threads}\n",
         chosen.len(),
-        chosen.iter().filter(|a| in_ablation_sample(a.id)).count(),
+        chosen.iter().filter(|a| ablate(a.id)).count(),
     );
     write(&out.join("rows.csv"), &rows)?;
     write(&out.join("features.csv"), &features)?;
