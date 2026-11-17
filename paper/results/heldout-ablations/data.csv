@@ -1,0 +1,16 @@
+key,value
+accounts_total,4500
+accounts_in_split,3610
+accounts_excluded_balance_inconsistent,41
+accounts_run,3569
+accounts_with_eligible_origin,3514
+ablation_accounts,3569
+eligible_origins,115235
+origins_with_income_detected,63207
+records,838598
+days_with_records,646766
+days_balance_consistent,76068
+median_records_per_month,5.525
+median_account_max_drift_czk,10
+max_drift_czk,50
+reference_scale,8412.542329576623
