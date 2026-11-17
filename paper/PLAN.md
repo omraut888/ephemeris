@@ -762,6 +762,124 @@ with no new forecasts.
    learns from pooling is something else, such as how the shape of the
    balance-change distribution depends on recent activity.
 
+## 11. Held-out results (2026-11-17)
+
+**The runs, in order.** Each is logged in `paper/results/heldout-runs.log`.
+1. **First held-out run.** Logged 2026-11-16T20:05Z at `a5cbc9f`, the
+   frozen configuration of §10. Results are in `paper/results/heldout/`
+   (commit `cdf070d`).
+   - 3,610 held-out accounts, 41 of them excluded for balance drift.
+   - 3,569 accounts run, 115,235 eligible origins.
+   - It ran no ablations: a harness gap drew the ablation sample from the
+     development split only, against decision 5 of §8.
+2. **Post-hoc paired intervals.** The user asked for these after seeing
+   the first run's results. They are V2 against each baseline, from the
+   first run's scored rows, with no new forecasts. Results are in
+   `paper/results/heldout-posthoc/` (commit `5817d1a`).
+3. **Second held-out run, the ablations.** Logged 2026-11-17T04:27Z at
+   `ae6b74a`, with the user's rerun reason. It ran the ablation set of §3
+   on all 3,569 held-out accounts, after the main results were known.
+   Results are in `paper/results/heldout-ablations/` (commit `336bc66`).
+   - Its non-ablation rows are byte-identical to the first run's.
+   - The paper discloses that the ablations came after the main results,
+     and that the paired intervals are post-hoc.
+
+**V2 matched development** to within 1 point of coverage and 0.02 of skill
+at every horizon:
+- 90% coverage: 86.3 / 94.5 / 93.6 on held-out, against 86.3 / 94.7 / 93.9
+  on development;
+- skill against B-SA+: +.28 / +.22 / +.44 on held-out, against
+  +.26 / +.21 / +.42.
+
+The selection rule applied to held-out would pick V2 again.
+
+### Claims (V2 as the primary model, §9)
+
+**A2, calibration on real data: FAILS.** Coverage of V2's central
+intervals, held-out, with 95% account-bootstrap intervals (in percent):
+
+| Interval | 7 d (band ±5) | 30 d (band ±5) | 90 d (band ±10) |
+|---|---|---|---|
+| 50% | 63.8 [63.2, 64.5] **fail** | 67.9 [67.0, 68.7] **fail** | 70.7 [69.9, 71.5] **fail** |
+| 80% | 80.3 [79.8, 80.8] pass | 90.2 [89.8, 90.5] **fail** | 89.0 [88.5, 89.5] pass |
+| 90% | 86.3 [85.9, 86.8] pass | 94.5 [94.3, 94.8] pass | 93.6 [93.2, 93.9] pass |
+| 95% | 89.9 [89.5, 90.4] pass | 96.3 [96.0, 96.5] pass | 96.0 [95.7, 96.3] pass |
+
+- **A cell fails when its interval lies wholly outside the band.** The 7-day
+  95% cell passes only because its interval reaches 90.0.
+- **V2 is too wide in the middle of the distribution.** The PIT is
+  hump-shaped at 30 and 90 days, with an outer-bin share of 0.10 and 0.11
+  against a nominal 0.20.
+- **This is the opposite of V0's failure.** V0's 90% interval covers
+  81 / 80 / 70%.
+- **The selection rule tested 90% coverage only** (framing note 1, §10).
+
+**B1, sharpness against each baseline: FAILS against B-EQ and B-GLOBAL.**
+Mean CRPS skill of V2 against each baseline, held-out, paired over shared
+forecasts (post-hoc intervals; positive means V2 is better):
+
+| Baseline | 7 d | 30 d | 90 d | B1 (30 and 90 d) |
+|---|---|---|---|---|
+| B-SA+ | +.277 [.269, .285] | +.223 [.217, .229] | +.437 [.432, .442] | pass |
+| B-EQ | +.283 [.266, .300] | −.234 [−.248, −.222] | −.344 [−.361, −.327] | **fail** |
+| B-GLOBAL | −.445 [−.478, −.413] | −.698 [−.720, −.679] | −1.123 [−1.150, −1.097] | **fail** |
+| B-30 | +.424 [.412, .435] | +.210 [.203, .218] | +.302 [.294, .308] | pass |
+| B-LIN | +.567 [.556, .577] | +.344 [.335, .352] | +.315 [.305, .324] | pass |
+| B-SA | +.436 [.430, .442] | +.339 [.332, .344] | +.477 [.471, .482] | pass |
+| B-SEAS | +.471 [.376, .526] | +.260 [.251, .269] | +.358 [.350, .365] | pass |
+
+- **The 7-day prediction was also wrong.** We predicted no significant
+  difference at 7 days, but V2 differs significantly from every baseline
+  there: better than all but B-GLOBAL, worse than B-GLOBAL.
+- **Mean normalized CRPS** at 30 / 90 days:
+  - V2: 1817 / 3326;
+  - B-EQ: 1620 / 2819;
+  - B-GLOBAL: 1256 / 1874.
+
+**The abstract-level statement, required by B1.** It reads:
+
+> On held-out accounts the selected model beats the probabilistic
+> schedule-aware baseline (CRPS skill +0.22 at 30 days, +0.44 at 90
+> days) but loses at 30 and 90 days to an empirical-quantile forecast of
+> the account's own past balance changes (skill −0.23 and −0.34) and to a
+> gradient-boosted model trained across accounts (−0.70 and −1.12). Its
+> 90% intervals are calibrated (86–95% coverage); its 50% intervals are
+> too wide (64–71%).
+
+**D1, components: one of four predictions falsified.** Held-out, all 3,569
+accounts. Each ablation is compared with the full model V0, with paired
+95% intervals. Skill is the ablation's against V0 (positive means the
+ablation is better); Δcov90 is the ablation's coverage minus V0's, in
+points.
+
+| Ablation | Skill 7 / 30 / 90 d | Δcov90 7 / 30 / 90 d | Prediction | Verdict |
+|---|---|---|---|---|
+| fixed noise (adaptive noise off) | +.005 (n.s.) / +.031 / +.049 | −1.5 / +0.2 (n.s.) / −0.8 | worse coverage | **holds** at 7 and 90 d, no difference at 30 d; but CRPS is *better* without it |
+| no lumps | −.011 / −.254 / −.430 | −7.5 / −47.9 / −50.6 | under-coverage at 80–95%, mostly at 30–90 d | **holds** (80%: −2.7 / −38.0 / −41.0; 95%: −11.4 / −50.7 / −55.9) |
+| no floor | +.003 / +.001 (n.s.) / −.004 | +0.1 / +0.2 / +0.7 | no change except where the floor binds | **holds overall** (all effects under 1 point and 0.5%); after a regime alarm, CRPS is 8–14% worse without the floor |
+| no detector | −.122 / −.021 / −.038 | −0.2 / +1.3 / +0.9 | CRPS about 8% better at 90 d when nothing changes; much worse coverage in the 4 weeks after a change | **falsified on both parts** |
+| no variance draw | +.001 / −.002 / −.002 | −0.3 / −0.3 / −0.5 | (no prediction) | negligible |
+
+- **Why the detector falsification counts.** Both reversed effects have
+  intervals that exclude zero:
+  - with no recent alarm, CRPS is 7.2% *worse* at 90 days without the
+    detector (skill −.072 [−.083, −.061]);
+  - in the 28 days after an alarm, 90% coverage is *better* without it,
+    by +14.7 points at 30 days and +17.4 points at 90 days.
+- **Strata.** "When nothing changes" and "after a change" are the full
+  model's "no recent alarm" and "alarm in the last 28 days" strata. That
+  reading of the prediction is ours, stated here before writing.
+- **Source files.** The fixed-noise and no-floor alarm-stratum numbers
+  are in `ablations-paired.csv`. The 80% and 95% numbers for no lumps are
+  in `ablations.csv`.
+- **Scope.** D1 was pre-registered for both datasets. Only Berka has been
+  run.
+
+**Not assessed by these runs:**
+- A1 (synthetic, model-matched);
+- B2 (realistic generator);
+- C1 (bit identity across 100 feeds).
+
 ## References found while planning
 
 - Berka, P. *Guide to the Financial Data Set.* PKDD 2000 Discovery
