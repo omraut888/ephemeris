@@ -15,7 +15,7 @@ const IDENTITY_CASES: u32 = 100;
 
 /// `(simulate options, forecast options, holidays)` of case `i`.
 fn identity_inputs(i: u32) -> (String, String, Option<&'static str>) {
-    let mode = if i % 2 == 0 { "realistic" } else { "matched" };
+    let mode = if i.is_multiple_of(2) { "realistic" } else { "matched" };
     let days = 40 + (i * 37) % 961;
     // 2019-01-01 plus a spread of up to about four years.
     let start = ephemeris_core::schema::Date(17_897 + ((i * 53) % 1_500) as i32);
