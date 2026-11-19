@@ -124,6 +124,16 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// The MoneyData case study (one account, descriptive): rows into
+    /// `--out`, tables into `--results`.
+    Moneydata {
+        #[arg(long, default_value = "data/moneydata")]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        results: PathBuf,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -198,6 +208,7 @@ fn main() -> ExitCode {
             threads,
         } => synthetic(&out, seeds, threads),
         Cmd::SyntheticTables { build, out } => synthetic_tables(&build, &out),
+        Cmd::Moneydata { data, out, results } => moneydata(&data, &out, &results),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -466,6 +477,55 @@ fn pairwise(paths: &[PathBuf], pairs: &[String], out: &Path) -> Result<(), Strin
         rows.len(),
         out.display()
     );
+    Ok(())
+}
+
+/// The MoneyData case study. One account, so the account bootstrap's
+/// intervals are degenerate: the tables keep point estimates only.
+fn moneydata(data: &Path, out: &Path, results: &Path) -> Result<(), String> {
+    use ephemeris_eval::moneydata::{METHODS, parse, run, summary};
+    let acct = parse(&read(&data.join("transactions.tsv"))?)?;
+    let t0 = std::time::Instant::now();
+    let cs = run(&acct);
+    let secs = t0.elapsed().as_secs_f64();
+    write(&out.join("rows.csv"), &rows_csv(&cs.rows))?;
+    let mut order = vec!["B-SA+"];
+    order.extend(METHODS.iter().filter(|&&m| m != "B-SA+"));
+    let points = |table: String| -> String {
+        let mut lines = table.lines();
+        let header: Vec<&str> = lines.next().unwrap_or("").split(',').collect();
+        let keep: Vec<usize> = (0..header.len())
+            .filter(|&i| !header[i].ends_with("_lo") && !header[i].ends_with("_hi"))
+            .collect();
+        let pick = |l: &str| {
+            let f: Vec<&str> = l.split(',').collect();
+            keep.iter().map(|&i| f[i]).collect::<Vec<_>>().join(",")
+        };
+        let mut s = pick(&header.join(","));
+        s.push('\n');
+        for l in lines {
+            s.push_str(&pick(l));
+            s.push('\n');
+        }
+        s
+    };
+    write(
+        &results.join("main.csv"),
+        &points(main_table(&cs.rows, "B-SA+", &order, |_| true)),
+    )?;
+    write(&results.join("pit.csv"), &pit_table(&cs.rows, &order))?;
+    let mut d = String::from("key,value\n");
+    for (k, v) in summary(&acct) {
+        writeln!(d, "{k},{v}").unwrap();
+    }
+    writeln!(
+        d,
+        "eligible_origins,{}\norigins_income_detected,{}\norigins_sparse_v2,{}",
+        cs.origins, cs.income_origins, cs.sparse_origins
+    )
+    .unwrap();
+    write(&results.join("data.csv"), &d)?;
+    eprintln!("{d}wall_seconds,{secs:.1}\nwrote {}", results.display());
     Ok(())
 }
 

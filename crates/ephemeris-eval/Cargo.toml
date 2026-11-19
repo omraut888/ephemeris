@@ -14,6 +14,9 @@ path = "src/main.rs"
 # seed on any platform, like the Monte Carlo).
 [dependencies]
 ephemeris-core = { version = "0.1.0", path = "../ephemeris-core", features = ["serde"] }
+# The app's own tagging (bank records → feed), for the MoneyData case study.
+# A workspace crate; it brings no dependency the workspace does not already lock.
+ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
 clap = { version = "4", features = ["derive"] }
 rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
