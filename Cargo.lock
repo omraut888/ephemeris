@@ -1021,6 +1021,7 @@ dependencies = [
  "ephemeris-core",
  "ephemeris-sync",
  "serde_json",
+ "sha2",
  "uniffi",
 ]
 
@@ -1071,6 +1072,7 @@ version = "0.1.0"
 dependencies = [
  "ephemeris-core",
  "serde_json",
+ "sha2",
  "ts-rs",
  "wasm-bindgen",
  "wasm-bindgen-test",

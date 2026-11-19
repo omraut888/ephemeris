@@ -32,3 +32,5 @@ ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
 [dev-dependencies]
 # Reads the state out of sync_open's result in the golden test.
 serde_json = "1"
+# SHA-256 of each report in the extended identity check (paper/PLAN.md C1).
+sha2 = "0.10"

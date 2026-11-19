@@ -170,6 +170,30 @@ mod tests {
         );
     }
 
+    // The extended identity check (paper/PLAN.md C1, T10): the 100
+    // generated cases through the exported functions, against the manifest
+    // the native build wrote.
+    include!("../../ephemeris-wasm/tests/common/identity_cases.rs");
+    const IDENTITY_MANIFEST: &str =
+        include_str!("../../ephemeris-wasm/tests/golden/identity-manifest.tsv");
+
+    #[test]
+    fn exported_functions_match_the_identity_manifest() {
+        let expected: Vec<&str> = IDENTITY_MANIFEST
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .collect();
+        assert_eq!(expected.len(), IDENTITY_CASES as usize);
+        for (i, e) in (0..IDENTITY_CASES).zip(expected) {
+            let line = identity_line(
+                i,
+                |s| simulate_json(s.into()).unwrap(),
+                |f, o| forecast_json(f.into(), o.into()).unwrap(),
+            );
+            assert_eq!(line, e, "case {i}");
+        }
+    }
+
     #[test]
     fn errors_carry_the_engine_message() {
         let EngineError::Failed { message } =
