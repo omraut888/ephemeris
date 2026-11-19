@@ -12,14 +12,16 @@
 //!   the step, 30 days ahead; how often the 90% interval holds the true
 //!   balance, and how wide it is next to the same seed with no step.
 //!
-//! The sweep is `#[ignore]`d; run `scripts/test-full.sh --nocapture`.
+//! The six-scenario sweep moved to `ephemeris-eval` (`synthetic::regime`),
+//! which also scores forecasts from before the step. What stays here is
+//! the fast check below.
 
 use std::collections::BTreeMap;
 use std::ops::Range;
 
 use ephemeris_core::Day;
 use ephemeris_core::forecast::{ForecastConfig, ForecastModel, forecast};
-use ephemeris_core::model::{IDX_C, IDX_M};
+use ephemeris_core::model::IDX_C;
 use ephemeris_core::schedule::detect_schedule;
 use ephemeris_core::synth::{StepChange, SynthConfig, SynthRun, generate};
 use ephemeris_core::tracker::{Tracker, TrackerConfig};
@@ -33,7 +35,6 @@ const N_DAYS: u32 = 302;
 /// Forecast origins, in days after the step.
 const ORIGINS: [Day; 4] = [7, 14, 21, 28];
 const HORIZON: Day = 30;
-const PATHS: u32 = 1000;
 /// A day the error has to stay within tolerance for, to count as recovered.
 const SETTLE_DAYS: usize = 14;
 const WARM_UP: Day = 30;
@@ -42,7 +43,6 @@ const END: Day = START + N_DAYS as Day;
 #[derive(Clone, Copy, PartialEq)]
 enum Target {
     Spend,
-    Income,
 }
 
 fn scenario(base: SynthConfig, target: Target, factor: f64) -> SynthConfig {
@@ -53,7 +53,6 @@ fn scenario(base: SynthConfig, target: Target, factor: f64) -> SynthConfig {
     };
     match target {
         Target::Spend => cfg.spend_steps = step,
-        Target::Income => cfg.income_steps = step,
     }
     cfg
 }
@@ -69,9 +68,8 @@ fn tracker_config(detect: bool) -> TrackerConfig {
 
 /// One seed, one detector setting.
 struct Track {
-    /// Estimated `c` and `m` at the end of each day ingested.
+    /// Estimated `c` at the end of each day ingested.
     c: BTreeMap<Day, f64>,
-    m: BTreeMap<Day, f64>,
     /// Days with a balance-channel (spend) jump, after the warm-up.
     spend_jumps: Vec<Day>,
     /// First day (of ingest) a jump on a settled day at or after the step was reported.
@@ -89,7 +87,6 @@ fn track(run: &SynthRun, detect: bool, seed: u64, daily: Range<Day>, paths: u32)
     let mut tracker = Tracker::new(tcfg).unwrap();
     let mut out = Track {
         c: BTreeMap::new(),
-        m: BTreeMap::new(),
         spend_jumps: Vec::new(),
         detected: None,
         forecasts: Vec::new(),
@@ -122,7 +119,6 @@ fn track(run: &SynthRun, detect: bool, seed: u64, daily: Range<Day>, paths: u32)
         }
         let est = tracker.estimate().unwrap();
         out.c.insert(k, est.x[IDX_C]);
-        out.m.insert(k, est.x[IDX_M]);
         if origin(k) {
             let fcfg = ForecastConfig {
                 n_paths: paths,
@@ -155,7 +151,6 @@ fn recovery_days(
         let s = run.truth_on(d).unwrap();
         match target {
             Target::Spend => s.c,
-            Target::Income => s.m,
         }
     };
     let tol = 0.25 * (truth(STEP) - truth(STEP - 1)).abs();
@@ -231,7 +226,6 @@ fn evaluate(
             let t = track(&run, detect, seed, STEP - 3..until, paths);
             let est = match target {
                 Target::Spend => &t.c,
-                Target::Income => &t.m,
             };
             s.recovery.push(recovery_days(&run, est, target, until));
             s.detected.push(t.detected);
@@ -277,60 +271,6 @@ fn print_rows(label: &str, [with, without]: &[Summary; 2]) {
             coverage.join(" "),
             widths.join(" ")
         );
-    }
-}
-
-#[test]
-#[ignore = "50-seed regime-change sweep; run scripts/test-full.sh"]
-fn regime_change_report() {
-    const SEEDS: u64 = 50;
-    println!(
-        "\n=== regime changes: {SEEDS} seeds; step on day 182; 30-day forecasts from 1-4 weeks after ==="
-    );
-    println!(
-        "  {:<26} {:<12} {:>10} {:>7} {:>6}   {:<27}   90% width, stepped/no step",
-        "scenario", "", "detect/rec", "rec≤30d", "FA/yr", "90% coverage at +7/14/21/28 d"
-    );
-    let cases = [
-        (
-            "matched, spend ×2",
-            SynthConfig::model_matched(START),
-            Target::Spend,
-            2.0,
-        ),
-        (
-            "matched, spend ×0.5",
-            SynthConfig::model_matched(START),
-            Target::Spend,
-            0.5,
-        ),
-        (
-            "realistic, spend ×2",
-            SynthConfig::realistic(START),
-            Target::Spend,
-            2.0,
-        ),
-        (
-            "realistic, spend ×0.5",
-            SynthConfig::realistic(START),
-            Target::Spend,
-            0.5,
-        ),
-        (
-            "matched, paycheck ×0.8",
-            SynthConfig::model_matched(START),
-            Target::Income,
-            0.8,
-        ),
-        (
-            "matched, paycheck ×1.1",
-            SynthConfig::model_matched(START),
-            Target::Income,
-            1.1,
-        ),
-    ];
-    for (label, base, target, factor) in cases {
-        print_rows(label, &evaluate(&base, target, factor, SEEDS, END, PATHS));
     }
 }
 

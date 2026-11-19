@@ -24,12 +24,13 @@
 //! interval coverage, and CRPS of the whole predictive distribution (MC: from
 //! a 200-quantile grid; Gaussian baselines: closed form).
 //!
-//! Model-matched coverage is asserted twice: within 5 points with
-//! regime-change detection off (the model's own assumptions; the data has no
-//! regime changes), and within 8 points with the default tracker, whose false
-//! alarms widen the cone a little (design §6).
-//!
-//! The sweeps are `#[ignore]`d; run `scripts/test-full.sh --nocapture`.
+//! The 100-seed calibration sweep and its assertions (claim A1: within 5
+//! points with regime-change detection off, within 8 with the default
+//! tracker) moved to `ephemeris-eval` (`synthetic::a1`, test
+//! `a1_coverage_within_tolerance`), which writes the paper's tables and
+//! reproduces this file's numbers exactly. What stays here: the fast
+//! pipeline smoke test and the spend-floor sweep (`#[ignore]`d; run
+//! `scripts/test-full.sh --nocapture`).
 
 use ephemeris_core::Day;
 use ephemeris_core::calendar::PaySchedule;
@@ -334,53 +335,6 @@ fn print_table(title: &str, tallies: &[Vec<Tally>]) {
 
 const SEEDS: u64 = 100;
 
-#[test]
-#[ignore = "100-seed forecast sweep; run scripts/test-full.sh"]
-fn forecast_calibration() {
-    let (realistic, _) = evaluate(
-        &SynthConfig::realistic(START),
-        TrackerConfig::new(START),
-        SEEDS,
-        |_| {},
-    );
-    let (matched_default, _) = evaluate(
-        &SynthConfig::model_matched(START),
-        TrackerConfig::new(START),
-        SEEDS,
-        |_| {},
-    );
-    // The model has no jumps, so the strict check runs the filter on its own
-    // assumptions: no regime-change detection. With detection on, false
-    // alarms widen the cone a little (design §6); that run is reported.
-    let mut no_detection = TrackerConfig::new(START);
-    no_detection.spend_change = None;
-    no_detection.income_change = None;
-    let (matched, _) = evaluate(
-        &SynthConfig::model_matched(START),
-        no_detection,
-        SEEDS,
-        |_| {},
-    );
-    print_table(
-        "REALISTIC (model mismatch; reported, not asserted)",
-        &realistic,
-    );
-    print_table(
-        "model-matched, default tracker with regime detection (asserted, ±8 points)",
-        &matched_default,
-    );
-    print_table(
-        "model-matched, no regime detection (asserted, ±5 points)",
-        &matched,
-    );
-
-    // Model-matched, detection off: every MC interval within 5 points of
-    // nominal. With the default tracker, false alarms widen the cone a
-    // little (design §6), so that run gets a looser 8-point bound.
-    assert_coverage("no regime detection", &matched, 0.05);
-    assert_coverage("default tracker", &matched_default, 0.08);
-}
-
 /// A user who spends little: true `c` starts at `c0` $/day and reflects at
 /// $0, so the estimate's Gaussian often reaches below zero.
 fn low_spender(base: SynthConfig, c0: f64) -> SynthConfig {
@@ -428,24 +382,6 @@ fn spend_floor_sweep() {
         );
         print_table(&format!("{name}, floor OFF"), &off[..1]);
         print_table(&format!("{name}, floor ON"), &on[..1]);
-    }
-}
-
-/// Every MC interval within `tol` of nominal. Forecasts from the same seed
-/// share a path, so the effective sample count is below n. Compared in
-/// counts, so a hit exactly on the bound is not lost to rounding.
-fn assert_coverage(label: &str, tallies: &[Vec<Tally>], tol: f64) {
-    for (hi, h) in HORIZONS.iter().enumerate() {
-        for (k, &(level, _)) in INTERVALS.iter().enumerate() {
-            let t = &tallies[0][hi];
-            let n = t.n_bounded as f64;
-            let off = (t.inside[k] as f64 - level * n).abs();
-            assert!(
-                off <= (tol * n).round(),
-                "{label}, h={h}: {level} interval covers {}",
-                t.coverage(k)
-            );
-        }
     }
 }
 

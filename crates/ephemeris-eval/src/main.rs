@@ -106,6 +106,24 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// The synthetic evaluation (PLAN §3: A1, the T4 synthetic panel, T6):
+    /// rows and features into `--out`.
+    Synthetic {
+        #[arg(long)]
+        out: PathBuf,
+        /// Seeds per panel and regime scenario (default: the protocol's).
+        #[arg(long)]
+        seeds: Option<u64>,
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
+    /// Tables from `synthetic`'s rows (and B-GLOBAL's, if scored).
+    SyntheticTables {
+        #[arg(long)]
+        build: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -174,6 +192,12 @@ fn main() -> ExitCode {
         } => heldout_ablations(&data, &out, rerun_reason, threads),
         Cmd::AblationTables { rows, out } => ablation_tables(&rows, &out),
         Cmd::Pairwise { rows, pair, out } => pairwise(&rows, &pair, &out),
+        Cmd::Synthetic {
+            out,
+            seeds,
+            threads,
+        } => synthetic(&out, seeds, threads),
+        Cmd::SyntheticTables { build, out } => synthetic_tables(&build, &out),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -442,6 +466,254 @@ fn pairwise(paths: &[PathBuf], pairs: &[String], out: &Path) -> Result<(), Strin
         rows.len(),
         out.display()
     );
+    Ok(())
+}
+
+type RowFilter = Box<dyn Fn(&Row) -> bool>;
+
+fn rows_csv(rows: &[Row]) -> String {
+    let mut s = String::from(HEADER);
+    s.push('\n');
+    for r in rows {
+        s.push_str(&r.csv());
+        s.push('\n');
+    }
+    s
+}
+
+/// The synthetic evaluation: A1, the panel on both generators (plus
+/// B-GLOBAL's training features from disjoint seeds), V4, and the regime
+/// sweep. Every output is a pure function of the seeds.
+fn synthetic(out: &Path, seeds: Option<u64>, threads: usize) -> Result<(), String> {
+    use ephemeris_eval::synthetic::{
+        A1_SEEDS, Generator, PANEL_SEEDS, REGIME_SEEDS, SCENARIOS, TRAIN_SEEDS, a1_seed,
+        fold_priors, median_days, panel_seed, panel_v4, parallel_map, regime_seed,
+    };
+    use ephemeris_eval::variants::fold_of;
+    let t0 = std::time::Instant::now();
+    let mut summary = String::from("key,value\n");
+
+    // A1: always the full protocol (it is a pre-registered check).
+    let a1_seeds: Vec<u64> = (0..A1_SEEDS).collect();
+    let a1: Vec<Row> = parallel_map(&a1_seeds, threads, "A1", |&s| a1_seed(s))
+        .into_iter()
+        .flatten()
+        .collect();
+    write(&out.join("a1/rows.csv"), &rows_csv(&a1))?;
+    writeln!(summary, "a1_seeds,{A1_SEEDS}").unwrap();
+
+    let n = seeds.unwrap_or(PANEL_SEEDS);
+    for generator in [Generator::Matched, Generator::Realistic] {
+        let name = generator.name();
+        let panel_seeds: Vec<u64> = (0..n).collect();
+        let results = parallel_map(&panel_seeds, threads, name, |&s| panel_seed(generator, s));
+        let priors = fold_priors(&results);
+        let v4: Vec<Vec<Row>> = parallel_map(&results, threads, &format!("{name} V4"), |r| {
+            panel_v4(generator, r.seed, priors[fold_of(r.seed) as usize], &r.rows)
+        });
+        let train_seeds: Vec<u64> = TRAIN_SEEDS.take(n as usize).collect();
+        let train = parallel_map(&train_seeds, threads, &format!("{name} training"), |&s| {
+            panel_seed(generator, s)
+        });
+        let mut rows: Vec<Row> = Vec::new();
+        let mut features = format!("{FEATURE_HEADER}\n");
+        let (mut origins, mut sparse) = (0, 0);
+        for (r, v) in results.iter().zip(&v4) {
+            rows.extend(r.rows.iter().cloned());
+            rows.extend(v.iter().cloned());
+            origins += r.origins;
+            sparse += r.sparse_origins;
+            for f in &r.features {
+                features.push_str(f);
+                features.push('\n');
+            }
+        }
+        let mut train_features = format!("{FEATURE_HEADER}\n");
+        for r in &train {
+            for f in &r.features {
+                train_features.push_str(f);
+                train_features.push('\n');
+            }
+        }
+        let dir = out.join(name);
+        write(&dir.join("rows.csv"), &rows_csv(&rows))?;
+        write(&dir.join("features.csv"), &features)?;
+        write(&dir.join("train-features.csv"), &train_features)?;
+        writeln!(
+            summary,
+            "{name}_seeds,{n}\n{name}_origins,{origins}\n{name}_origins_sparse_v2,{sparse}\n{name}_train_seeds,{}",
+            train_seeds.len()
+        )
+        .unwrap();
+        for (k, p) in priors.iter().enumerate() {
+            writeln!(
+                summary,
+                "{name}_fold{k}_priors,c {:.4} sd {:.4} | m {:.4} sd {:.4} | spend_var {:.4} | income_var {:.4}",
+                p.c_mean, p.c_sd, p.m_mean, p.m_sd, p.spend_var, p.income_var
+            )
+            .unwrap();
+        }
+    }
+
+    // The regime sweep.
+    let rs = seeds.unwrap_or(REGIME_SEEDS);
+    let mut detection = String::from(
+        "scenario,tracker,seeds,detected_share,median_detect_days,median_recovery_days,recovered_within_30,false_alarms_per_year\n",
+    );
+    for (i, sc) in SCENARIOS.iter().enumerate() {
+        let seeds: Vec<u64> = (0..rs).collect();
+        let results = parallel_map(&seeds, threads, sc.name, |&s| regime_seed(sc, s));
+        let rows: Vec<Row> = results
+            .iter()
+            .flat_map(|r| r.rows.iter().cloned())
+            .collect();
+        write(&out.join(format!("regime/{i}/rows.csv")), &rows_csv(&rows))?;
+        let fa: usize = results.iter().map(|r| r.false_alarms).sum();
+        let days: f64 = results.iter().map(|r| r.alarm_days).sum();
+        for (j, tracker) in ["detector", "no detector"].iter().enumerate() {
+            let det: Vec<Option<i32>> = results.iter().map(|r| r.detected[j]).collect();
+            let rec: Vec<Option<i32>> = results.iter().map(|r| r.recovery[j]).collect();
+            let share = |xs: &[Option<i32>], f: &dyn Fn(i32) -> bool| {
+                xs.iter().filter(|x| x.is_some_and(f)).count() as f64 / xs.len() as f64
+            };
+            let fmt_days =
+                |d: Option<i32>| d.map_or_else(|| "never".to_string(), |d| d.to_string());
+            writeln!(
+                detection,
+                "{},{tracker},{rs},{:.4},{},{},{:.4},{:.4}",
+                sc.name,
+                share(&det, &|_| true),
+                fmt_days(median_days(&det)),
+                fmt_days(median_days(&rec)),
+                share(&rec, &|d| d <= 30),
+                if j == 0 {
+                    365.0 * fa as f64 / days
+                } else {
+                    0.0
+                },
+            )
+            .unwrap();
+        }
+    }
+    write(&out.join("regime/detection.csv"), &detection)?;
+    writeln!(summary, "regime_seeds,{rs}").unwrap();
+    let secs = t0.elapsed().as_secs_f64();
+    write(&out.join("data.csv"), &summary)?;
+    eprintln!("{summary}wall_seconds,{secs:.1}\nwrote {}", out.display());
+    Ok(())
+}
+
+fn synthetic_tables(build: &Path, out: &Path) -> Result<(), String> {
+    use ephemeris_eval::aggregate::{Stratum, pairwise_table};
+    use ephemeris_eval::synthetic::{
+        Generator, PANEL_METHODS, REGIME_OFFSETS, SCENARIOS, START, STEP_OFFSET, a1_table,
+    };
+    let a1 = read_rows(&read(&build.join("a1/rows.csv"))?)?;
+    let (t, pass) = a1_table(&a1);
+    write(&out.join("a1.csv"), &t)?;
+    eprintln!(
+        "A1: {}",
+        if pass {
+            "every cell within tolerance"
+        } else {
+            "FAILS"
+        }
+    );
+
+    let all: &dyn Fn(&Row) -> bool = &|_| true;
+    for generator in [Generator::Matched, Generator::Realistic] {
+        let name = generator.name();
+        let dir = build.join(name);
+        let mut paths = vec![dir.join("rows.csv")];
+        let lgbm = dir.join("rows-lgbm.csv");
+        if lgbm.exists() {
+            paths.push(lgbm);
+        }
+        let rows = read_all_rows(&paths)?;
+        let mut order: Vec<&str> = vec!["B-SA+"];
+        order.extend(PANEL_METHODS.iter().filter(|&&m| m != "B-SA+"));
+        order.push("B-GLOBAL");
+        write(
+            &out.join(format!("{name}-main.csv")),
+            &main_table(&rows, "B-SA+", &order, |_| true),
+        )?;
+        write(
+            &out.join(format!("{name}-pit.csv")),
+            &pit_table(&rows, &order),
+        )?;
+        let baselines = [
+            "B-SA+", "B-EQ", "B-GLOBAL", "B-30", "B-LIN", "B-SA", "B-SEAS",
+        ];
+        let pairs: Vec<(&str, &str)> = ["V0", "V2"]
+            .iter()
+            .flat_map(|&m| baselines.iter().map(move |&b| (m, b)))
+            .collect();
+        write(
+            &out.join(format!("{name}-pairwise.csv")),
+            &pairwise_table(&rows, &pairs, &[("all", all)]),
+        )?;
+    }
+
+    // Regime: per scenario and origin offset, coverage and CRPS with the
+    // detector on and off, and the paired difference.
+    let step = START + STEP_OFFSET;
+    let mut coverage = String::new();
+    let mut paired = String::new();
+    for (i, sc) in SCENARIOS.iter().enumerate() {
+        let rows = read_rows(&read(&build.join(format!("regime/{i}/rows.csv")))?)?;
+        let dates: Vec<(i32, String)> = REGIME_OFFSETS
+            .iter()
+            .map(|&o| (o, ephemeris_core::schema::Date(step + o).to_string()))
+            .collect();
+        for (o, date) in &dates {
+            let t = main_table(&rows, "no detector", &["no detector", "detector"], |r| {
+                &r.origin == date
+            });
+            for (j, line) in t.lines().enumerate() {
+                if j == 0 {
+                    if coverage.is_empty() {
+                        coverage = format!("scenario,offset,{line}\n");
+                    }
+                    continue;
+                }
+                writeln!(coverage, "{},{o},{line}", sc.name).unwrap();
+            }
+        }
+        let filters: Vec<(String, RowFilter)> = dates
+            .iter()
+            .map(|(o, date)| {
+                let d = date.clone();
+                (
+                    format!("{o}"),
+                    Box::new(move |r: &Row| r.origin == d) as RowFilter,
+                )
+            })
+            .collect();
+        let strata: Vec<Stratum> = filters
+            .iter()
+            .map(|(n, f)| (n.as_str(), f.as_ref() as &dyn Fn(&Row) -> bool))
+            .collect();
+        let t = pairwise_table(&rows, &[("detector", "no detector")], &strata);
+        for (j, line) in t.lines().enumerate() {
+            if j == 0 {
+                if paired.is_empty() {
+                    paired = format!("scenario,{}\n", line.replacen("stratum", "offset", 1));
+                }
+                continue;
+            }
+            writeln!(paired, "{},{line}", sc.name).unwrap();
+        }
+    }
+    write(&out.join("regime-coverage.csv"), &coverage)?;
+    write(&out.join("regime-paired.csv"), &paired)?;
+    fs::copy(
+        build.join("regime/detection.csv"),
+        out.join("regime-detection.csv"),
+    )
+    .map_err(|e| format!("copy: {e}"))?;
+    let data = read(&build.join("data.csv"))?;
+    write(&out.join("data.csv"), &data)?;
+    eprintln!("synthetic tables → {}", out.display());
     Ok(())
 }
 
