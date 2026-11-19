@@ -134,6 +134,17 @@ enum Cmd {
         #[arg(long)]
         results: PathBuf,
     },
+    /// Figure data the tables do not hold (coverage at every level from the
+    /// held-out rows; one development account's example cone).
+    FigureData {
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        /// The held-out run's build directory (its scored rows).
+        #[arg(long)]
+        heldout: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -209,6 +220,7 @@ fn main() -> ExitCode {
         } => synthetic(&out, seeds, threads),
         Cmd::SyntheticTables { build, out } => synthetic_tables(&build, &out),
         Cmd::Moneydata { data, out, results } => moneydata(&data, &out, &results),
+        Cmd::FigureData { data, heldout, out } => figure_data(&data, &heldout, &out),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -526,6 +538,41 @@ fn moneydata(data: &Path, out: &Path, results: &Path) -> Result<(), String> {
     .unwrap();
     write(&results.join("data.csv"), &d)?;
     eprintln!("{d}wall_seconds,{secs:.1}\nwrote {}", results.display());
+    Ok(())
+}
+
+fn figure_data(data: &Path, heldout: &Path, out: &Path) -> Result<(), String> {
+    use ephemeris_eval::figures::{cone_csv, coverage_curve, example_account};
+    let rows = read_all_rows(&[
+        heldout.join("variants/rows.csv"),
+        heldout.join("berka/rows.csv"),
+        heldout.join("rows-lgbm.csv"),
+    ])?;
+    let methods = ["V0", "V1", "V2", "B-SA+", "B-EQ", "B-GLOBAL"];
+    write(
+        &out.join("coverage-curve-heldout.csv"),
+        &coverage_curve(&rows, &methods),
+    )?;
+    drop(rows);
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    let dev: Vec<&Account> = accounts
+        .values()
+        .filter(|a| split_of(a.id) == Split::Dev)
+        .filter(|a| a.stats().max_drift <= MAX_DRIFT_CZK)
+        .collect();
+    let (acct, origin) = example_account(&dev).ok_or("no example account")?;
+    let cone = cone_csv(acct, origin).ok_or("cone failed")?;
+    write(&out.join("example-cone.csv"), &cone)?;
+    write(
+        &out.join("example.csv"),
+        &format!(
+            "key,value\naccount,{}\norigin,{}\nrecords,{}\nsplit,development\n",
+            acct.id,
+            ephemeris_core::schema::Date(origin),
+            acct.records.len()
+        ),
+    )?;
+    eprintln!("figure data → {}", out.display());
     Ok(())
 }
 
