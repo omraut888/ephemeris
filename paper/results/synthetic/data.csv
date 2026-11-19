@@ -1,0 +1,21 @@
+key,value
+a1_seeds,100
+model-matched_seeds,100
+model-matched_origins,1600
+model-matched_origins_sparse_v2,0
+model-matched_train_seeds,100
+model-matched_fold0_priors,c 59.4133 sd 12.2423 | m 2398.5576 sd 132.3638 | spend_var 1566.0958 | income_var 2535.5882
+model-matched_fold1_priors,c 59.6186 sd 10.7940 | m 2408.0824 sd 134.8941 | spend_var 1582.8707 | income_var 2413.7320
+model-matched_fold2_priors,c 59.6186 sd 12.3121 | m 2402.5514 sd 120.4968 | spend_var 1579.3281 | income_var 2388.2421
+model-matched_fold3_priors,c 60.4478 sd 9.6694 | m 2399.2922 sd 126.0412 | spend_var 1569.4393 | income_var 2421.8828
+model-matched_fold4_priors,c 57.3783 sd 11.9255 | m 2406.8608 sd 128.7803 | spend_var 1583.9186 | income_var 2457.9302
+realistic_seeds,100
+realistic_origins,1600
+realistic_origins_sparse_v2,0
+realistic_train_seeds,100
+realistic_fold0_priors,c 56.4497 sd 12.6933 | m 2398.5576 sd 132.3638 | spend_var 2647.9460 | income_var 2535.5882
+realistic_fold1_priors,c 57.4146 sd 12.8923 | m 2408.0824 sd 134.8941 | spend_var 2679.3678 | income_var 2413.7320
+realistic_fold2_priors,c 57.4146 sd 12.8923 | m 2402.5514 sd 120.4968 | spend_var 2684.5792 | income_var 2388.2421
+realistic_fold3_priors,c 57.4867 sd 11.3189 | m 2399.2922 sd 126.0412 | spend_var 2679.4821 | income_var 2421.8828
+realistic_fold4_priors,c 53.7294 sd 10.9560 | m 2406.8608 sd 128.7803 | spend_var 2591.5215 | income_var 2457.9302
+regime_seeds,100

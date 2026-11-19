@@ -1,0 +1,25 @@
+tracker,h,level,forecasts,inside,coverage,tolerance,pass
+no detector,7,0.5,300,145,0.4833,0.05,1
+no detector,7,0.8,300,244,0.8133,0.05,1
+no detector,7,0.9,300,270,0.9000,0.05,1
+no detector,7,0.95,300,284,0.9467,0.05,1
+no detector,30,0.5,300,160,0.5333,0.05,1
+no detector,30,0.8,300,251,0.8367,0.05,1
+no detector,30,0.9,300,279,0.9300,0.05,1
+no detector,30,0.95,300,289,0.9633,0.05,1
+no detector,90,0.5,300,160,0.5333,0.05,1
+no detector,90,0.8,300,239,0.7967,0.05,1
+no detector,90,0.9,300,275,0.9167,0.05,1
+no detector,90,0.95,300,290,0.9667,0.05,1
+default (detector on),7,0.5,300,145,0.4833,0.08,1
+default (detector on),7,0.8,300,243,0.8100,0.08,1
+default (detector on),7,0.9,300,269,0.8967,0.08,1
+default (detector on),7,0.95,300,283,0.9433,0.08,1
+default (detector on),30,0.5,300,162,0.5400,0.08,1
+default (detector on),30,0.8,300,253,0.8433,0.08,1
+default (detector on),30,0.9,300,279,0.9300,0.08,1
+default (detector on),30,0.95,300,287,0.9567,0.08,1
+default (detector on),90,0.5,300,165,0.5500,0.08,1
+default (detector on),90,0.8,300,239,0.7967,0.08,1
+default (detector on),90,0.9,300,276,0.9200,0.08,1
+default (detector on),90,0.95,300,290,0.9667,0.08,1

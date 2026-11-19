@@ -1,0 +1,13 @@
+scenario,tracker,seeds,detected_share,median_detect_days,median_recovery_days,recovered_within_30,false_alarms_per_year
+matched: spend x2,detector,100,0.9800,9,14,0.9100,0.3163
+matched: spend x2,no detector,100,0.0000,never,never,0.0000,0.0000
+matched: spend x0.5,detector,100,0.7700,30,64,0.2400,0.3163
+matched: spend x0.5,no detector,100,0.0000,never,121,0.0000,0.0000
+realistic: spend x2,detector,100,0.9600,16,49,0.3200,0.5353
+realistic: spend x2,no detector,100,0.0000,never,never,0.0000,0.0000
+realistic: spend x0.5,detector,100,0.0800,never,103,0.0200,0.5353
+realistic: spend x0.5,no detector,100,0.0000,never,110,0.0100,0.0000
+matched: paycheck x0.8,detector,100,1.0000,22,18,0.8200,0.3163
+matched: paycheck x0.8,no detector,100,0.0000,never,never,0.0000,0.0000
+matched: paycheck x1.1,detector,100,0.9400,36,46,0.2000,0.3163
+matched: paycheck x1.1,no detector,100,0.0000,never,never,0.0100,0.0000
