@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # Rebuild the paper's results from the pinned datasets (paper/PLAN.md §6).
 #
-#   scripts/paper.sh            development split: Berka backtest, B-GLOBAL,
-#                               the revision candidates V0-V4 (PLAN §9),
-#                               tables into paper/results/dev/
+#   scripts/paper.sh            every stage below, then the figures
 #
-# Stages still to come (PLAN §7): synthetic tables, MoneyData, the held-out
-# run (only through `ephemeris-eval berka --held-out`, logged), identity,
-# figures and the PDF.
+# Stages:
+#   - development split: Berka backtest, B-GLOBAL, the revision candidates
+#     V0-V4 (PLAN §9), tables into paper/results/dev/;
+#   - synthetic: A1, both generators, the regime sweep (paper-synthetic.sh);
+#   - MoneyData: the one-account case study;
+#   - bit identity on this Mac (paper-identity.sh);
+#   - figure data and figures (paper/figures/).
+# The held-out run is not here: it ran once, guarded and logged
+# (scripts/paper-heldout.sh, PLAN §10-§11). Its tables are committed; the
+# figure data reads its rows from paper/build/heldout/ when present.
+# Still to come: the PDF.
 #
 # Needs: the Python environment (uv venv --python 3.11 paper/.venv, then
 # uv pip install --python paper/.venv/bin/python --require-hashes
@@ -64,3 +70,21 @@ grep -v '^wall_seconds\|^threads' "$BUILD/berka-dev/data.csv" > "$RESULTS/dev/da
   --out "$RESULTS/dev"
 grep -v '^wall_seconds' "$BUILD/variants-dev/data.csv" > "$RESULTS/dev/variants-data.csv"
 echo "development results in $RESULTS/dev" >&2
+
+# 6. Synthetic evaluation.
+scripts/paper-synthetic.sh
+
+# 7. MoneyData, one account, descriptive.
+"$EVAL" moneydata --out "$BUILD/moneydata" --results "$RESULTS/moneydata"
+
+# 8. Bit identity on this Mac.
+scripts/paper-identity.sh
+
+# 9. Figures. Their data comes from committed tables, plus the held-out
+#    rows for the coverage curve when this machine has them.
+if [ -s "$BUILD/heldout/variants/rows.csv" ]; then
+  "$EVAL" figure-data --heldout "$BUILD/heldout" --out "$RESULTS/figures"
+else
+  echo "no held-out rows here: keeping the committed figure data" >&2
+fi
+"$PY" -I paper/figures/src/make_figures.py
