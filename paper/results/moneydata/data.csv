@@ -1,0 +1,14 @@
+key,value
+days_with_records,1660
+first_day,2015-07-27
+last_day,2022-07-25
+max_drift_gbp,0.00
+records,6567
+records_per_month,78.2
+tagged_discretionary,5427
+tagged_income,46
+tagged_scheduled,1094
+tagged_transfer,0
+eligible_origins,327
+origins_income_detected,327
+origins_sparse_v2,0
