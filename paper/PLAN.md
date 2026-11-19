@@ -875,6 +875,32 @@ points.
 - **Scope.** D1 was pre-registered for both datasets. Only Berka has been
   run.
 
+**Two caveats on D1** (recorded 2026-11-18; the paper states both):
+1. **The ablations remove components from V0, not from the selected V2.**
+   D1 was pre-registered before V2 existed, so its comparisons are against
+   the original model. They say what each component does inside V0. They
+   do not say what it does inside V2, whose spending model differs.
+2. **The "after a change" comparison is partly circular.** The stratum is
+   defined by the full model's own alarms. Those origins are selected
+   because the detector fired, so the detector-off forecast is judged on
+   origins chosen by the detector-on model. The clean test of the detector
+   is the synthetic regime sweep, where the change dates are known
+   (§3, T6).
+
+### Bit identity on x86_64 (recorded 2026-11-18)
+
+The GitHub Actions workflow "x86_64 bit identity"
+(`.github/workflows/x86-identity.yml`) passed:
+- run #1, at commit `26ed672`, on 2026-11-13;
+- on an x86_64 Linux runner (ubuntu-24.04, Rust 1.99.1, wasm-pack
+  0.15.0).
+
+It covers the one golden feed, computed natively and in WASM under Node.
+UniFFI and the iOS targets are not part of it. Every later commit touched only
+`crates/ephemeris-eval` and `paper/`, which the workflow does not watch, so
+the result still applies to the shipped engine. Any extra feeds added for
+C1 are checked on this Mac only, unless the workflow is extended to them.
+
 **Not assessed by these runs:**
 - A1 (synthetic, model-matched);
 - B2 (realistic generator);
