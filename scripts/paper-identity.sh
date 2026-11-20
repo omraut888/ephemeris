@@ -8,8 +8,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT=paper/results/identity
-LOG=paper/build/identity
+# The output directory: paper/results/identity holds the frozen engine's
+# result (PLAN §11) and is not rewritten; later runs name another directory.
+OUT=${1:-paper/results/identity}
+LOG=paper/build/$(basename "$OUT")
 mkdir -p "$OUT" "$LOG"
 
 # Each leg: its name, then the command. A leg's log is kept for the counts.

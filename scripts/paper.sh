@@ -77,8 +77,9 @@ scripts/paper-synthetic.sh
 # 7. MoneyData, one account, descriptive.
 "$EVAL" moneydata --out "$BUILD/moneydata" --results "$RESULTS/moneydata"
 
-# 8. Bit identity on this Mac.
-scripts/paper-identity.sh
+# 8. Bit identity on this Mac, with the current engine. The frozen engine's
+#    result stays in paper/results/identity/ (PLAN §11) and is not rewritten.
+scripts/paper-identity.sh paper/results/identity-postfix
 
 # 9. Figures. Their data comes from committed tables, plus the held-out
 #    rows for the coverage curve when this machine has them.

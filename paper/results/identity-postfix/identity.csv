@@ -1,0 +1,5 @@
+leg,golden_feed,cases,feeds_identical,reports_identical
+native arm64 debug,pass,100,100,100
+native arm64 release,pass,100,100,100
+uniffi (native arm64),pass,100,100,100
+wasm32 under node,pass,100,100,100
