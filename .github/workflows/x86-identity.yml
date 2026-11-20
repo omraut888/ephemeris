@@ -3,7 +3,8 @@
 # The golden feed and report in crates/ephemeris-wasm/tests/golden/ were
 # written on an arm64 Mac. This job recomputes them on an x86_64 Linux
 # runner, natively and inside WASM under Node, and fails on any differing
-# byte. The compiler is pinned to the version the golden files were made
+# byte. Since 2026-11-20 it also checks the 100 generated identity cases
+# against tests/golden/identity-manifest.tsv (paper/PLAN.md §11, C1). The compiler is pinned to the version the golden files were made
 # with, because bit identity is a property of (source, lockfile, compiler).
 #
 # Runs only by hand (Actions tab, "Run workflow") or on a push that touches
@@ -50,12 +51,13 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked
 
-      - name: Native golden files (x86_64, debug and release)
+      - name: Native golden files and the 100 identity cases (x86_64, debug and release)
         run: |
-          cargo test --locked -p ephemeris-wasm --test golden
-          cargo test --locked --release -p ephemeris-wasm --test golden
+          cargo test --locked -p ephemeris-wasm --test golden --test identity
+          cargo test --locked --release -p ephemeris-wasm --test golden --test identity
 
-      - name: WASM golden files under Node (built on x86_64)
+      # Every WASM test file: the golden files and the 100 identity cases.
+      - name: WASM golden files and the 100 identity cases under Node (built on x86_64)
         run: wasm-pack test --node --release crates/ephemeris-wasm
 
       - name: Core tests (includes the calendar and schema checks)
