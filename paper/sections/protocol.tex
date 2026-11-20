@@ -1,0 +1,180 @@
+\section{Data and protocol}
+\label{sec:protocol}
+
+\subsection{Data}
+\paragraph{Synthetic generators.} Two seeded generators produce feeds with
+known truth. The \emph{model-matched} generator draws data from exactly the
+model the filter assumes. The \emph{realistic} generator departs from it:
+zero-inflated, skewed spending with a weekly pattern, tips and holds on
+pending card records, and missing authorized dates. The model and the
+realistic generator share an author, which limits what the realistic
+results can show (\S\ref{sec:limitations}).
+
+\paragraph{Berka.} The PKDD'99 financial data set \citep{berka2000guide},
+obtained from the CTU relational repository \citep{motl2015ctu}, holds the
+transactions of \R{ho/data/accounts_total} accounts of a Czech bank from
+\R{berka/first_year} to \R{berka/last_year}, with the balance after each transaction. It has no pending
+state and no authorization dates. Activity is sparse: the median account
+has \R{ho/data/median_records_per_month} records a month (held-out split).
+Two adapter decisions were made on development data and recorded before
+the held-out run:
+\begin{enumerate}[label=(\roman*)]
+\item \emph{Calendar.} Berka bookings fall evenly across weekdays,
+  including dates a Czech holiday calendar would skip. With that calendar,
+  no income schedule could be detected. The engine gained a pluggable
+  holiday calendar, and Berka uses an every-day calendar.
+\item \emph{Balance drift.} In some accounts the bank's balance column
+  does not equal the running sum of amounts. Small drifts come from
+  integer rounding in the export; large ones are resets. Accounts whose
+  drift exceeds \R{c/max-drift}~CZK are excluded before any forecast:
+  \R{dev/data/accounts_excluded_balance_inconsistent} of
+  \R{dev/data/accounts_in_split} development accounts and
+  \R{ho/data/accounts_excluded_balance_inconsistent} of
+  \R{ho/data/accounts_in_split} held-out accounts.
+\end{enumerate}
+
+\paragraph{MoneyData.} One UK current account from
+\R{md/data/first_day} to \R{md/data/last_day}
+\citep{firat2023moneyvis,laramee2026moneydata}, with
+\R{md/data/records} records. We use it as a descriptive case study only;
+with one account it supports no claim about users in general. In the
+distributed spreadsheet, dates whose day was at most twelve had been
+misread with day and month swapped. We verified the repair against the
+record order, and the balance column then chains exactly. Records are tagged
+at each origin by the application's own tagger, and the default US calendar
+is used, because the engine has no UK calendar.
+
+\paragraph{Units.} Accounts differ in scale by orders of magnitude, and the
+engine's priors are in dollar-like units. At each origin, every amount of an
+account is multiplied by $k = \R{c/reference-scale} / s$. Here $s$ is the
+account's median monthly gross flow over complete months before the origin,
+and the constant is the median of $s$ over development accounts. Coverage
+and PIT do not depend on $k$; CRPS is reported in normalized units or as a
+skill ratio.
+
+\subsection{Protocol}
+\paragraph{Split.} An account belongs to the development split when a fixed
+hash of its id, read as a percentile, is below \R{c/dev-percent}. Every adapter
+decision and the revision were made on development accounts only.
+
+\paragraph{Origins and eligibility.} Origins fall every
+\R{c/origin-step} days from day \R{c/warmup} of an account's history, while
+origin plus \hC\ days stays inside the data. An origin needs at least
+\R{c/min-records} records in the \R{c/warmup} days before it. The forecast
+seed is a fixed hash of (account, origin), so any single forecast can be
+reproduced alone. The held-out split has \R{ho/data/eligible_origins}
+eligible origins in \R{ho/data/accounts_with_eligible_origin} accounts.
+
+\paragraph{Baselines.} B-30 projects the \R{c/b30-window}-day mean daily change with a
+Gaussian band. B-LIN extends a least-squares line through the last \R{c/blin-window} days.
+B-SA is schedule-aware and deterministic: the same detected schedule as the
+model, the last paycheck and bill amounts, and the \R{c/bsa-window}-day mean of other
+flows. \emph{B-SA+}, the pre-registered reference, adds to B-SA the
+empirical distribution of its own past errors. B-SEAS is a monthly-seasonal
+naive forecast with its own past errors. \emph{B-EQ} adds the account's own
+past $h$-day balance changes to today's balance. \emph{B-GLOBAL} is
+LightGBM quantile regression \citep{ke2017lightgbm} on lagged balance and
+flow features. It is cross-fitted over development accounts, and for the
+held-out run it is trained on all development accounts with fixed
+hyperparameters (\R{c/lgbm-rounds} rounds). B-GLOBAL pools data across
+accounts, which the local-first design forbids. It is a reference point,
+not a like-for-like competitor; B-EQ, which uses only the account's own
+history, is.
+
+\paragraph{Metrics.} The metrics are the coverage of the \lA/\lB/\lC/\lD\%
+central intervals, CRPS, and PIT histograms. Skill against a reference is
+$1 - \sum \mathrm{CRPS}_m / \sum \mathrm{CRPS}_{\text{ref}}$ over an
+account's forecasts, averaged over accounts. Intervals are \R{c/ci-level}\% intervals
+from \R{c/bootstrap} bootstrap resamples of whole accounts (seeds, on
+synthetic data).
+
+\paragraph{Pre-registered claims.} Thresholds were fixed in the plan:
+\begin{itemize}
+\item \textbf{A1}: on model-matched data, every central interval within
+  $\pm\R{c/a1-tol-off}$ points of nominal with the detector off, and
+  $\pm\R{c/a1-tol-on}$ with it on.
+\item \textbf{A2}: on held-out Berka, every central interval within
+  $\pm\R{c/a2-tol}$ points at \hA\ and \hB\ days and $\pm\R{c/a2-tol-90}$ at
+  \hC\ days. A cell fails only if its bootstrap interval lies wholly outside
+  the band.
+\item \textbf{B1}: on held-out Berka, CRPS skill against \emph{each}
+  baseline positive at \hB\ and \hC\ days, with an interval excluding zero.
+  If B-SA+ ties or wins, the abstract says so.
+\item \textbf{B2}: the same comparison on the realistic generator.
+\item \textbf{C1}: byte-identical reports across platforms.
+\item \textbf{D1}: predicted signs for each ablation.
+\end{itemize}
+
+\paragraph{Revision, selection and freeze.} On development data, V0 failed
+A2: its \lC\% interval covered \R{dev/var/V0/90/cov90}\% at \hC\ days, and
+its \lA\% interval \R{dev/var/V0/30/cov50}\% at \hB\ days. A revision rule
+was then committed before any revision code. The candidates were V1--V4.
+A variant qualifies if its pooled \lC\% coverage is within
+$\pm\R{c/select-tol}$ points at every horizon, and the qualifying variant
+with the lowest mean normalized CRPS wins. On development, V1 and V2
+qualified, with worst errors of \R{d/dev-V1-worst90} and
+\R{d/dev-V2-worst90} points. V2 had the lower score (\R{d/dev-V2-score}
+against \R{d/dev-V1-score}). V3 (\R{d/dev-V3-worst90} points) and V4
+(\R{d/dev-V4-worst90}) did not qualify. V2 was frozen as the primary model,
+with every parameter as run on development.
+
+\paragraph{The held-out run.} The held-out split runs only through one
+command. It refuses to start from a working tree with uncommitted changes,
+appends the time, commit and arguments to a log, and refuses a second run
+unless a reason is given, which is logged too.
+
+\subsection{Timeline, deviations and post-hoc analyses}
+\label{sec:timeline}
+Table~\ref{tab:timeline} lists the protocol's commits. Git committer times
+are set by the author's machine and could be backdated. GitHub's record of
+when it first received each commit cannot. Three things follow:
+\begin{itemize}
+\item The freeze was on GitHub at \R{tl/70a7bca/pushed}, before held-out
+  run~1 began at \R{tl/run1/time} (the guard's log).
+\item The held-out results were on GitHub at \R{tl/cdf070d/pushed},
+  before run~2 began at \R{tl/run2/time}.
+\item The plan itself was first pushed at \R{tl/8c40faf/pushed}, in the
+  same push as the first development results. Its earlier commit time,
+  \R{tl/8c40faf/time}, is not independent evidence. That the plan preceded
+  every real-data run rests on the commit time alone.
+\end{itemize}
+
+\begin{table}[t]
+\centering\scriptsize
+\tab{timeline}
+\caption{Protocol timeline. Commit times are from git; ``first on GitHub''
+is the time of the first push containing the commit, from GitHub's
+repository activity record. The held-out runs carry the times their guard
+logged.}
+\label{tab:timeline}
+\end{table}
+
+\paragraph{Deviations and post-hoc analyses, all disclosed.}
+\begin{enumerate}[label=(\arabic*)]
+\item The every-day calendar and the balance-drift exclusion for Berka.
+  Both were approved on development data before the held-out run.
+\item The revision itself. The plan anticipated revision only as a
+  possibility; the rule was written after V0 failed, but before any
+  revision code or revision result existed.
+\item Held-out run~1 omitted the pre-registered ablations through a harness
+  gap: the ablation sample was drawn from the development split only. They
+  were run as a separately logged second run, \emph{after} the main
+  held-out results were known (\S\ref{sec:ablations}).
+\item The paired bootstrap intervals for V2 against each baseline
+  (Table~\ref{tab:pairwise}) were requested and computed after the held-out
+  results were known. They use the stored forecasts and make no new ones.
+\item The ablations' paired differences and their alarm strata were added
+  in the same post-hoc step.
+\item The synthetic panel was defined after the held-out results:
+  \R{c/panel-seeds} seeds of \R{c/panel-days} days, origins every
+  \R{c/panel-step} days from day \R{c/panel-first-origin}. The A1 check
+  reuses the exact protocol of the engine's earlier calibration test and
+  reproduces its numbers.
+\item The MoneyData adapter (the date repair and the calendar) was set
+  before MoneyData was scored, but after the Berka results.
+\item The bit-identity fix (\S\ref{sec:identity}) came after the freeze. The
+  frozen results were not regenerated.
+\item Adding B-EQ rows to the development strata table, before the
+  held-out run, shifted other cells' bootstrap bounds slightly, because one
+  random stream spans all cells. Point estimates did not change.
+\end{enumerate}

@@ -1,0 +1,60 @@
+\section{Limitations}
+\label{sec:limitations}
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Calibration at the centre.} V2's \lA\% interval covers
+  \R{ho/var/V2/30/cov50}\% at \hB\ days. The selection rule checked only the
+  \lC\% level. A user reading the cone's middle as a likely range is
+  misled.
+\item \textbf{Sharpness.} On Berka, an empirical baseline from the
+  account's own history beats the model at \hB\ and \hC\ days.
+\item \textbf{The first week after a change is overconfident}
+  (\S\ref{sec:regime}), and downward changes in skewed spending are
+  rarely detected.
+\item \textbf{Irregular and one-off flows.} Without a detected income the
+  forecast has no income term. Large one-off transfers, as in the MoneyData
+  account, are outside the model.
+\item \textbf{The data.}
+  \begin{itemize}
+  \item Berka is Czech, in crowns, from \R{berka/first_year} to
+    \R{berka/last_year}, with sparse activity. Its anonymization may have
+    transformed amounts in ways that are not documented, and its licence
+    terms are not stated.
+  \item MoneyData is one UK account.
+  \item Neither has a pending state, so the settled-checkpoint design is
+    validated on synthetic data only.
+  \item Paychecks are mostly monthly, so the weekly and biweekly paths
+    are untested on real data.
+  \end{itemize}
+\item \textbf{Normalization.} Each account is rescaled at each origin by
+  its median monthly gross flow, so the engine's dollar-scale priors fit.
+  Coverage and PIT are invariant to this, but the priors' effective
+  strength varies with it, and a different reference scale could change
+  results.
+\item \textbf{Our generators.} The realistic generator and the model share
+  an author, so its departures from the model are the ones we thought of.
+  Method rankings on it did not carry over to Berka (the B-EQ reversal).
+\item \textbf{The protocol.}
+  \begin{itemize}
+  \item The plan predates the real-data runs by its commit time only; the
+    earliest independent evidence of it is the same push as the first
+    development results.
+  \item Held-out ablations and paired intervals were computed after the
+    main held-out results were known.
+  \item The ablations were of V0, not V2.
+  \item B-GLOBAL's hyperparameters were fixed at common defaults, not
+    tuned. A tuned model might win by more.
+  \end{itemize}
+\item \textbf{Bit identity} is shown on one Apple Silicon machine for all
+  targets. On x86\_64 it was shown for the golden feed before the fix
+  (\S\ref{sec:identity}). It has not been shown on a physical phone or with
+  other compiler versions. The evaluation's closed-form Gaussian CRPS
+  still calls the standard library's \texttt{exp}. That affects scoring of
+  the Gaussian baselines at the last digit across platforms, never a
+  forecast.
+\item \textbf{No user study.} ``Calibrated'' is a statistical statement,
+  not a claim that people make better decisions with the cone.
+\item \textbf{One primary income stream}, no day-of-week effects in the
+  model, depository accounts only, and lumps no larger than the largest
+  already seen.
+\end{enumerate}

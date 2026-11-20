@@ -1,0 +1,62 @@
+% EPHEMERIS paper, first full draft. Built by scripts/paper.sh (latexmk).
+% Every number in the text is \R{key}, read from results/numbers.tex, which
+% paper/analysis/macros.py generates from the committed results. An unknown
+% key stops the build.
+\documentclass[10pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{adjustbox}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage[authoryear,round]{natbib}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\setlist{itemsep=1pt,topsep=3pt}
+
+\makeatletter
+\newcommand{\R}[1]{%
+  \ifcsname r@#1\endcsname\csname r@#1\endcsname
+  \else\PackageError{numbers}{Unknown result key `#1'}{See paper/build/numbers-keys.txt}\fi}
+\makeatother
+\input{results/numbers.tex}
+% Horizons (days) and nominal interval levels (%), from the code.
+\newcommand{\hA}{\R{c/h1}}\newcommand{\hB}{\R{c/h2}}\newcommand{\hC}{\R{c/h3}}
+\newcommand{\lA}{\R{c/l1}}\newcommand{\lB}{\R{c/l2}}\newcommand{\lC}{\R{c/l3}}\newcommand{\lD}{\R{c/l4}}
+% Tables shrink only when wider than the text.
+\newcommand{\tab}[1]{\adjustbox{max width=\linewidth}{\input{results/tables/#1.tex}}}
+\newcommand{\TODO}[1]{\textcolor{red}{[TODO: #1]}}
+
+\title{Forecasting a Person's Bank Balance with Honest Uncertainty:\\
+a Pre-registered Evaluation of a Local-First Kalman-Filter Forecaster}
+\author{Om Raut\\ \small\TODO{affiliation and contact}}
+\date{Draft, \today}
+
+\begin{document}
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/method}
+\input{sections/protocol}
+\input{sections/results}
+\input{sections/regime}
+\input{sections/ablations}
+\input{sections/identity}
+\input{sections/limitations}
+\input{sections/conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

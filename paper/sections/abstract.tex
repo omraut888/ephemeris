@@ -1,0 +1,35 @@
+\begin{abstract}
+We forecast a person's bank balance \hA, \hB\ and \hC\ days ahead with
+predictive distributions, using only that person's own transactions on
+their own devices. The forecaster tracks balance, spending rate and
+paycheck with a Kalman filter and simulates a Monte Carlo cone. We
+evaluated it under a pre-registered plan: claims, thresholds, baselines and
+a revision rule were committed before the results they govern, and
+\S\ref{sec:timeline} gives the commit and GitHub push times as evidence,
+including where that evidence is weaker.
+The model was then frozen, and a held-out split of
+\R{ho/data/accounts_in_split} accounts of the Berka bank data set was run
+once by a guarded command that logs every run. The original model failed
+its own calibration claim on the development split, and the
+pre-registered rule selected a revised variant, V2, which models sparse
+discretionary spending as a compound Poisson process.
+
+On held-out accounts, V2 beats the probabilistic schedule-aware baseline
+(CRPS skill \R{ho/pair/B-SA+/30/skill} at \hB\ days and
+\R{ho/pair/B-SA+/90/skill} at \hC\ days). It loses at \hB\ and \hC\ days to
+an empirical-quantile forecast of the account's own past balance changes
+(skill \R{ho/pair/B-EQ/30/skill} and \R{ho/pair/B-EQ/90/skill}) and to a
+gradient-boosted model trained across accounts (\R{ho/pair/B-GLOBAL/30/skill}
+and \R{ho/pair/B-GLOBAL/90/skill}). Its \lC\% intervals are calibrated
+(coverage \R{ho/var/V2/7/cov90}--\R{ho/var/V2/30/cov90}\%), but its \lA\%
+intervals are too wide (\R{ho/var/V2/7/cov50}--\R{ho/var/V2/90/cov50}\%), so
+the pre-registered calibration claim fails at the \lA\% level.
+
+Synthetic data confirms calibration under the model's own assumptions, and
+a sweep with known change dates shows that the regime detector helps after
+large changes on data that match the model, but much less on our more
+realistic generator. A pre-registered bit-identity claim across platforms failed
+for the frozen engine (one value in one of \R{id/frozen/wasm32-under-node/cases}
+generated reports differed by one unit in the last place between native
+code and WebAssembly); we report the cause and a post-freeze fix.
+\end{abstract}

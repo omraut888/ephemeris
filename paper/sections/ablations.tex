@@ -1,0 +1,60 @@
+\section{Ablations (claim D1)}
+\label{sec:ablations}
+
+Each ablation removes one component, and its forecasts are compared with
+the full model on the same origins. The run covers all
+\R{ho/abldata/accounts_with_eligible_origin} held-out accounts with eligible
+origins (Table~\ref{tab:ablations}). Two caveats come first.
+\begin{enumerate}[label=(\roman*)]
+\item \textbf{The components were removed from V0, not from V2.} D1 was
+  pre-registered before V2 existed. The ablations therefore show what
+  each component does inside the original model. They do not show what it
+  does inside V2, whose spending model replaces the smooth rate and the
+  lumps.
+\item \textbf{The alarm-defined strata are circular} (\S\ref{sec:regime}).
+  They are selected by the full model's own detector.
+\end{enumerate}
+They were also run after the main held-out results were known, in a
+second logged run, because the first run omitted them
+(\S\ref{sec:timeline}).
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\tab{heldout-ablations}
+\caption{Held-out ablations against V0. Skill: the ablation's CRPS skill
+against V0 (positive: the ablation is better). $\Delta$cov90: the
+ablation's \lC\% coverage minus V0's, in points. Columns are horizons
+(days). Intervals are in the result files.}
+\label{tab:ablations}
+\end{table}
+
+\begin{itemize}
+\item \textbf{Adaptive noise off (fixed priors).} The prediction was worse
+  coverage. Coverage does fall at \hA\ and \hC\ days
+  (\R{ho/ablp/all/abl-fixed-noise/7/cov90_diff} and
+  \R{ho/ablp/all/abl-fixed-noise/90/cov90_diff} points) and is unchanged
+  at \hB, so the prediction holds. But CRPS is \emph{better} without
+  adaptation: skill \R{ho/ablp/all/abl-fixed-noise/30/skill@3} and
+  \R{ho/ablp/all/abl-fixed-noise/90/skill@3} at \hB\ and \hC\ days.
+\item \textbf{Lumps off.} The prediction was under-coverage at the wide
+  levels, mostly at long horizons. It holds strongly: \lC\% coverage falls
+  by \R{ho/ablp/all/abl-no-lumps/30/cov90_diff} and
+  \R{ho/ablp/all/abl-no-lumps/90/cov90_diff} points at \hB\ and \hC\ days.
+  On sparse Berka spending, the lump resampling carries much of V0's
+  spread.
+\item \textbf{Spend floor off.} The prediction was no change except where
+  the floor binds. It holds overall: effects stay below one point of
+  coverage and below one percent of CRPS. After alarms, CRPS is worse
+  without the floor
+  (\R{ho/ablp/regime-alarm-in-last-28-days/abl-no-floor/90/skill@3} at
+  \hC\ days), which fits the floor binding where the estimated rate has
+  just jumped.
+\item \textbf{Detector off.} Both predicted signs are reversed
+  (\S\ref{sec:regime}), and this falsifies the component's claim as
+  pre-registered. The caveats above limit what that means.
+\item \textbf{Noise-variance draws off.} No prediction was registered.
+  The effects are negligible:
+  \R{ho/ablp/all/abl-no-var-draw/90/skill@3} in skill and
+  \R{ho/ablp/all/abl-no-var-draw/90/cov90_diff} points of coverage at
+  \hC\ days.
+\end{itemize}

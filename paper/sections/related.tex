@@ -1,0 +1,50 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Cash-flow and personal-finance forecasting.} Most published
+cash-flow forecasting concerns businesses and point forecasts; for example,
+\citet{weytjens2021cashflow} compare neural networks with ARIMA and Prophet
+on company cash flows. Work on individuals' balances is scarce, largely
+because bank microdata is not public. \citet{zhang2018lowwage} forecast
+Berka balances for low-wage workers and aggregated to weekly balances
+because daily activity is sparse; we keep the daily grid and model the
+sparsity instead. Deep probabilistic models such as DeepAR
+\citep{salinas2020deepar} learn across many series and so need pooled data,
+which our local-first setting does not allow; our pooled baseline
+(B-GLOBAL, gradient-boosted quantile regression with LightGBM,
+\citealp{ke2017lightgbm}) stands in for that family.
+
+\paragraph{State-space models and adaptive Kalman filtering.} Structural
+time-series models and their Kalman-filter treatment are standard
+\citep{harvey1989,durbin2012}. Estimating unknown noise covariances
+online goes back to \citet{mehra1970,mehra1972} and
+\citet{myers1976}; variational Bayesian alternatives exist
+\citep{sarkka2009vb}. Our filter uses covariance matching with
+exponential forgetting and an information weight per sample. Page's CUSUM
+\citep{page1954} is the classical sequential test for a shift in mean; we
+apply it to the filter's normalized innovations.
+
+\paragraph{Evaluating probabilistic forecasts.} We follow the paradigm of
+maximizing sharpness subject to calibration
+\citep{gneiting2007calibration}. Scores are the continuous ranked
+probability score \citep{matheson1976,gneiting2007strictly}, the coverage
+of central intervals, and the probability integral transform
+\citep{dawid1984}. Sample quantiles use the type-7 rule of
+\citet{hyndman1996}. Because forecasts from one account are correlated, we
+compare methods by bootstrap intervals that resample whole accounts,
+rather than by a test that treats forecasts as independent
+\citep[cf.][]{diebold1995}.
+
+\paragraph{Conformal prediction.} Conformal methods give distribution-free
+coverage guarantees under exchangeability \citep{vovk2005alrw}. Adaptive
+conformal inference \citep{gibbs2021aci} adjusts the working level online
+and keeps long-run coverage under distribution shift; our variant V1
+applies it per account and horizon to the Monte Carlo cone.
+
+\paragraph{Pre-registration.} Pre-registration separates hypothesis
+generation from testing \citep{nosek2018prereg}, and a NeurIPS workshop
+proposed it for machine learning \citep{pmlr148prereg}. We adopt it in a
+simple form: a plan with falsifiable claims and fixed thresholds, a
+development/held-out split, a rule for revision written before the
+revision, a freeze, and a held-out run that is mechanically limited to
+once.
