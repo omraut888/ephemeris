@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase"])]
         what: String,
         #[arg(long, default_value = "data/berka")]
         data: PathBuf,
@@ -757,6 +757,27 @@ fn explore(what: &str, data: &Path, out: &Path, threads: usize) -> Result<(), St
                     fb[2]
                 ),
             )?;
+        }
+        "phase" => {
+            let accts = dev_accounts(data, true)?;
+            for offset in [0, 10, 20] {
+                let items: Vec<(&Account, i32)> = accts
+                    .iter()
+                    .flat_map(|a| {
+                        ex::shifted_origins(a, offset)
+                            .into_iter()
+                            .map(move |o| (a, o))
+                    })
+                    .collect();
+                let res = parallel_map(&items, threads, &format!("phase +{offset}"), |&(a, o)| {
+                    ex::phase_origin(a, o)
+                });
+                let rows: Vec<Row> = res.into_iter().flatten().collect();
+                write(
+                    &out.join(format!("rows-offset{offset}.csv")),
+                    &rows_csv(&rows),
+                )?;
+            }
         }
         "grid" => {
             let mut summary = String::from("sparsity,regularity,mean_count,origins,sparse_fired\n");

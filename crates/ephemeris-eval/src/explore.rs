@@ -624,6 +624,82 @@ pub fn v1_crossings(acct: &Account) -> Vec<String> {
     out
 }
 
+// ----------------------------------------------------------------- S8 --
+
+/// S8: the frozen eligibility rules on a grid shifted by `offset` days.
+pub fn shifted_origins(acct: &Account, offset: Day) -> Vec<Day> {
+    use crate::berka_run::{MIN_RECORDS_180, ORIGIN_STEP, WARM_UP, last_day};
+    let mut out = Vec::new();
+    let mut o = acct.first_day() + WARM_UP + offset;
+    while o + HORIZONS[2] <= last_day() {
+        if acct.count_in_window(o, WARM_UP) >= MIN_RECORDS_180
+            && acct.scale_at(o).is_some_and(|s| s > 0.0)
+        {
+            out.push(o);
+        }
+        o += ORIGIN_STEP;
+    }
+    out
+}
+
+/// S8 at one origin: V2 (frozen), B-EQ and B-SA+ (as the backtest makes
+/// them), scored.
+pub fn phase_origin(acct: &Account, origin: Day) -> Vec<Row> {
+    use crate::baselines::{LOOKBACK, empirical_changes, schedule_aware_plus};
+    use crate::berka_run::{SA_GRID_START, SA_GRID_STEP};
+    let first = acct.first_day();
+    let bal_raw = acct.daily_balance(origin + HORIZONS[2]);
+    let Some(v2) = v2_forecast(acct, &bal_raw, origin, V2_FROZEN, &[]) else {
+        return Vec::new();
+    };
+    let k = v2.k;
+    let t = (origin - first) as usize;
+    let bal: Vec<f64> = bal_raw[..=t].iter().map(|b| b * k).collect();
+    let recs = acct.records_through(origin);
+    let txns = transactions(recs, &tag(recs), k);
+    let schedule = detect_schedule_in(&txns, CALENDAR);
+    let mut cache: std::collections::HashMap<Day, [f64; 3]> = std::collections::HashMap::new();
+    let mut rows = Vec::new();
+    for (hi, &h) in HORIZONS.iter().enumerate() {
+        let truth = bal_raw[t + h as usize] * k;
+        let sa_point = bal[t] + schedule_aware_delta(&txns, &schedule, origin, h);
+        let mut errors = Vec::new();
+        let mut g = first + SA_GRID_START;
+        while g + h <= origin {
+            if (origin - g) as usize <= LOOKBACK {
+                let d = *cache.entry(g).or_insert_with(|| {
+                    let r = acct.records_through(g);
+                    let tx = transactions(r, &tag(r), 1.0);
+                    let s = detect_schedule_in(&tx, CALENDAR);
+                    HORIZONS.map(|hh| schedule_aware_delta(&tx, &s, g, hh))
+                });
+                let gi = (g - first) as usize;
+                errors.push((bal_raw[gi + h as usize] - (bal_raw[gi] + d[hi])) * k);
+            }
+            g += SA_GRID_STEP;
+        }
+        for (m, d) in [
+            ("V2", v2.dists[hi].clone()),
+            ("B-EQ", empirical_changes(&bal, t, h)),
+            ("B-SA+", schedule_aware_plus(sa_point, &errors)),
+        ] {
+            rows.push(Row {
+                account: acct.id,
+                origin: Date(origin).to_string(),
+                h,
+                method: m.to_string(),
+                k,
+                truth,
+                score: d.score(truth),
+                income_detected: v2.income_detected,
+                months_history: (origin - first) / 30,
+                alarm_recent: v2.alarm_recent,
+            });
+        }
+    }
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
