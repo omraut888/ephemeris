@@ -1,13 +1,35 @@
-\begin{tabular}{l lll}
+\begin{tabular}{l r rr ll rr}
 \toprule
-V2 vs & 7 d & 30 d & 90 d\\
+ & & & & \multicolumn{2}{c}{CRPS skill of V2 (positive: V2 lower CRPS)} & \multicolumn{2}{c}{mean CRPS (norm.)}\\
+\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+V2 vs & $h$ & forecasts & accounts & account mean & pooled (origins) & V2 & baseline\\
 \midrule
-B-SA+ & +0.28 {\scriptsize[+0.27, +0.29]} & +0.22 {\scriptsize[+0.22, +0.23]} & +0.44 {\scriptsize[+0.43, +0.44]} \\
-B-EQ & +0.28 {\scriptsize[+0.27, +0.30]} & \textminus{}0.23 {\scriptsize[\textminus{}0.25, \textminus{}0.22]} & \textminus{}0.34 {\scriptsize[\textminus{}0.36, \textminus{}0.33]} \\
-B-GLOBAL & \textminus{}0.44 {\scriptsize[\textminus{}0.48, \textminus{}0.41]} & \textminus{}0.70 {\scriptsize[\textminus{}0.72, \textminus{}0.68]} & \textminus{}1.12 {\scriptsize[\textminus{}1.15, \textminus{}1.10]} \\
-B-30 & +0.42 {\scriptsize[+0.41, +0.44]} & +0.21 {\scriptsize[+0.20, +0.22]} & +0.30 {\scriptsize[+0.29, +0.31]} \\
-B-LIN & +0.57 {\scriptsize[+0.56, +0.58]} & +0.34 {\scriptsize[+0.33, +0.35]} & +0.32 {\scriptsize[+0.30, +0.32]} \\
-B-SA & +0.44 {\scriptsize[+0.43, +0.44]} & +0.34 {\scriptsize[+0.33, +0.34]} & +0.48 {\scriptsize[+0.47, +0.48]} \\
-B-SEAS & +0.47 {\scriptsize[+0.38, +0.53]} & +0.26 {\scriptsize[+0.25, +0.27]} & +0.36 {\scriptsize[+0.35, +0.37]} \\
+B-SA+ & 7 & 115{,}235 & 3{,}514 & +0.28 {\scriptsize[+0.27, +0.29]} & +0.22 {\scriptsize[+0.21, +0.24]} & 830 & 1{,}067 \\
+ & 30 & 115{,}235 & 3{,}514 & +0.22 {\scriptsize[+0.22, +0.23]} & +0.27 {\scriptsize[+0.27, +0.28]} & 1{,}817 & 2{,}505 \\
+ & 90 & 115{,}235 & 3{,}514 & +0.44 {\scriptsize[+0.43, +0.44]} & +0.46 {\scriptsize[+0.46, +0.47]} & 3{,}326 & 6{,}192 \\
+\addlinespace[2pt]
+B-EQ & 7 & 115{,}235 & 3{,}514 & +0.28 {\scriptsize[+0.27, +0.30]} & +0.34 {\scriptsize[+0.32, +0.35]} & 830 & 1{,}255 \\
+ & 30 & 115{,}235 & 3{,}514 & \textminus{}0.23 {\scriptsize[\textminus{}0.25, \textminus{}0.22]} & \textminus{}0.12 {\scriptsize[\textminus{}0.13, \textminus{}0.11]} & 1{,}817 & 1{,}620 \\
+ & 90 & 115{,}235 & 3{,}514 & \textminus{}0.34 {\scriptsize[\textminus{}0.36, \textminus{}0.33]} & \textminus{}0.18 {\scriptsize[\textminus{}0.20, \textminus{}0.17]} & 3{,}326 & 2{,}819 \\
+\addlinespace[2pt]
+B-GLOBAL & 7 & 115{,}235 & 3{,}514 & \textminus{}0.44 {\scriptsize[\textminus{}0.48, \textminus{}0.41]} & \textminus{}0.18 {\scriptsize[\textminus{}0.20, \textminus{}0.17]} & 830 & 703 \\
+ & 30 & 115{,}235 & 3{,}514 & \textminus{}0.70 {\scriptsize[\textminus{}0.72, \textminus{}0.68]} & \textminus{}0.45 {\scriptsize[\textminus{}0.46, \textminus{}0.43]} & 1{,}817 & 1{,}256 \\
+ & 90 & 115{,}235 & 3{,}514 & \textminus{}1.12 {\scriptsize[\textminus{}1.15, \textminus{}1.10]} & \textminus{}0.77 {\scriptsize[\textminus{}0.80, \textminus{}0.75]} & 3{,}326 & 1{,}874 \\
+\addlinespace[2pt]
+B-30 & 7 & 115{,}235 & 3{,}514 & +0.42 {\scriptsize[+0.41, +0.44]} & +0.42 {\scriptsize[+0.41, +0.43]} & 830 & 1{,}435 \\
+ & 30 & 115{,}235 & 3{,}514 & +0.21 {\scriptsize[+0.20, +0.22]} & +0.25 {\scriptsize[+0.24, +0.25]} & 1{,}817 & 2{,}416 \\
+ & 90 & 115{,}235 & 3{,}514 & +0.30 {\scriptsize[+0.29, +0.31]} & +0.36 {\scriptsize[+0.36, +0.37]} & 3{,}326 & 5{,}224 \\
+\addlinespace[2pt]
+B-LIN & 7 & 115{,}235 & 3{,}514 & +0.57 {\scriptsize[+0.56, +0.58]} & +0.59 {\scriptsize[+0.58, +0.60]} & 830 & 2{,}042 \\
+ & 30 & 115{,}235 & 3{,}514 & +0.34 {\scriptsize[+0.33, +0.35]} & +0.42 {\scriptsize[+0.42, +0.43]} & 1{,}817 & 3{,}155 \\
+ & 90 & 115{,}235 & 3{,}514 & +0.32 {\scriptsize[+0.30, +0.32]} & +0.44 {\scriptsize[+0.43, +0.44]} & 3{,}326 & 5{,}899 \\
+\addlinespace[2pt]
+B-SA & 7 & 115{,}235 & 3{,}514 & +0.44 {\scriptsize[+0.43, +0.44]} & +0.39 {\scriptsize[+0.38, +0.39]} & 830 & 1{,}351 \\
+ & 30 & 115{,}235 & 3{,}514 & +0.34 {\scriptsize[+0.33, +0.34]} & +0.40 {\scriptsize[+0.39, +0.40]} & 1{,}817 & 3{,}016 \\
+ & 90 & 115{,}235 & 3{,}514 & +0.48 {\scriptsize[+0.47, +0.48]} & +0.53 {\scriptsize[+0.53, +0.54]} & 3{,}326 & 7{,}139 \\
+\addlinespace[2pt]
+B-SEAS & 7 & 115{,}235 & 3{,}514 & +0.47 {\scriptsize[+0.38, +0.53]} & +0.55 {\scriptsize[+0.54, +0.56]} & 830 & 1{,}833 \\
+ & 30 & 115{,}235 & 3{,}514 & +0.26 {\scriptsize[+0.25, +0.27]} & +0.36 {\scriptsize[+0.35, +0.36]} & 1{,}817 & 2{,}826 \\
+ & 90 & 115{,}235 & 3{,}514 & +0.36 {\scriptsize[+0.35, +0.37]} & +0.40 {\scriptsize[+0.39, +0.40]} & 3{,}326 & 5{,}508 \\
 \bottomrule
 \end{tabular}

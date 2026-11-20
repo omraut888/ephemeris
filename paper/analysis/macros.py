@@ -71,10 +71,12 @@ def fmt(col, v):
     c = col
     if c.endswith("_diff") or c.endswith("_diff_lo") or c.endswith("_diff_hi"):
         return points(v)
+    if c.startswith("miss"):
+        return pct(v)
     if c.startswith("cov") or c.startswith("coverage") or c.endswith("share") \
             or c.startswith("recovered") or c in ("pit_outer_share",):
         return pct(v)
-    if "skill" in c:
+    if "skill" in c or c in ("mean_of_ratios", "pooled", "mean_of_ratios_trim10", "worst_account"):
         return signed(v)
     if "crps" in c or "width" in c or "mae" in c or c in ("score",):
         return integer(v)
@@ -110,7 +112,7 @@ def keyvalue(tag, path):
         v = r["value"]
         try:
             f = float(v)
-            if f == int(f) and abs(f) >= 1000 and not r["key"].endswith("year"):
+            if f == int(f) and abs(f) >= 1000 and not r["key"].endswith(("year", "seed")):
                 v = integer(f)
         except ValueError:
             pass
@@ -213,7 +215,8 @@ def tables():
     lines = []
     order = ["V0", "V1", "V2", "V3", "V4", "B-SA+", "B-EQ", "B-GLOBAL", "B-30", "B-LIN", "B-SA", "B-SEAS"]
     for m in order:
-        cells = [pct(ho[(m, h)]["cov50"]) for h in hs] + [pct(ho[(m, h)]["cov90"]) for h in hs] \
+        cov = (lambda h, c: "--") if m == "B-SA" else (lambda h, c: pct(ho[(m, h)][c]))
+        cells = [cov(h, "cov50") for h in hs] + [cov(h, "cov90") for h in hs] \
             + [signed(ho[(m, h)]["skill"]) for h in hs] \
             + [pct(sel[(m, h)]["pit_outer_share"]) if (m, h) in sel else "--" for h in ["30", "90"]]
         name = "\\textbf{" + m + "}" if m == "V2" else m
@@ -244,9 +247,58 @@ def tables():
     pair = rowmap(RES / "heldout-posthoc/pairwise-v2.csv", "reference", "h")
     lines = []
     for b in ["B-SA+", "B-EQ", "B-GLOBAL", "B-30", "B-LIN", "B-SA", "B-SEAS"]:
-        lines.append(f"{b} & " + " & ".join(ci(pair[(b, h)], "skill") for h in hs) + r" \\")
+        for h in hs:
+            r = pair[(b, h)]
+            lines.append(f"{b if h == '7' else ''} & {h} & {integer(r['forecasts'])} & {integer(r['accounts'])} & "
+                         f"{ci(r, 'skill')} & {ci(r, 'pooled_skill')} & {integer(r['mean_crps_norm'])} & "
+                         f"{integer(r['mean_crps_norm_ref'])}" + r" \\")
+        if b != "B-SEAS":
+            lines.append(r"\addlinespace[2pt]")
     write_table("heldout-pairwise", "\n".join([
-        r"\begin{tabular}{l lll}", r"\toprule", r"V2 vs & 7 d & 30 d & 90 d\\", r"\midrule",
+        r"\begin{tabular}{l r rr ll rr}", r"\toprule",
+        r" & & & & \multicolumn{2}{c}{CRPS skill of V2 (positive: V2 lower CRPS)} & \multicolumn{2}{c}{mean CRPS (norm.)}\\",
+        r"\cmidrule(lr){5-6}\cmidrule(lr){7-8}",
+        r"V2 vs & $h$ & forecasts & accounts & account mean & pooled (origins) & V2 & baseline\\", r"\midrule",
+        *lines, r"\bottomrule", r"\end{tabular}", ""]))
+
+    # A2, cell by cell: pass (interval inside the band), fail (wholly
+    # outside), inconclusive (straddles an edge).
+    tol = {"7": float(VALUES["c/a2-tol"]), "30": float(VALUES["c/a2-tol"]), "90": float(VALUES["c/a2-tol-90"])}
+    counts = {"pass": 0, "fail": 0, "inconclusive": 0}
+    lines = []
+    for lv, col in (("50", "cov50"), ("80", "cov80"), ("90", "cov90"), ("95", "cov95")):
+        cells = []
+        for h in hs:
+            r = ho[("V2", h)]
+            lo, hi, pt = (100 * float(r[col + x]) for x in ("_lo", "_hi", ""))
+            blo, bhi = float(lv) - tol[h], min(100.0, float(lv) + tol[h])
+            verdict = "pass" if blo <= lo and hi <= bhi else ("fail" if hi < blo or lo > bhi else "inconclusive")
+            counts[verdict] += 1
+            put(f"a2/{lv}/{h}/verdict", verdict)
+            cells.append(f"{pt:.1f} [{lo:.1f}, {hi:.1f}] \\textit{{{verdict}}}")
+        lines.append(f"{lv}\\% & " + " & ".join(cells) + r" \\")
+    for k, v in counts.items():
+        put(f"a2/count/{k}", str(v))
+    write_table("a2-cells", "\n".join([
+        r"\begin{tabular}{l lll}", r"\toprule",
+        r"Interval & 7 d (band $\pm" + VALUES["c/a2-tol"] + r"$) & 30 d (band $\pm" + VALUES["c/a2-tol"]
+        + r"$) & 90 d (band $\pm" + VALUES["c/a2-tol-90"] + r"$)\\", r"\midrule",
+        *lines, r"\bottomrule", r"\end{tabular}", ""]))
+
+    # 90% interval widths and one-sided misses (held-out).
+    tails = rowmap(RES / "heldout-posthoc/tails.csv", "method", "h")
+    lines = []
+    for m in ["V0", "V1", "V2", "B-SA+", "B-EQ", "B-GLOBAL"]:
+        w = [integer(ho[(m, h)]["median_width90_czk"]) for h in hs]
+        lo_ = [f"{pct(tails[(m, h)]['miss_low'])}" for h in hs]
+        hi_ = [f"{pct(tails[(m, h)]['miss_high'])}" for h in hs]
+        name = "\\textbf{" + m + "}" if m == "V2" else m
+        lines.append(f"{name} & " + " & ".join(w + lo_ + hi_) + r" \\")
+    write_table("widths-tails", "\n".join([
+        r"\begin{tabular}{l rrr rrr rrr}", r"\toprule",
+        r" & \multicolumn{3}{c}{90\% width (CZK, median account)} & \multicolumn{3}{c}{miss below (\%)} & \multicolumn{3}{c}{miss above (\%)}\\",
+        r"\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}",
+        r"Method & 7 & 30 & 90 & 7 & 30 & 90 & 7 & 30 & 90\\", r"\midrule",
         *lines, r"\bottomrule", r"\end{tabular}", ""]))
 
     st = rowmap(RES / "heldout/variants-strata.csv", "stratum", "method", "h")
@@ -258,15 +310,15 @@ def tables():
         for m in ["V2", "B-EQ"]:
             cells += [pct(st[(s, m, h)]["cov90"]) for h in ["30", "90"]]
             cells += [signed(st[(s, m, h)]["skill"]) for h in ["30", "90"]]
-        n = integer(st[(s, "V2", "30")]["forecasts"])
+        n = integer(st[(s, "V2", "30")]["forecasts"]) + " & " + integer(st[(s, "V2", "30")]["accounts"])
         label = s.replace("<", "$<$").replace(">=", "$\\geq$").replace("regime alarm in last 28 days", "alarm in last 28 days")
         lines.append(f"{label} & {n} & " + " & ".join(cells) + r" \\")
     write_table("heldout-strata", "\n".join([
-        r"\begin{tabular}{lr rrrr rrrr}", r"\toprule",
-        r" & & \multicolumn{4}{c}{V2} & \multicolumn{4}{c}{B-EQ}\\",
-        r"\cmidrule(lr){3-6}\cmidrule(lr){7-10}",
-        r" & & \multicolumn{2}{c}{90\% cov.} & \multicolumn{2}{c}{skill} & \multicolumn{2}{c}{90\% cov.} & \multicolumn{2}{c}{skill}\\",
-        r"Stratum & origins & 30 & 90 & 30 & 90 & 30 & 90 & 30 & 90\\", r"\midrule",
+        r"\begin{tabular}{lrr rrrr rrrr}", r"\toprule",
+        r" & & & \multicolumn{4}{c}{V2} & \multicolumn{4}{c}{B-EQ}\\",
+        r"\cmidrule(lr){4-7}\cmidrule(lr){8-11}",
+        r" & & & \multicolumn{2}{c}{90\% cov.} & \multicolumn{2}{c}{skill} & \multicolumn{2}{c}{90\% cov.} & \multicolumn{2}{c}{skill}\\",
+        r"Stratum & origins & accounts & 30 & 90 & 30 & 90 & 30 & 90 & 30 & 90\\", r"\midrule",
         *lines, r"\bottomrule", r"\end{tabular}", ""]))
 
     ab = rowmap(RES / "heldout-ablations/ablations-paired.csv", "stratum", "method", "h")
@@ -345,7 +397,7 @@ def tables():
     lines = []
     for leg in fr:
         f, p = fr[leg], po[leg]
-        lines.append(f"{leg} & {f['golden_feed']} & {f['feeds_identical']}/{f['cases']} & {f['reports_identical']}/{f['cases']}"
+        lines.append(f"{leg[0]} & {f['golden_feed']} & {f['feeds_identical']}/{f['cases']} & {f['reports_identical']}/{f['cases']}"
                      f" & {p['golden_feed']} & {p['feeds_identical']}/{p['cases']} & {p['reports_identical']}/{p['cases']}" + r" \\")
     write_table("identity", "\n".join([
         r"\begin{tabular}{l lll lll}", r"\toprule",
@@ -439,6 +491,13 @@ def moneydata_flows():
             w.writerow(["category", "records", "share_of_gross", "largest"])
             for k, v in sorted(by.items(), key=lambda kv: -kv[1][1]):
                 w.writerow([k, v[0], f"{v[1] / total:.4f}", f"{v[2]:.2f}"])
+        iso = next(r["Transaction Date"] for r in rows if "-" in r["Transaction Date"])
+        y, a, b = iso.split("-")
+        (RES / "moneydata/date-example.csv").write_text(
+            f"key,value\nraw,{iso}\nrepaired,{y}-{b}-{a}\n")
+    ex = keyvalue_raw(RES / "moneydata/date-example.csv")
+    put("d/md-date-raw", ex["raw"])
+    put("d/md-date-repaired", ex["repaired"])
     flows = {r["category"]: r for r in csv.DictReader(open(out))}
     one_off = ["Supplementary Income", "Investment", "Account transfer"]
     put("d/md-irregular-share", f"{100 * sum(float(flows[c]['share_of_gross']) for c in one_off):.0f}")
@@ -461,8 +520,62 @@ def berka_span():
     keyvalue("berka", out)
 
 
+def drift_recount():
+    """Accounts excluded at drift thresholds of 50, 100 (applied) and 1,000
+    crowns, per split, with the code's rule (audit A2)."""
+    out = RES / "audit/drift-thresholds.csv"
+    path = ROOT / "data/berka/trans.tsv"
+    if path.exists():
+        mask = (1 << 64) - 1
+
+        def sm(x):
+            z = (x + 0x9E3779B97F4A7C15) & mask
+            z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & mask
+            z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & mask
+            return z ^ (z >> 31)
+        salt = int(re.search(r"SPLIT_SALT: u64 = (0x[0-9a-f_]+)",
+                             (ROOT / "crates/ephemeris-eval/src/split.rs").read_text()).group(1).replace("_", ""), 16)
+        accs = {}
+        with open(path) as f:
+            for r in csv.DictReader(f, delimiter="\t"):
+                sign = 1 if r["type"] == "PRIJEM" else -1
+                accs.setdefault(int(r["account_id"]), []).append(
+                    (r["date"], int(r["trans_id"]), sign * float(r["amount"]), float(r["balance"])))
+        counts = {}
+        for a, recs in accs.items():
+            recs.sort()
+            b, mx, i = recs[0][3] - recs[0][2], 0.0, 0
+            while i < len(recs):
+                d, rep_ = recs[i][0], []
+                while i < len(recs) and recs[i][0] == d:
+                    b += recs[i][2]
+                    rep_.append(recs[i][3])
+                    i += 1
+                mx = max(mx, min(abs(x - b) for x in rep_))
+            split = "development" if sm(salt ^ a) % 100 < int(VALUES["c/dev-percent"]) else "held-out"
+            c = counts.setdefault(split, [0, 0, 0, 0])
+            c[0] += 1
+            for j, t in enumerate((50, 100, 1000), 1):
+                c[j] += mx > t
+        with open(out, "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
+            w.writerow(["split", "accounts", "drift_over_50", "drift_over_100", "drift_over_1000"])
+            for k in ("development", "held-out"):
+                w.writerow([k, *counts[k]])
+    table("au/drift", out, ["split"])
+
+
+def checksums():
+    """The pinned SHA-256 of the raw files (paper/data.sha256)."""
+    for line in (ROOT / "paper/data.sha256").read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            h, name = line.split()
+            put(f"sha/{name}", h)
+
+
 def main():
     constants()
+    checksums()
     berka_span()
     specs = [
         ("ho/var", "heldout/variants.csv", ["method", "h"]),
@@ -471,6 +584,7 @@ def main():
         ("ho/str", "heldout/variants-strata.csv", ["stratum", "method", "h"]),
         ("ho/pair", "heldout-posthoc/pairwise-v2.csv", ["reference", "h"]),
         ("ho/abl", "heldout-ablations/ablations.csv", ["method", "h"]),
+        ("ho/tail", "heldout-posthoc/tails.csv", ["method", "h"]),
         ("ho/ablp", "heldout-ablations/ablations-paired.csv", ["stratum", "method", "h"]),
         ("dev/var", "dev/variants.csv", ["method", "h"]),
         ("dev/main", "dev/main.csv", ["method", "h"]),
@@ -497,6 +611,9 @@ def main():
                       ("dev/vdata", "dev/variants-data.csv"), ("syn/data", "synthetic/data.csv"),
                       ("md/data", "moneydata/data.csv"), ("fig/ex", "figures/example.csv")]:
         keyvalue(tag, RES / path)
+    table("au/est", RES / "audit/estimands-heldout.csv", ["comparison", "stratum", "h"])
+    keyvalue("au/prefix", RES / "audit/prefix-check-summary.csv")
+    drift_recount()
     tables()
     derived()
     moneydata_flows()
