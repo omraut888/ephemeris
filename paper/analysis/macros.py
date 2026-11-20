@@ -168,6 +168,17 @@ def constants():
     put("c/settle-days", c["synthetic/SETTLE_DAYS"])
     put("c/md-origin-step", c["moneydata/ORIGIN_STEP"])
     put("c/lgbm-rounds", c["lgbm/ROUNDS"])
+    dist_src = (ROOT / "crates/ephemeris-eval/src/dist.rs").read_text()
+    put("c/crps-grid", re.search(r"pub const CRPS_GRID: usize = (\d+);", dist_src).group(1))
+    lv = re.search(r"^LEVELS = \[([0-9., ]+)\] \+ \[round\(0\.05 \* i, 2\) for i in range\(1, (\d+)\)\] \+ \[([0-9., ]+)\]",
+                   (ROOT / "paper/baselines/lgbm.py").read_text(), re.M)
+    head = [float(x) for x in lv.group(1).split(",")]
+    tail = [float(x) for x in lv.group(3).split(",")]
+    put("c/qf-levels", str(len(head) + int(lv.group(2)) - 1 + len(tail)))
+    put("c/qf-lo", integer(100 * head[0]))
+    put("c/qf-hi", integer(100 * tail[-1]))
+    aci = c["variants/ACI_LEVELS"].strip("[]").split(",")
+    put("c/v1-levels", str(2 * len(aci) + 1))
     put("c/train-seeds", str(eval(c["synthetic/TRAIN_SEEDS"].replace("..", ",").join(["len(range(", "))"]))))
     base = (ROOT / "crates/ephemeris-eval/src/baselines.rs").read_text()
     put("c/b30-window", re.search(r"bal\[t - (\d+)\.\.=t\]", base).group(1))
@@ -520,6 +531,9 @@ def berka_span():
     keyvalue("berka", out)
 
 
+DRIFT_THRESHOLDS = (50, 100, 1000)
+
+
 def drift_recount():
     """Accounts excluded at drift thresholds of 50, 100 (applied) and 1,000
     crowns, per split, with the code's rule (audit A2)."""
@@ -555,7 +569,7 @@ def drift_recount():
             split = "development" if sm(salt ^ a) % 100 < int(VALUES["c/dev-percent"]) else "held-out"
             c = counts.setdefault(split, [0, 0, 0, 0])
             c[0] += 1
-            for j, t in enumerate((50, 100, 1000), 1):
+            for j, t in enumerate(DRIFT_THRESHOLDS, 1):
                 c[j] += mx > t
         with open(out, "w", newline="") as f:
             w = csv.writer(f, lineterminator="\n")
@@ -563,6 +577,8 @@ def drift_recount():
             for k in ("development", "held-out"):
                 w.writerow([k, *counts[k]])
     table("au/drift", out, ["split"])
+    put("c/drift-low", integer(DRIFT_THRESHOLDS[0]))
+    put("c/drift-high", integer(DRIFT_THRESHOLDS[2]))
 
 
 def checksums():
