@@ -163,8 +163,14 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal"])]
         what: String,
+        /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
+        /// logged like the frozen evaluation, with a required reason.
+        #[arg(long)]
+        held_out: bool,
+        #[arg(long)]
+        rerun_reason: Option<String>,
         #[arg(long, default_value = "data/berka")]
         data: PathBuf,
         #[arg(long)]
@@ -260,7 +266,9 @@ fn main() -> ExitCode {
             data,
             out,
             threads,
-        } => explore(&what, &data, &out, threads),
+            held_out,
+            rerun_reason,
+        } => explore(&what, &data, &out, threads, held_out, rerun_reason),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -643,6 +651,16 @@ fn prefix_check(
 
 /// The development accounts (all of them, or only those the frozen drift
 /// rule keeps).
+/// The accounts of one split that the frozen drift rule keeps.
+fn split_accounts(data: &Path, split: Split) -> Result<Vec<Account>, String> {
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    Ok(accounts
+        .into_values()
+        .filter(|a| split_of(a.id) == split)
+        .filter(|a| a.stats().max_drift <= MAX_DRIFT_CZK)
+        .collect())
+}
+
 fn dev_accounts(data: &Path, kept_only: bool) -> Result<Vec<Account>, String> {
     let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
     Ok(accounts
@@ -652,8 +670,28 @@ fn dev_accounts(data: &Path, kept_only: bool) -> Result<Vec<Account>, String> {
         .collect())
 }
 
-fn explore(what: &str, data: &Path, out: &Path, threads: usize) -> Result<(), String> {
+fn explore(
+    what: &str,
+    data: &Path,
+    out: &Path,
+    threads: usize,
+    held_out: bool,
+    rerun_reason: Option<String>,
+) -> Result<(), String> {
     use ephemeris_eval::explore as ex;
+    if held_out {
+        if !["berka", "bglobal"].contains(&what) {
+            return Err(format!("`{what}` has no held-out mode"));
+        }
+        if rerun_reason.is_none() {
+            return Err("an exploratory held-out run needs --rerun-reason".into());
+        }
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        guard_held_out(rerun_reason.as_deref(), &args.join(" "))?;
+    } else if what == "bglobal" {
+        return Err("`bglobal` is the held-out mode of S7; use --held-out".into());
+    }
+    let split = if held_out { Split::HeldOut } else { Split::Dev };
     use ephemeris_eval::synthetic::{
         GRID_REGULARITY, GRID_SEEDS, GRID_SPARSITY, grid_config, grid_seed, parallel_map,
     };
@@ -720,8 +758,35 @@ fn explore(what: &str, data: &Path, out: &Path, threads: usize) -> Result<(), St
             }
             write(&out.join("crossings.csv"), &c)?;
         }
+        "bglobal" => {
+            // Train on development features only; predict held-out origins.
+            let py = Command::new("paper/.venv/bin/python")
+                .args([
+                    "-I",
+                    "paper/baselines/lgbm_cf.py",
+                    "--features",
+                    "paper/build/berka-dev/features.csv",
+                    "--predict",
+                    "paper/build/heldout/berka/features.csv",
+                    "--out",
+                ])
+                .arg(out)
+                .status()
+                .map_err(|e| format!("python: {e}"))?;
+            if !py.success() {
+                return Err("lgbm_cf.py failed".into());
+            }
+            for v in ["cf", "cut"] {
+                score_quantiles(
+                    Path::new("paper/build/heldout/berka/features.csv"),
+                    &out.join(format!("quantiles-{v}.csv")),
+                    &format!("B-GLOBAL-{v}"),
+                    &out.join(format!("rows-{v}.csv")),
+                )?;
+            }
+        }
         "berka" => {
-            let accts = dev_accounts(data, true)?;
+            let accts = split_accounts(data, split)?;
             let items: Vec<(&Account, i32)> = accts
                 .iter()
                 .flat_map(|a| {

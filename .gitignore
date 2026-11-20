@@ -14,3 +14,4 @@ data/moneydata/
 # The paper's Python environment and LaTeX build output.
 paper/.venv/
 paper/build/
+__pycache__/

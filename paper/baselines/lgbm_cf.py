@@ -17,6 +17,11 @@ Only the training rows change.
   CUTOFF.
 Fits run in parallel processes. Each is deterministic, so the output does
 not depend on the order.
+
+With --predict (the exploratory held-out run, paper/PROGRESS.md D1.3): it
+trains on the --features (development) rows only, with the same
+outcome-date rules and no folds, and predicts the --predict (held-out)
+origins.
 """
 import argparse
 import datetime
@@ -68,12 +73,64 @@ def job(args):
     return variant, test, lgbm.predict_block(train, test, s["X"], s["y"], s["names"]), len(train)
 
 
+def init_pair(train_path, predict_path):
+    init(train_path)
+    names2, X2, _, h2, _, keys2 = lgbm.load(predict_path)
+    if names2 != STATE["names"]:
+        sys.exit("feature columns differ between train and predict files")
+    origin2 = np.array([datetime.date.fromisoformat(k[1]).toordinal() for k in keys2])
+    STATE.update(X2=X2, h2=h2, origin2=origin2)
+
+
+def job_pair(args):
+    variant, hz, lo, hi = args
+    s = STATE
+    test = np.where((s["h2"] == hz) & (s["origin2"] >= lo) & (s["origin2"] < hi))[0]
+    train = np.where((s["h"] == hz) & (s["outcome"] < lo))[0]
+    if len(test) == 0 or len(train) < MIN_TRAIN:
+        return variant, test, None, len(train)
+    out = np.zeros((len(test), len(lgbm.LEVELS)))
+    for j, a in enumerate(lgbm.LEVELS):
+        out[:, j] = lgbm.fit(s["X"][train], s["y"][train], a, s["names"]).predict(s["X2"][test])
+    return variant, test, out, len(train)
+
+
+def main_pair(a):
+    init_pair(a.features, a.predict)
+    jobs = []
+    for hz in lgbm.HORIZONS:
+        for lo, hi in quarters():
+            jobs.append(("cf", hz, lo, hi))
+        jobs.append(("cut", hz, CUTOFF.toordinal(), 10**9))
+    n = len(STATE["h2"])
+    preds = {"cf": np.full((n, len(lgbm.LEVELS)), np.nan), "cut": np.full((n, len(lgbm.LEVELS)), np.nan)}
+    skipped = {"cf": 0, "cut": 0}
+    with ProcessPoolExecutor(max_workers=a.jobs, initializer=init_pair, initargs=(a.features, a.predict)) as pool:
+        for variant, test, p, ntrain in pool.map(job_pair, jobs):
+            if p is None:
+                skipped[variant] += len(test)
+            else:
+                preds[variant][test] = p
+    out = pathlib.Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    _, _, _, _, _, keys2 = lgbm.load(a.predict)
+    for variant, p in preds.items():
+        ok = ~np.isnan(p[:, 0])
+        lgbm.write(out / f"quantiles-{variant}.csv", [k for k, o in zip(keys2, ok) if o], p[ok])
+        print(f"{variant}: predicted {int(ok.sum())} of {n}; without enough training rows {skipped[variant]}",
+              file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--features", required=True)
+    ap.add_argument("--predict")
     ap.add_argument("--out", required=True)
     ap.add_argument("--jobs", type=int, default=8)
     a = ap.parse_args()
+    if a.predict:
+        main_pair(a)
+        return
     init(a.features)
     jobs = []
     for hz in lgbm.HORIZONS:

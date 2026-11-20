@@ -1,0 +1,34 @@
+# Progress log (autonomous session, started 2026-11-21)
+
+*(The summary goes here at the end.)*
+
+## Step log
+
+### Step 1: exploratory held-out runs
+
+Plan:
+- **(a)** Add a guarded held-out mode to `ephemeris-eval explore berka`.
+  It uses the same guard as the frozen held-out run: a clean tree, a
+  logged entry with its reason, refused without `--rerun-reason`.
+- **(b)** Add `ephemeris-eval explore bglobal-heldout`, which calls the
+  guard and then runs `lgbm_cf.py` in a new development-to-held-out mode.
+
+Decisions:
+- **D1.1 Which held-out accounts.** The frozen held-out accounts after the
+  drift exclusion (3,569) and the frozen eligibility. They are the same
+  origins as the frozen held-out run, so the comparisons are on common
+  origins with the frozen V0, V2, B-EQ, B-SA+ and B-GLOBAL rows.
+- **D1.2 Frozen rows are read, not rewritten.** They come from
+  `paper/build/heldout/` (the first run's stored forecasts). Nothing in
+  `paper/results/heldout*` is touched; new results go to
+  `paper/results/exploratory-heldout/`.
+- **D1.3 B-GLOBAL on held-out.** "Without look-ahead, trained only on
+  development data before the cutoff":
+  - G-cut: one model per horizon, trained on all development rows with
+    outcome before 1996-07-01, predicting held-out origins on or after
+    1996-07-01;
+  - G-cf: per quarter, trained on development rows with outcome before
+    the quarter's start, predicting held-out origins in that quarter.
+  
+  Both use the frozen features, hyperparameters and levels. There are no
+  folds, because training and prediction sets are disjoint by split.
