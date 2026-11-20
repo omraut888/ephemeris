@@ -901,28 +901,29 @@ UniFFI and the iOS targets are not part of it. Every later commit touched only
 the result still applies to the shipped engine. Any extra feeds added for
 C1 are checked on this Mac only, unless the workflow is extended to them.
 
-### C1, extended to 100 generated cases: FALSIFIED (2026-11-18)
+### C1 for the frozen engine, extended to 100 generated cases: FALSIFIED (2026-11-18)
 
-Results: `paper/results/identity/`.
+This is the outcome for the engine as frozen in §10 (core at `69feb54`),
+and it stands as the pre-registered result. Any later fix is reported
+separately, as a post-freeze result. Results: `paper/results/identity/`.
 - **What agrees.** Native arm64 (debug and release) and UniFFI reproduce
   all 100 generated cases.
 - **What differs.** WASM under Node reproduces all 100 feeds but only 99
-  reports. Case 54 differs in one quantile by one ulp.
+  reports. In case 54, one quantile on forecast day 96 differs by one ulp:
+  `11773.822056226314` natively, `11773.822056226316` in WASM.
 - **The cause.** `rand_distr`'s `f64` normal and exponential samplers call
-  std's `exp`/`ln` in a std build. That is the platform's math natively
-  and Rust's libm port in WASM; on this Mac the two disagree on about 7–10%
-  of inputs.
+  std's `exp`/`ln` in a std build. That is Apple's libm natively and Rust's
+  math port in WASM; on this Mac the two disagree on about 7–10% of inputs.
 - **Why C1 seemed to hold.** The single golden feed never hit a
   disagreement, so the x86_64 run and every earlier check passed.
 
-A fix changes the engine, so it waits for approval. It is listed in the
-checkpoint report. The WASM identity test is `#[ignore]`d with this reason,
-not deleted.
+The WASM identity test is `#[ignore]`d with this reason, not deleted,
+until the post-freeze fix.
 
-**Not assessed by these runs:**
-- A1 (synthetic, model-matched);
-- B2 (realistic generator);
-- C1 (bit identity across 100 feeds).
+**Not assessed by the held-out runs:** A1 (synthetic, model-matched),
+B2 (realistic generator) and C1 (bit identity). They were assessed
+afterwards: `paper/results/synthetic/`, `paper/results/identity/`, and the
+C1 section above.
 
 ## References found while planning
 
