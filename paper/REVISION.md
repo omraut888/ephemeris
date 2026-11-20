@@ -417,3 +417,21 @@ G-orig, G-cf, G-cut, V2, B-EQ and B-SA+. Metrics as above.
 **A reduced version, recorded before running.** V2, B-EQ and B-SA+ on the
 frozen rule's grid shifted by +10 and +20 days. V1 (its calibration grid)
 and B-GLOBAL (the fits) are dropped to stay under 30 minutes.
+
+## Changes and notes recorded during the runs (2026-11-21)
+
+- **S1.** Rule P selected exactly the same origins as rule F on
+  development: 27,855 each, none added or removed. Every drift-excluded
+  account already drifts by at least 500 at its first grid origin. The
+  planned rerun under P is therefore identical to F and was not repeated.
+- **S3, the summary script.** The first version renamed the fresh V2 rows
+  before filtering by method name, so the "V2 identity" check compared
+  nothing (0/0). Fixed before any conclusion was drawn. The comparisons
+  themselves used the frozen V2 rows throughout. After the fix, 83,564 of
+  83,565 fresh V2 rows equal the frozen ones. The one that differs
+  (account 5984, 1996-03-30, h = 90) differs in the last digit of its
+  median, with identical coverage, CRPS and PIT. This is the post-freeze
+  `rand_distr` fix (paper §8): the exploratory runs use the fixed engine.
+- **S8.** Added offset 0 to the shifted grids before running, as a check:
+  its rows must equal the frozen development rows. This adds no new
+  analysis.
