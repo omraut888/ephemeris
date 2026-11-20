@@ -669,10 +669,11 @@ fn discretionary(
             if mean_amount == 0.0 {
                 return Vec::new();
             }
-            // E[exp(mu + s·Z)] = exp(mu + s²/2) = mean_amount.
-            let mu = mean_amount.ln() - sigma_log * sigma_log / 2.0;
+            // E[exp(mu + s·Z)] = exp(mu + s²/2) = mean_amount. `libm`, not
+            // std, so the generator is bit-identical natively and in WASM.
+            let mu = libm::log(mean_amount) - sigma_log * sigma_log / 2.0;
             (0..count)
-                .map(|_| -normal(rng, mu, sigma_log).exp())
+                .map(|_| -libm::exp(normal(rng, mu, sigma_log)))
                 .collect()
         }
         (SpendModel::PoissonLogNormal { .. }, None) => Vec::new(),

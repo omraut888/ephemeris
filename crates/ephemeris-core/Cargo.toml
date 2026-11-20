@@ -22,7 +22,12 @@ nalgebra = { version = "0.35", default-features = false, features = ["libm"] }
 libm = "0.2.16"
 rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
-rand_distr = "0.6"
+# No default features: its `std` feature links std into the crate, and then
+# its f64 normal and exponential samplers call std's exp/ln (the platform's
+# libm natively, Rust's port in WASM), which differ by an ulp on some inputs.
+# Without it, they go through num-traits' `libm` path, pure Rust everywhere
+# (paper/PLAN.md §11, C1). Keep `std` and `std_math` off.
+rand_distr = { version = "0.6", default-features = false }
 serde = { version = "1", features = ["derive"], optional = true }
 # Only with `json`; already in the graph through the CLI and WASM crates.
 serde_json = { version = "1", features = ["float_roundtrip"], optional = true }
