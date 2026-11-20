@@ -1,0 +1,19 @@
+group,measure,n,q25,median,q75
+G1 drift-excluded,records_per_month,19,5.326,5.559,6.012
+G1 drift-excluded,volatility,19,0.239,0.292,0.400
+G1 drift-excluded,income_share,19,0.250,0.818,1.000
+G1 kept,records_per_month,871,4.814,5.467,6.398
+G1 kept,volatility,870,0.247,0.322,0.420
+G1 kept,income_share,866,0.000,0.500,1.000
+"G2 kept, no eligible origin",records_per_month,5,0.978,0.994,1.120
+"G2 kept, no eligible origin",volatility,4,1.665,1.781,2.076
+"G2 kept, no eligible origin",income_share,0,,,
+"G2 kept, with eligible origins",records_per_month,866,4.825,5.471,6.411
+"G2 kept, with eligible origins",volatility,866,0.247,0.321,0.419
+"G2 kept, with eligible origins",income_share,866,0.000,0.500,1.000
+G3 eligible origins,records_180,27855,30.000,35.000,41.000
+G3 eligible origins,daily_sd_over_s,27855,0.111,0.123,0.138
+G3 failing min-records (scale defined),records_180,433,6.000,6.000,10.000
+G3 failing min-records (scale defined),daily_sd_over_s,433,0.163,0.198,0.262
+G3 failing min-records (all),records_180,452,6.000,6.000,10.000
+G3 failing min-records (all),daily_sd_over_s,433,0.163,0.198,0.262
