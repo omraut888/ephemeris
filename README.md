@@ -109,6 +109,21 @@ are in docs/phase1-design.md and docs/sandbox-comparison.md.
   around the old spend rate: 44% coverage of the 90% interval one week
   after a doubling. A halving of spending is found slowly, and a pay cut
   only at the second short paycheck.
+- **The "chance of dipping below $0" is badly over-predicted on real
+  data.** On the Berka bank data (the paper's exploratory overdraft-event
+  analysis, development split), going below $0 within 7–90 days is rare
+  (0.7–1.8% of forecasts). No method tested beats the account's own
+  historical frequency for it: the paper's V2 configuration, a
+  filter-free variant, and two empirical competitors. Every method was
+  too pessimistic about dips. The shipped default (V0) was not tested on
+  this event. Treat the probability as a cautious upper estimate, not a
+  calibrated one. Details: paper/results/exploratory/s5-overdraft/.
+- **The cone's centre is not calibrated on real data.** With the paper's
+  selected configuration (V2: sparse spending, an opt-in engine option),
+  the 50% band on held-out Berka accounts covers 64–71% of outcomes: it
+  is too wide at the centre, while its 90% band holds. The shipped
+  default (V0) errs the other way on the same data: its 50% band covers
+  about 27% at 30 and 90 days (too narrow). Details: paper/results/heldout/.
 - **Real-data validation is thin.** The only real-shaped data is one Plaid
   sandbox item: one checking account, a perfectly flat weekly payroll, two
   monthly streams, static balances (so the reconstructed balance history is

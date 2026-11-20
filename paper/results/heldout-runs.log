@@ -1,3 +1,4 @@
 # Every held-out evaluation run: UTC time, commit, arguments, reason.
 2026-11-16T20:05:33Z	a5cbc9fd065f639ec3c1d16580b06d5424149e33	heldout --out paper/build/heldout	first run
 2026-11-17T04:27:12Z	ae6b74a1e5c7e8b62f598e7cd528f4c4fa0b3667	heldout-ablations --out paper/build/heldout-ablations --rerun-reason pre-registered D1 ablations, omitted from the first held-out run by a harness gap; primary results already committed in cdf070d	pre-registered D1 ablations, omitted from the first held-out run by a harness gap; primary results already committed in cdf070d
+2026-11-20T23:57:02Z	3b433c0ecd2607e88ca342561fafdaa6e7b91fa5	explore berka --held-out --rerun-reason exploratory: reversal decomposition, overdraft events, V2 ablations; post-review; primary results frozen in cdf070d --out paper/build/explore-heldout/berka	exploratory: reversal decomposition, overdraft events, V2 ablations; post-review; primary results frozen in cdf070d

@@ -32,3 +32,13 @@ Decisions:
   
   Both use the frozen features, hyperparameters and levels. There are no
   folds, because training and prediction sets are disjoint by split.
+
+### Step 2: README known gaps (done)
+
+**D2.1 Wording.** The shipped app runs the engine's defaults, which is V0,
+not V2. "Over-wide at the centre" is true of V2 on held-out Berka (50%
+coverage 64–71%). The shipped V0 is too narrow there instead (about 27% at
+30 and 90 days). The below-$0 over-prediction was measured for V2,
+CP-noKF, B-EQp and B-SRp, not for V0. The README says exactly that rather
+than attributing V2's properties to the app. No app behaviour was
+changed.
