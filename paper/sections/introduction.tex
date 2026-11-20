@@ -14,66 +14,66 @@ model is fitted to one account at a time and nothing is pooled across users.
 That rules out the strongest generic approach, a global model trained on
 many accounts, which we nevertheless include as a reference point. The
 second is \emph{reproducibility}: the same feed and seed should give the
-same forecast, byte for byte, on a phone, a laptop and in a browser, so that
-a forecast can be audited anywhere.
+same forecast, byte for byte, on each target the application builds.
 
 The forecaster is a three-state Kalman filter \citep{kalman1960} over the
 balance, the daily discretionary spending rate and the expected paycheck,
 with known paychecks and bills entering as control inputs. Its noise
-variances adapt by covariance matching \citep{mehra1970,myers1976}, outlying
-spending is clipped by a gate and resampled in the forecast, and a CUSUM
-detector \citep{page1954} widens the state covariance after a regime change.
-A Monte Carlo simulation from the filtered state gives the cone
-(\S\ref{sec:method}).
+variances adapt in the manner of covariance matching
+\citep{mehra1970,myers1976}. Outlying spending is clipped by a gate and
+resampled in the forecast, and a CUSUM detector \citep{page1954} widens the
+state covariance after a regime change. A Monte Carlo simulation from the
+filtered state gives the cone (\S\ref{sec:method}).
 
-We evaluated it under a pre-registered plan (\S\ref{sec:protocol}).
-The plan fixed the claims, the pass/fail thresholds, the baselines and
-the metrics; its commit precedes every real-data result, although its
-earliest independent timestamp does not (\S\ref{sec:timeline}). When the original model failed
-on the development split, a revision rule written before any revision code
-chose among four candidate variants. The chosen variant was frozen, and the
-held-out split was then run once, by a command that refuses a second run
-without a logged reason.
+The evaluation followed a written analysis plan (\S\ref{sec:protocol}).
+The plan fixed the claims, the pass/fail thresholds, the baselines and the
+metrics. Its commit precedes every real-data result, but the earliest
+independent timestamp of it does not (\S\ref{sec:timeline}). When the
+original model failed on the development split, a revision rule written
+before any revision code chose among four candidate variants. The chosen
+variant was frozen, and GitHub received the freeze before the main
+held-out evaluation. That evaluation ran once, by a command that refuses a
+second run without a logged reason. A separately logged run followed, for
+ablations the first run had omitted, after the main results were known.
 
 \paragraph{Contributions, including what failed.}
 \begin{enumerate}
-\item \textbf{A real-data evaluation that is pre-registered and auditable.}
-  It covers \R{ho/data/accounts_total} Berka accounts, split
-  \R{c/dev-percent}/\R{c/heldout-percent} by a hash of the account id into
-  development and held-out sets. It includes a commit timeline whose
-  GitHub push times the author cannot backdate (Table~\ref{tab:timeline}),
-  and every deviation and post-hoc analysis is listed.
-\item \textbf{A negative result on sharpness.} On held-out accounts the
-  selected model, V2, beats the probabilistic schedule-aware baseline. It
-  loses at \hB\ and \hC\ days to two baselines: an empirical-quantile
-  forecast that uses only the account's own history, and a gradient-boosted
-  model pooled across accounts (\S\ref{sec:results}). The pre-registered
-  sharpness claim therefore fails against both.
-\item \textbf{A partial result on calibration.} V2's \lC\% and \lD\%
-  intervals are calibrated on held-out data. Its \lA\% intervals cover far
-  too much, so the pre-registered calibration claim fails. A conformal
-  recalibration of the original model (V1) is the best-calibrated variant
-  at every level but lost the selection on CRPS.
-\item \textbf{Regime detection measured two ways.} The pre-registered
-  ablation on real data contradicts the predicted benefit of the change
-  detector, but its ``after a change'' stratum is defined by the detector's
-  own alarms. A synthetic sweep with known change dates shows a large
-  benefit after large changes on model-matched data, little CRPS benefit
-  on the realistic generator, and a cost when a downward change goes
-  undetected (\S\ref{sec:regime}).
+\item \textbf{A documented, auditable real-data evaluation.} It covers
+  \R{ho/data/accounts_total} Berka accounts, split
+  \R{c/dev-percent}/\R{c/heldout-percent} by a hash of the account id. It
+  reports the commit timeline with GitHub's push times
+  (Table~\ref{tab:timeline}), every deviation and post-hoc analysis, and
+  a test that forecasts are unchanged when the input is truncated at the
+  forecast origin.
+\item \textbf{A negative result on CRPS.} On held-out accounts the selected
+  model, V2, has lower CRPS than the probabilistic schedule-aware
+  baseline. It has higher CRPS at \hB\ and \hC\ days than two baselines: an
+  empirical-quantile forecast from the account's own history, and a
+  gradient-boosted model pooled across accounts (\S\ref{sec:results}). The
+  planned CRPS claim therefore fails against both, under either way of
+  averaging the scores.
+\item \textbf{A partial result on calibration.} V2's \lC\% intervals meet
+  the planned band at every horizon. Its \lD\% interval does at \hB\ and
+  \hC\ days and is inconclusive at \hA. Its \lA\% intervals cover far too
+  much, so the planned calibration claim fails. V2 misses below its \lC\%
+  interval less often than nominal. A conformal recalibration of the
+  original model (V1) is the best-calibrated variant but lost the
+  selection on CRPS.
+\item \textbf{Regime detection measured two ways.} On real data, the
+  comparison with the detector removed is descriptive only, because its
+  ``after a change'' stratum is defined by the detector's own alarms. A
+  synthetic sweep with known change dates shows a large benefit after large
+  changes on model-matched data. On the realistic generator the effect on
+  CRPS is imprecise, and the detector costs CRPS when a downward change
+  goes undetected (\S\ref{sec:regime}).
 \item \textbf{Bit identity, falsified and then fixed.} The frozen engine
-  produced one report in \R{id/frozen/wasm32-under-node/cases} that differed
-  by one unit in the last place between native code and WebAssembly, which
-  falsifies the pre-registered identity claim. We trace it to a dependency
-  feature that contradicted the design document from the start, fix it
-  after the freeze, and show the fix left the re-checked frozen forecasts
-  unchanged (\S\ref{sec:identity}).
+  was not byte-identical across native code and WebAssembly. We give the
+  cause, a post-freeze fix and the tested matrix (\S\ref{sec:identity}).
 \end{enumerate}
 
 The method is a composition of known parts, and we do not claim novelty
-for the parts. The question the paper answers is narrower. Does careful,
-problem-specific modelling produce a forecast that is both calibrated and
-sharper than simple alternatives, when tested honestly on real accounts?
-The answer on Berka is: calibrated at the levels that matter most for
-overdraft risk, sharper than the schedule-aware baseline, and not sharper
-than an empirical baseline built from the same account's history.
+for the parts. The question the paper answers is narrower. On sparse,
+booked bank accounts, does careful state-space modelling give lower CRPS
+than simple alternatives built from the same account's history? On Berka
+it does against a schedule-aware baseline, and it does not against an
+empirical distribution of the account's own balance changes.

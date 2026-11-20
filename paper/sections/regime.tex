@@ -1,32 +1,33 @@
 \section{Regime detection: real data and known change dates}
 \label{sec:regime}
 
-\paragraph{What the held-out ablation says.} The plan predicted two things
-about the detector (claim D1). Without it, CRPS would be about \R{c/d1-detector-pred}\% better
-at \hC\ days when nothing changes, and coverage would be much worse in the
-four weeks after a change. On held-out Berka both predictions are reversed,
-with intervals excluding zero (Table~\ref{tab:ablations}). At origins with
-no alarm in the previous four weeks, removing the detector makes CRPS
-\emph{worse}: skill \R{ho/ablp/no-recent-alarm/abl-no-detector/90/skill@3}
+\paragraph{What the real data can show.} The plan predicted two things
+about the detector (claim D1). Without it, CRPS would be about
+\R{c/d1-detector-pred}\% better at \hC\ days when nothing changes, and
+coverage would be much worse in the four weeks after a change. Berka has
+no record of when a person's spending actually changed. Both strata are
+therefore defined by the \emph{full model's own} alarms: origins are
+selected because the detector fired or stayed silent, and the
+detector-off forecast is then judged on origins chosen by the detector-on
+model. A false alarm, whose jump widens the cone for nothing, lands in the
+``after a change'' stratum by construction. The comparison in these
+strata is therefore descriptive only.
+
+Descriptively, at origins with no alarm in the previous four weeks,
+removing the detector raises CRPS: skill
+\R{ho/ablp/no-recent-alarm/abl-no-detector/90/skill@3}
 [\R{ho/ablp/no-recent-alarm/abl-no-detector/90/skill_lo@3},
-\R{ho/ablp/no-recent-alarm/abl-no-detector/90/skill_hi@3}] at \hC\ days.
-At origins within four weeks after an alarm, removing it \emph{raises}
-\lC\% coverage, by
+\R{ho/ablp/no-recent-alarm/abl-no-detector/90/skill_hi@3}] at \hC\ days
+(positive would mean the detector-free model is better). At origins within
+four weeks after an alarm, removing it raises \lC\% coverage, by
 \R{ho/ablp/regime-alarm-in-last-28-days/abl-no-detector/30/cov90_diff} and
 \R{ho/ablp/regime-alarm-in-last-28-days/abl-no-detector/90/cov90_diff}
-points at \hB\ and \hC\ days.
-
-\paragraph{Why that comparison is partly circular.} Berka has no record of
-when a person's spending actually changed. The ``after a change'' stratum
-is therefore defined by the \emph{full model's own} alarms. Those origins
-were selected because the detector fired, and the detector-off forecast
-is then judged on origins chosen by the detector-on model. A false alarm,
-whose jump widens the cone for nothing, lands in this stratum by
-construction, and nothing in the stratum certifies that a real change
-occurred. The quiet stratum is selected the same way. The held-out result
-is a fact about Berka, but it cannot separate ``the detector reacts to
-noise'' from ``Berka has few sustained changes of the kind the detector
-models''.
+points at \hB\ and \hC\ days. Over all origins, which no alarm selects,
+removing the detector raises CRPS slightly
+(\R{ho/ablp/all/abl-no-detector/30/skill@3} and
+\R{ho/ablp/all/abl-no-detector/90/skill@3}). These numbers cannot
+separate ``the detector reacts to noise'' from ``Berka has few sustained
+changes of the kind the detector models''.
 
 \paragraph{The clean test: known change dates.} The synthetic sweep steps
 the spending rate or the paycheck by a known factor on a known day, and
@@ -48,11 +49,11 @@ Figure~\ref{fig:detector}).
   (realistic). Detection needs the CUSUM's delay, a median of
   \R{syn/det/matched-spend-x2/detector/median_detect_days} and
   \R{syn/det/realistic-spend-x2/detector/median_detect_days} days.
-\item \textbf{Realistic data: coverage, not CRPS.} After a doubling on the
-  realistic generator the detector restores much of the coverage
-  (\R{syn/cov/realistic-spend-x2/28/detector/30/cov90}\% against
-  \R{syn/cov/realistic-spend-x2/28/no-detector/30/cov90}\% four weeks
-  after). Its CRPS gain is not significant:
+\item \textbf{Realistic data: coverage; the CRPS effect is imprecise.}
+  After a doubling on the realistic generator the detector restores much
+  of the coverage (\R{syn/cov/realistic-spend-x2/28/detector/30/cov90}\%
+  against \R{syn/cov/realistic-spend-x2/28/no-detector/30/cov90}\% four
+  weeks after). Its effect on CRPS is imprecisely estimated:
   \R{syn/rpair/realistic-spend-x2/28/30/skill}
   [\R{syn/rpair/realistic-spend-x2/28/30/skill_lo},
   \R{syn/rpair/realistic-spend-x2/28/30/skill_hi}].
@@ -70,12 +71,10 @@ Figure~\ref{fig:detector}).
   is \R{d/fa-matched} a year on model-matched data and \R{d/fa-realistic}
   on realistic data.
 \end{itemize}
-So the detector does what it was built for, when changes are large and
-the data resemble the model. It is weak for downward changes in skewed
-spending. The held-out ablation does not contradict this, because it does
-not observe true change dates. It does show that on Berka the detector's
-alarms are not, on balance, followed by forecasts that the detector-free
-model gets wrong.
+So, on synthetic data with known change dates, the detector helps after
+large changes when the data resemble the model, and it is weak for
+downward changes in skewed spending. Whether it helps after true changes
+on real accounts, these data cannot say.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/detector-synthetic.pdf}

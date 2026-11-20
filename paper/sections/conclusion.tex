@@ -1,56 +1,66 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Table~\ref{tab:claims} lists every pre-registered claim and its outcome.
-A Kalman-filter Monte Carlo forecaster, revised by a rule fixed in advance
-and then frozen, gives calibrated \lC\% and \lD\% intervals for bank
-balances on held-out real accounts. It is clearly better than a careful
-schedule-aware baseline. But its \lA\% intervals are too wide, and a
-simple empirical forecast built from the same account's history is
-sharper at \hB\ and \hC\ days. A model pooled across accounts is sharper
-still, which a local-first design gives up by choice.
+Table~\ref{tab:claims} lists every claim in the analysis plan and its
+outcome. On held-out sparse bank accounts, a Kalman-filter Monte Carlo
+forecaster has these properties. It was revised by a rule fixed in
+advance and then frozen.
+\begin{itemize}
+\item Its \lC\% intervals meet the planned band, and it misses below them
+  less often than nominal.
+\item It has lower CRPS than a careful schedule-aware baseline.
+\item Its \lA\% intervals are too wide.
+\item A simple empirical forecast built from the same account's history
+  has lower CRPS at \hB\ and \hC\ days, with narrower intervals.
+\item A model pooled across accounts has lower CRPS still. A local-first
+  design gives that up by choice.
+\end{itemize}
+We have not evaluated the probability of crossing a threshold such as
+zero, which is what an overdraft warning needs.
 
-The pre-registration did its job. The original model's failure, the
+The analysis plan did its job. The original model's failure, the
 revision, the losses to two baselines, the omitted ablations and the
 cross-platform difference are all reported because the plan fixed the
-tests before the results existed. The most useful next steps follow from
-the failures:
+tests before the held-out results existed. The next steps follow from the
+failures:
 \begin{itemize}
-\item select on calibration at every level, not just \lC\%, where V1
-  already does well;
-\item combine the model's schedule with the empirical distribution of the
-  account's own changes;
+\item understand why the empirical baseline wins, by varying sparsity and
+  schedule regularity, and by ablating V2 itself;
+\item evaluate overdraft events directly;
+\item select on calibration at every level, where V1 already does well;
 \item test on modern accounts with pending transactions.
 \end{itemize}
 
 \begin{table}[t]
 \centering\footnotesize
-\begin{tabular}{p{0.07\linewidth}p{0.42\linewidth}p{0.40\linewidth}}
+\begin{tabular}{p{0.07\linewidth}p{0.40\linewidth}p{0.42\linewidth}}
 \toprule
-Claim & Pre-registered test & Outcome \\
+Claim & Test fixed in the plan & Outcome \\
 \midrule
 A1 & Synthetic, model-matched: every interval within $\pm\R{c/a1-tol-off}$
   points (detector off) and $\pm\R{c/a1-tol-on}$ (on) & \textbf{Holds} in
   every cell (Table~\ref{tab:a1}) \\
 A2 & Held-out: every interval within $\pm\R{c/a2-tol}$ points at \hA\ and
-  \hB\ days, $\pm\R{c/a2-tol-90}$ at \hC\ & \textbf{Fails}: \lA\% at every
-  horizon and \lB\% at \hB\ days; \lC\% and \lD\% hold \\
-B1 & Held-out: skill $>0$ against each baseline at \hB\ and \hC\ days &
-  \textbf{Holds} against B-SA+, B-30, B-LIN, B-SA, B-SEAS;
-  \textbf{fails} against B-EQ and B-GLOBAL \\
+  \hB\ days, $\pm\R{c/a2-tol-90}$ at \hC & \textbf{Fails}:
+  \R{a2/count/fail} cells fail (\lA\% at every horizon, \lB\% at \hB\
+  days), \R{a2/count/pass} pass, \R{a2/count/inconclusive} inconclusive
+  (Table~\ref{tab:a2}) \\
+B1 & Held-out: CRPS skill $>0$ against each baseline at \hB\ and \hC\
+  days & \textbf{Holds} against B-SA+, B-30, B-LIN, B-SA, B-SEAS;
+  \textbf{fails} against B-EQ and B-GLOBAL, under either aggregation \\
 B2 & Realistic generator: as B1 & \textbf{Holds} against every
-  per-account baseline; \textbf{fails} against B-GLOBAL (a tie) \\
+  per-account baseline; \textbf{fails} against B-GLOBAL (no significant
+  difference) \\
 C1 & Byte-identical reports on every target & \textbf{Falsified} for the
-  frozen engine (\R{id/frozen/wasm32-under-node/reports_identical} of
-  \R{id/frozen/wasm32-under-node/cases} in WebAssembly); holds on the Mac
-  after a post-freeze fix \\
+  frozen engine; holds on the Mac's tested matrix after a post-freeze fix \\
 D1 & Predicted sign of each ablation & Holds for lumps, spend floor and
-  adaptive noise (coverage); \textbf{falsified} for the detector, subject
-  to the caveats in \S\ref{sec:ablations} \\
+  adaptive noise (coverage). Reversed for the detector, which by the
+  plan's rule falsifies it; the alarm-defined strata make this descriptive
+  (\S\ref{sec:regime}) \\
 \bottomrule
 \end{tabular}
-\caption{The pre-registered claims and their outcomes. The primary model
-for A2 and B1 is V2; for A1, B2 and D1 it is V0, which on synthetic data
-equals V2.}
+\caption{The plan's claims and their outcomes. The primary model for A2
+and B1 is V2; for A1, B2 and D1 it is V0, which on synthetic data equals
+V2.}
 \label{tab:claims}
 \end{table}

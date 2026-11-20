@@ -28,17 +28,19 @@ only on synthetic data.
 
 \subsection{Adaptive noise, the gate and lumps}
 Each noise channel (the balance channel $\sigma_s^2$ and the income channel
-$R_{\text{inc}}$) has one unknown variance. Every innovation $\nu$ gives an
-unbiased one-sample estimate, for example $\nu^2 - h P^- h^\top$ for the
-income channel. These are folded into an exponentially forgetting weighted
+$R_{\text{inc}}$) has one unknown variance. Every innovation $\nu$ gives a
+one-sample estimate, for example $\hat v = \nu^2 - h P^- h^\top$ for the
+income channel. It is unbiased only if the innovation model is correct and
+before the gate, the weighting and the clamp below are applied; after them
+it is a heuristic estimate. These are folded into an exponentially forgetting weighted
 mean,
 \begin{equation}
 n \leftarrow \lambda n + w,\qquad v \leftarrow \operatorname{clamp}\!\left(v + w\,(\hat v - v)/n\right),
 \end{equation}
 in the spirit of covariance matching \citep{mehra1970,myers1976}. The
 weight $w = (v/S)^2$ discounts samples taken while the state is still
-uncertain (innovation variance $S \gg v$), and $n$ is reported as the
-estimate's degrees of freedom.
+uncertain (innovation variance $S \gg v$). The discounted count $n$ is an
+effective number of samples, not a derived degrees-of-freedom parameter.
 
 Spending is heavy-tailed: a rent deposit or a car repair is not Gaussian
 noise. When a balance observation's normalized innovation exceeds a gate,
@@ -63,7 +65,8 @@ relearns the new level quickly.
 \subsection{The Monte Carlo cone}
 Each path starts from $x_0 \sim \mathcal N(\hat x, P)$ and draws its own
 $\sigma_s^2$ and $R_{\text{inc}}$ from scaled inverse-$\chi^2$ distributions
-with the estimates' degrees of freedom, so a thin history spreads the cone.
+whose degrees of freedom are set to the effective counts $n$. That choice
+is a heuristic, not a posterior: it makes a thin history spread the cone.
 Each simulated day applies
 \begin{equation}
 b \mathrel{+}= -c + \varepsilon + \ell + \text{income} + \text{bills},\qquad

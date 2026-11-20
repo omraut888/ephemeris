@@ -2,74 +2,49 @@
 \label{sec:identity}
 
 Claim C1 was that a feed and a seed give the same report bytes on every
-target the application builds: native code, WebAssembly (the browser),
-and the UniFFI binding used by the iOS app. The pre-registered test was
-the single golden feed plus \R{id/frozen/wasm32-under-node/cases}
-generated cases. The cases vary the generator, the history length and
-start, the holiday calendar, the horizon, the number of paths and the
-seed. Any differing byte falsifies the claim.
+target the application builds. The test cases were the golden feed plus
+\R{id/frozen/wasm32-under-node/cases} generated cases. They vary the
+generator, the history length and start, the holiday calendar, the
+horizon, the number of paths and the seed. Any differing byte falsifies
+the claim.
 
-\paragraph{The frozen engine: falsified.} Native code (debug and release)
-and UniFFI reproduced every case (Table~\ref{tab:identity}). WebAssembly
-under Node reproduced every feed but only
-\R{id/frozen/wasm32-under-node/reports_identical} of
-\R{id/frozen/wasm32-under-node/cases} reports. In case \R{d/c1-case}, one
-quantile on forecast day \R{d/c1-day} is \texttt{\R{d/c1-native}} natively
-and \texttt{\R{d/c1-wasm}} in WebAssembly, one unit in the last place.
-
-\paragraph{Cause.} The engine samples with the \texttt{rand\_distr} crate
-\citep{rand_distr_crate}. The design document said that crate's default
-build uses the pure-Rust \texttt{libm}, so its math would be identical on
-every platform. That was wrong from the day the dependency was added. No
-crate in the build enables the feature that is documented to switch to
-platform math, \texttt{std\_math}. But the crate's default \texttt{std}
-feature links the standard library, and its concrete \texttt{f64} normal
-and exponential samplers call \texttt{exp} and \texttt{ln} as methods on
-\texttt{f64}. Rust resolves those to the standard library's inherent
-methods ahead of the \texttt{libm}-backed trait. Natively on macOS that is
-the system's math library; in WebAssembly it is Rust's port of
-\texttt{libm}. On this machine the two disagree on about
-\R{d/c1-ln-share}\% of inputs to \texttt{ln} and \R{d/c1-exp-share}\% to
-\texttt{exp}, in a check of \R{d/c1-draws} million random inputs. The
-samplers reach these functions only in the tail and wedge branches of the
-ziggurat method \citep{marsaglia2000ziggurat}, which is why one report in
-\R{id/frozen/wasm32-under-node/cases} was affected and the golden feed
-never was. The realistic generator also called the standard library's
-\texttt{ln} and \texttt{exp} directly.
-
-\paragraph{The post-freeze fix and its effect.} After the freeze, the
-engine was changed to build \texttt{rand\_distr} without default features,
-which leaves only its \texttt{libm} path, and the generator was changed to
-call \texttt{libm}.
+\paragraph{The tested matrix.}
 \begin{itemize}
-\item All \R{id/post/wasm32-under-node/cases} cases now agree on native
-  debug and release, UniFFI and WebAssembly (Table~\ref{tab:identity}).
-  The fix changed one native report, case \R{d/c1-case}, to exactly the
-  value WebAssembly had always produced.
-\item The shipped golden files did not change, on any shell: native,
-  WebAssembly, UniFFI, the desktop application's IPC path, the web tests
-  and the Swift package.
-\item We did not regenerate the frozen results. Instead we reran V0 and V2
-  with the fixed engine on the first \R{d/pf-accounts} development accounts
-  that have eligible origins: \R{d/pf-origins} origins and
-  \R{d/pf-forecasts} forecasts. All of them are byte-identical to the
-  frozen ones, with \R{d/pf-changed} changed scores and \R{d/pf-flips}
-  coverage flips. This is a sample, not a proof that no held-out number
-  would move.
+\item \textbf{On one arm64 Mac:} native code in debug and release builds;
+  the UniFFI binding used by the iOS application, exercised from Rust; and
+  WebAssembly under Node. The golden feed alone was also checked through
+  the desktop application's IPC path, the web application's tests and the
+  Swift package.
+\item \textbf{On x86\_64}, a GitHub Actions workflow on a Linux runner
+  checks native code (debug and release) and WebAssembly. It covered only
+  the golden feed, at commit \texttt{26ed672} before the fix, and passed.
+  It now also covers the generated cases. \TODO{Result of the extended
+  x86\_64 workflow run on the fixed engine, to be filled in after the
+  push.}
+\item \textbf{Not tested:} a physical phone, JavaScriptCore on a device,
+  and other compiler versions.
 \end{itemize}
 
-\paragraph{x86\_64.} A GitHub Actions workflow recomputes the golden
-files on an x86\_64 Linux runner, natively and in WebAssembly. Its first
-run, at commit \texttt{26ed672} before the fix, passed for the golden
-feed. The workflow now also checks the \R{id/post/wasm32-under-node/cases}
-generated cases natively and in WebAssembly. \TODO{Result of the extended
-x86\_64 workflow run on the fixed engine, to be filled in after the push.}
+\paragraph{Outcome.} For the frozen engine, the claim is falsified.
+WebAssembly reproduced every feed but only
+\R{id/frozen/wasm32-under-node/reports_identical} of
+\R{id/frozen/wasm32-under-node/cases} reports: one value differed by one
+unit in the last place. The cause was a dependency feature that sent part
+of the sampler's math to the platform's library natively and to a
+pure-Rust library in WebAssembly (Appendix~\ref{app:identity}). After a
+post-freeze fix, all \R{id/post/wasm32-under-node/cases} cases agree on
+the tested matrix on the Mac (Table~\ref{tab:identity}), and the shipped
+golden files did not change. The frozen results were not regenerated. V0
+and V2 rerun with the fixed engine on \R{d/pf-accounts} development
+accounts (\R{d/pf-forecasts} forecasts) are byte-identical to the frozen
+ones, but that is a sample, not a proof that no held-out number would
+move.
 
 \begin{table}[t]
 \centering\footnotesize
 \tab{identity}
-\caption{Bit identity on an arm64 Mac. The native debug build wrote the
-manifest, so its row agrees by construction; every other leg is checked
-against it.}
+\caption{Bit identity on one arm64 Mac, for the frozen engine and after the
+post-freeze fix. The native debug build wrote the manifest, so its row
+agrees by construction; every other leg is checked against it.}
 \label{tab:identity}
 \end{table}
