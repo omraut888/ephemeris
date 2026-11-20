@@ -920,6 +920,40 @@ separately, as a post-freeze result. Results: `paper/results/identity/`.
 The WASM identity test is `#[ignore]`d with this reason, not deleted,
 until the post-freeze fix.
 
+### C1 after a post-freeze fix (2026-11-20; post-freeze, separate from the result above)
+
+**Root cause.** No dependency enables `std_math` or `num-traits/std`;
+`cargo tree -e features` shows `num-traits` in `libm` mode only.
+- The design claim (docs/phase1-design.md, `rand_distr` row) was wrong from
+  the start, not a regression. Both the claim and the dependency
+  (`rand_distr = "0.6"`, default features) date from 2026-10-19 (`be26fe3`,
+  `162e3ad`), and the version never changed.
+- The mechanism: `rand_distr`'s default `std` feature makes the crate
+  `extern crate std`, and its concrete `f64` normal and exponential
+  samplers' `.exp()`/`.ln()` then bind to std's inherent methods before
+  `num_traits::Float`'s.
+- The realistic generator also called std's `ln`/`exp` directly
+  (`synth.rs`, lognormal amounts).
+- `metrics.rs` (closed-form Gaussian CRPS, scoring only, not the engine's
+  report) still uses std `exp`. It is left unchanged so frozen scoring is
+  untouched.
+
+**Fix.** `f98fed5`: `rand_distr` without default features, and `libm` in
+the generator.
+
+**Effect, all on this Mac:**
+- **Identity.** All 100 cases now agree on native debug and release,
+  UniFFI and WASM. Case 54 changed natively to WASM's value. Results are in
+  `paper/results/identity-postfix/`; the WASM check is re-enabled.
+- **Golden files.** Unchanged on every shell: native, WASM, UniFFI,
+  desktop IPC, Vitest and the Swift package.
+- **Frozen results.** V0 and V2 rerun on the first 100 development
+  accounts (18,630 forecasts) are identical to the frozen rows
+  (`paper/results/postfix/`). The frozen results are not regenerated.
+
+The paper reports C1 as falsified for the frozen engine and fixed after the
+freeze, with these numbers.
+
 **Not assessed by the held-out runs:** A1 (synthetic, model-matched),
 B2 (realistic generator) and C1 (bit identity). They were assessed
 afterwards: `paper/results/synthetic/`, `paper/results/identity/`, and the
