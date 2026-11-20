@@ -145,6 +145,21 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Prefix equivalence on development origins (review response): the
+    /// forecast from a feed truncated at the origin equals the frozen one.
+    PrefixCheck {
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        /// Frozen development rows (variants and the main backtest).
+        #[arg(long, required = true)]
+        frozen: Vec<PathBuf>,
+        #[arg(long, default_value_t = 200)]
+        sample: usize,
+        #[arg(long, default_value_t = 20_261_121)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -221,6 +236,13 @@ fn main() -> ExitCode {
         Cmd::SyntheticTables { build, out } => synthetic_tables(&build, &out),
         Cmd::Moneydata { data, out, results } => moneydata(&data, &out, &results),
         Cmd::FigureData { data, heldout, out } => figure_data(&data, &heldout, &out),
+        Cmd::PrefixCheck {
+            data,
+            frozen,
+            sample,
+            seed,
+            out,
+        } => prefix_check(&data, &frozen, sample, seed, &out),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -573,6 +595,31 @@ fn figure_data(data: &Path, heldout: &Path, out: &Path) -> Result<(), String> {
         ),
     )?;
     eprintln!("figure data → {}", out.display());
+    Ok(())
+}
+
+fn prefix_check(
+    data: &Path,
+    frozen: &[PathBuf],
+    sample: usize,
+    seed: u64,
+    out: &Path,
+) -> Result<(), String> {
+    let tsv = read(&data.join("trans.tsv"))?;
+    let mut texts = Vec::new();
+    for p in frozen {
+        texts.push(read(p)?);
+    }
+    let mut lines = texts
+        .iter()
+        .flat_map(|t| t.lines().skip(1).map(str::to_string));
+    let (csv, summary) = ephemeris_eval::audit::prefix_check(&tsv, &mut lines, sample, seed)?;
+    write(&out.join("prefix-check.csv"), &csv)?;
+    write(
+        &out.join("prefix-check-summary.csv"),
+        &format!("key,value\n{summary}"),
+    )?;
+    eprint!("{summary}");
     Ok(())
 }
 

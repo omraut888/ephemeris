@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod aggregate;
+pub mod audit;
 pub mod baselines;
 pub mod berka;
 pub mod berka_run;
