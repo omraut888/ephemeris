@@ -193,3 +193,227 @@ bank accounts**. A title that says so:
 
 > **When Does Transaction History Beat a State-Space Model? Probabilistic
 > Balance Forecasting on Sparse Bank Accounts.**
+
+# Specifications (fixed 2026-11-21, before any of these analyses ran)
+
+**Common to every analysis:**
+- **Data.** Development split only.
+- **Frozen origins.** The 27,855 eligible origins in 866 accounts, with
+  the drift exclusion, unless the item says otherwise.
+- **Information.** Each method sees only records dated on or before the
+  origin, and booked end-of-day balances on or before it.
+- **Units.** Normalized, with the frozen per-origin `k`.
+- **Lookback.** Every new method uses `L = 365` days, truncated at the
+  account's first day.
+- **Seeds.** Monte Carlo methods use `seed_for(account, origin)` and
+  1,000 paths.
+- **CRPS comparisons.** Coverage at 50/80/90/95 (pooled), mean CRPS,
+  one-sided 90% misses, median 90% width, and CRPS skill. Skill is given
+  as both the account mean and the pooled (origin-equal) ratio, each with
+  95% intervals from 2,000 bootstrap resamples of accounts (seeds on
+  synthetic data), on the origins all compared methods share, with
+  counts.
+
+**Strength of evidence**, fixed here:
+- **Strong:** the interval excludes 0 under both aggregations at both 30
+  and 90 days.
+- **Weak:** it does so under one aggregation or at one horizon.
+- **None:** otherwise.
+
+## S1 (T2.5) Eligibility and exclusions
+
+**Population.** All 890 development accounts, before any exclusion.
+
+**Frozen rule F (the reference):**
+- the grid is every 30 days from day 180;
+- at least 12 records in the 180 days before the origin;
+- origin + 90 is on or before 1998-12-31;
+- the scale `s` is above 0;
+- the account is excluded if its full-history drift exceeds 100.
+
+**Past-only rule P.** The same grid and conditions, with no account
+exclusion. An origin is eligible only if the drift *through the origin*
+is at most 100. The drift through the origin is the maximum, over days
+with records on or before it, of the minimum |running sum − reported
+balance|.
+
+**Who the exclusions remove.** Reported as medians and quartiles:
+- **G1:** the 19 drift-excluded accounts against the 871 kept.
+- **G2:** kept accounts with no eligible origin against those with one.
+- **G3:** grid origins failing the minimum-records rule (all other
+  conditions met) against eligible origins.
+
+Measures:
+- *Accounts:*
+  - records per month, over the full history;
+  - volatility: the standard deviation of 30-day booked balance changes,
+    over all days, divided by the median monthly gross flow over the full
+    history;
+  - the share of grid origins with a detected income.
+- *Origins:* records in the prior 180 days, and the standard deviation of
+  daily balance changes over the prior 180 days, divided by `s` at the
+  origin.
+
+**Rerun under P.** Run V2, B-EQ and B-SA+ on all P-eligible origins with
+the frozen code, and compare with the same methods on F. Metrics: pooled
+coverage, and skill V2 vs B-SA+ and V2 vs B-EQ (both aggregations).
+
+## S2 (T2.6) Small additions
+
+**(a) V1 crossings.** At every frozen origin and horizon, check whether
+V1's adjusted levels are non-decreasing in the nominal level. Count the
+cases where they are not, and the share of V1's quantile values that the
+sort reorders.
+
+**(b) Selection-rule sensitivity.**
+
+*Correction, recorded before running.* Tier 2 item T2.6 said "pooled CRPS".
+The §9 score (mean normalized CRPS over all forecasts) is already
+origin-equal. The sensitivity is therefore the **account-equal** score:
+- per horizon, the mean over accounts of each account's mean normalized
+  CRPS;
+- then averaged over 7, 30 and 90.
+
+Qualification is unchanged. Inputs are the frozen development rows.
+
+## S3 (T2.1a) The reversal, decomposed on Berka
+
+**Methods**, on the frozen origins:
+- **From the frozen rows:** V0, V2, B-SA+, B-EQ.
+- **B-EQc:** B-EQ restricted to past start days `d` whose day of the
+  month is within ±3 of the origin's. Day-of-month distance is circular
+  over 31 days. With fewer than 5 such days, it falls back to all `d`;
+  fallbacks are counted.
+- **B-SR (schedule plus empirical residuals):**
+  - *The schedule's flows.* The paychecks of the detected income stream,
+    when the schedule detects one, and the scheduled records whose stream
+    is a detected bill.
+  - *Future.* `sched(h)` = B-SA's projection, given only those records,
+    so its 30-day "other flows" term is 0.
+  - *Past residual.* `R_d = (bal[d+h] − bal[d]) −` the schedule's flows
+    dated in `(d, d+h]`.
+  - *Forecast.* `bal[t] + sched(h) + R_d` over all `d` in `[t−L, t−h]`,
+    as an empirical sample.
+- **CP-noKF (compound Poisson without the filter):**
+  - Paths start at today's booked balance and add the schedule's flows
+    cumulatively by day (`sched(k)`, k = 1..90).
+  - Discretionary events: each path draws `λ ~ Gamma(n + ½, rate D)`,
+    where `n` is the number of discretionary-tagged records in the
+    window `(o − L, o]` and `D` its length in days.
+  - Each day has `Poisson(λ)` events, whose signed amounts are drawn
+    uniformly with replacement from the window's discretionary amounts.
+  - 1,000 paths; quantiles at the frozen Monte Carlo levels (type 7).
+  - This is V2's spending model, with no Kalman state, no adaptive noise
+    and no detector.
+
+**Explanations and their tests**, fixed before running:
+- **Calendar alignment:** B-EQc against B-EQ.
+- **Schedule plus empirical residuals suffices:** B-SR against B-EQ and
+  against V2.
+- **Sparse event counts / the filter:** CP-noKF against V2, and against
+  B-EQ.
+- **History length:** V2 against B-EQ by history stratum (<12, 12–23,
+  ≥24 months) on the frozen rows. It is supported if B-EQ's advantage
+  grows with history, with a strong or weak contrast between the
+  first and last strata.
+
+## S4 (T2.1b) Independent simulation
+
+**Generator.** The realistic generator, 730 days, origins every 30 days
+from day 180 (16 per seed), seeds 0–49 in every cell. The cells cross two
+factors:
+- **Sparsity.** `mean_count` ∈ {2.5, 0.5, 0.15, 0.05} purchases a day, at
+  the same mean daily spend.
+- **Regularity.** Levels 0–3 of four settings:
+
+  | Setting | Level 0 | Level 1 (the default) | Level 2 | Level 3 |
+  |---|---|---|---|---|
+  | paycheck jitter probability | 0 | 0.3 | 0.6 | 0.9 |
+  | maximum jitter (days) | 1 | 1 | 3 | 5 |
+  | paycheck amount sd | 1 | 50 | 150 | 300 |
+  | bill drift probability | 0 | the defaults | 0.5 | 0.9 |
+
+**Methods:** V0, V2 (the frozen sparse rule), B-SA+, B-EQ, B-EQc, B-SR and
+CP-noKF. They use the available-balance series and the snapshot's tags,
+are scored against the true balance, and have L = 365.
+
+**Metrics, per cell:**
+- skill against B-SA+, and V2 against B-EQ (both aggregations; seed
+  bootstrap);
+- 90% coverage;
+- the share of origins where V2's sparse rule fired.
+
+**What would support the explanation:** B-EQ's skill against V2 rises
+with sparsity and with irregularity, and the Berka-like corner reproduces
+the reversal.
+
+## S5 (T2.2) Overdraft events
+
+**Thresholds** (normalized units): `u0 = 0`, and `u10` = the type-7 10th
+percentile of the booked balances over the L days to the origin.
+
+**Event.** `E_h(u)`: the minimum booked end-of-day balance over days
+1..h after the origin is below `u`, for h = 7, 30 and 90.
+
+**Methods (probabilities):**
+- **V2:** the engine's `below_by` for targets `[u0, u10]`, with the frozen
+  configuration and seed. A check confirms its quantiles equal the frozen
+  rows.
+- **CP-noKF:** the share of paths whose running minimum falls below `u`.
+- **B-EQp:** over past start days `d ∈ [t−L, t−h]`, the share of shifted
+  past paths `bal[t] + bal[d+k] − bal[d]` (k ≤ h) whose minimum falls
+  below `u`.
+- **B-SRp:** the same, with paths `bal[t] + sched(k) +` (the residual
+  flows over `(d, d+k]`).
+- **CLIM:** the share of past windows `(d, d+h]` in which the account's
+  own balance fell below `u`. The account's climatology.
+
+**Metrics:**
+- prevalence, pooled and account-mean;
+- Brier score, origin-equal and account-equal, with account-bootstrap
+  intervals;
+- Brier skill against CLIM;
+- reliability: 10 equal-width bins of `p`, with the mean `p`, the
+  observed frequency and the count per bin, plotted.
+
+If a prevalence is below 0.5%, its results are marked unreliable.
+
+## S6 (T2.1c) Ablating V2
+
+**Variants**, on the frozen origins:
+- V2 as frozen;
+- V2 without adaptive noise (both channels fixed at their priors);
+- V2 without the detector;
+- V2 without the spend floor;
+- V2 without sparse spending (= V0, frozen rows);
+- V2 without the filter (= CP-noKF).
+
+**Metrics:** skill against V2, both aggregations, and the coverage
+difference.
+
+## S7 (T2.3) B-GLOBAL without calendar look-ahead (development)
+
+Features are the frozen development features. Hyperparameters and levels
+are frozen, LightGBM runs single-threaded, and fits run in parallel
+processes.
+
+- **G-orig:** the frozen cross-fitted rows.
+- **G-cf (calendar-forward).** For fold k and each quarter
+  `[C_q, C_{q+1})`, with quarters starting 1994-01-01 and ending
+  1998-10-01:
+  - the training rows are the other folds' rows with outcome date
+    (origin + h) before `C_q`;
+  - the model predicts fold k's origins in that quarter;
+  - with fewer than 1,000 training rows, there is no forecast.
+- **G-cut (a model trained once).** Training rows: other folds with
+  outcome before 1996-07-01. It predicts fold k's origins on or after
+  1996-07-01.
+
+**Comparison.** On the origins all compared methods share, with counts:
+G-orig, G-cf, G-cut, V2, B-EQ and B-SA+. Metrics as above.
+
+## S8 (T2.4) Origin phase: only if under 30 minutes
+
+**A reduced version, recorded before running.** V2, B-EQ and B-SA+ on the
+frozen rule's grid shifted by +10 and +20 days. V1 (its calibration grid)
+and B-GLOBAL (the fits) are dropped to stay under 30 minutes.
