@@ -10,6 +10,7 @@ pub mod baselines;
 pub mod berka;
 pub mod berka_run;
 pub mod dist;
+pub mod explore;
 pub mod figures;
 pub mod moneydata;
 pub mod reference;

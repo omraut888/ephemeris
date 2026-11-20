@@ -160,6 +160,18 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Exploratory (paper/REVISION.md S1–S6), development split only:
+    /// `eligibility`, `crossings`, `berka` or `grid`.
+    Explore {
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid"])]
+        what: String,
+        #[arg(long, default_value = "data/berka")]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
     ScoreQuantiles {
         #[arg(long)]
         features: PathBuf,
@@ -243,6 +255,12 @@ fn main() -> ExitCode {
             seed,
             out,
         } => prefix_check(&data, &frozen, sample, seed, &out),
+        Cmd::Explore {
+            what,
+            data,
+            out,
+            threads,
+        } => explore(&what, &data, &out, threads),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -620,6 +638,151 @@ fn prefix_check(
         &format!("key,value\n{summary}"),
     )?;
     eprint!("{summary}");
+    Ok(())
+}
+
+/// The development accounts (all of them, or only those the frozen drift
+/// rule keeps).
+fn dev_accounts(data: &Path, kept_only: bool) -> Result<Vec<Account>, String> {
+    let accounts = parse_trans(&read(&data.join("trans.tsv"))?)?;
+    Ok(accounts
+        .into_values()
+        .filter(|a| split_of(a.id) == Split::Dev)
+        .filter(|a| !kept_only || a.stats().max_drift <= MAX_DRIFT_CZK)
+        .collect())
+}
+
+fn explore(what: &str, data: &Path, out: &Path, threads: usize) -> Result<(), String> {
+    use ephemeris_eval::explore as ex;
+    use ephemeris_eval::synthetic::{
+        GRID_REGULARITY, GRID_SEEDS, GRID_SPARSITY, grid_config, grid_seed, parallel_map,
+    };
+    let t0 = std::time::Instant::now();
+    match what {
+        "eligibility" => {
+            let accts = dev_accounts(data, false)?;
+            let res = parallel_map(&accts, threads, "eligibility", ex::eligibility_account);
+            let mut a = format!("{}\n", ex::ELIG_ACCOUNT_HEADER);
+            let mut o = format!("{}\n", ex::ELIG_ORIGIN_HEADER);
+            let mut todo = Vec::new();
+            for (acct, r) in accts.iter().zip(&res) {
+                a.push_str(&r.account_csv);
+                a.push('\n');
+                for l in &r.origin_csv {
+                    o.push_str(l);
+                    o.push('\n');
+                }
+                todo.extend(r.p_not_f.iter().map(|&d| (acct, d)));
+            }
+            write(&out.join("accounts.csv"), &a)?;
+            write(&out.join("origins.csv"), &o)?;
+            // Origins only the past-only rule admits: V2, B-SA+, B-EQ.
+            let rows: Vec<Vec<Row>> = parallel_map(&todo, threads, "P not F", |&(acct, o)| {
+                let Some((f0, methods)) = ephemeris_eval::audit::methods(acct, o) else {
+                    return Vec::new();
+                };
+                let first = acct.first_day();
+                let bal = acct.daily_balance(o + 90);
+                let mut v = Vec::new();
+                for (name, dists) in &methods {
+                    if !["V2", "B-SA+", "B-EQ"].contains(&name.as_str()) {
+                        continue;
+                    }
+                    for (hi, &h) in [7, 30, 90].iter().enumerate() {
+                        let truth = bal[(o + h - first) as usize] * f0.k;
+                        v.push(Row {
+                            account: acct.id,
+                            origin: ephemeris_core::schema::Date(o).to_string(),
+                            h,
+                            method: name.clone(),
+                            k: f0.k,
+                            truth,
+                            score: dists[hi].score(truth),
+                            income_detected: f0.income_detected,
+                            months_history: (o - first) / 30,
+                            alarm_recent: f0.alarm_recent,
+                        });
+                    }
+                }
+                v
+            });
+            let rows: Vec<Row> = rows.into_iter().flatten().collect();
+            write(&out.join("rows-p-not-f.csv"), &rows_csv(&rows))?;
+            eprintln!("P not F: {} origins", todo.len());
+        }
+        "crossings" => {
+            let accts = dev_accounts(data, true)?;
+            let res = parallel_map(&accts, threads, "crossings", ex::v1_crossings);
+            let mut c = String::from("account,origin,h,monotone,values_moved,values\n");
+            for l in res.into_iter().flatten() {
+                c.push_str(&l);
+                c.push('\n');
+            }
+            write(&out.join("crossings.csv"), &c)?;
+        }
+        "berka" => {
+            let accts = dev_accounts(data, true)?;
+            let items: Vec<(&Account, i32)> = accts
+                .iter()
+                .flat_map(|a| {
+                    ephemeris_eval::variants::eligible_origins(a)
+                        .into_iter()
+                        .map(move |o| (a, o))
+                })
+                .collect();
+            let res = parallel_map(&items, threads, "berka", |&(a, o)| ex::berka_origin(a, o));
+            let mut rows = Vec::new();
+            let mut events = format!("{}\n", ex::EVENT_HEADER);
+            let (mut n, mut fb) = (0, [0usize; 3]);
+            for r in res.into_iter().flatten() {
+                n += 1;
+                for (i, f) in r.cal_fallback.iter().enumerate() {
+                    fb[i] += usize::from(*f);
+                }
+                rows.extend(r.rows);
+                for e in r.events {
+                    events.push_str(&e);
+                    events.push('\n');
+                }
+            }
+            write(&out.join("rows.csv"), &rows_csv(&rows))?;
+            write(&out.join("events.csv"), &events)?;
+            write(
+                &out.join("data.csv"),
+                &format!(
+                    "key,value\norigins,{n}\nitems,{}\ncal_fallback_7,{}\ncal_fallback_30,{}\ncal_fallback_90,{}\n",
+                    items.len(),
+                    fb[0],
+                    fb[1],
+                    fb[2]
+                ),
+            )?;
+        }
+        "grid" => {
+            let mut summary = String::from("sparsity,regularity,mean_count,origins,sparse_fired\n");
+            for (si, &mean_count) in GRID_SPARSITY.iter().enumerate() {
+                for ri in 0..GRID_REGULARITY {
+                    let cfg = grid_config(si, ri);
+                    let seeds: Vec<u64> = (0..GRID_SEEDS).collect();
+                    let res = parallel_map(&seeds, threads, &format!("cell {si},{ri}"), |&s| {
+                        grid_seed(&cfg, s)
+                    });
+                    let fired: usize = res.iter().map(|r| r.1).sum();
+                    let rows: Vec<Row> = res.into_iter().flat_map(|r| r.0).collect();
+                    let origins = rows.iter().filter(|r| r.method == "V0" && r.h == 7).count();
+                    write(&out.join(format!("rows-s{si}-r{ri}.csv")), &rows_csv(&rows))?;
+                    writeln!(summary, "{si},{ri},{mean_count},{origins},{fired}").unwrap();
+                }
+            }
+            write(&out.join("data.csv"), &summary)?;
+        }
+        _ => unreachable!(),
+    }
+    eprintln!(
+        "{what}: {:.1} s → {}",
+        t0.elapsed().as_secs_f64(),
+        out.display()
+    );
     Ok(())
 }
 

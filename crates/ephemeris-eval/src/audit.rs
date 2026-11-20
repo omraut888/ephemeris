@@ -70,9 +70,9 @@ fn truncated(tsv: &str, account: u64, origin: Day) -> Result<Account, String> {
 /// Every per-account method's distribution at `origin`, per horizon, plus
 /// V0's forecast (for k and the strata).
 /// V0's forecast, then every method's distributions per horizon.
-type Methods = (Forecast, Vec<(String, Vec<Dist>)>);
+pub type Methods = (Forecast, Vec<(String, Vec<Dist>)>);
 
-fn methods(acct: &Account, origin: Day) -> Option<Methods> {
+pub fn methods(acct: &Account, origin: Day) -> Option<Methods> {
     let first = acct.first_day();
     let bal_raw = acct.daily_balance(origin);
     let f0 = forecast_at(acct, &bal_raw, origin, V0)?;

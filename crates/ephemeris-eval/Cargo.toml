@@ -20,3 +20,7 @@ ephemeris-sync = { version = "0.1.0", path = "../ephemeris-sync" }
 clap = { version = "4", features = ["derive"] }
 rand = { version = "0.10", default-features = false }
 rand_chacha = "0.10"
+# Gamma and Poisson draws for the exploratory CP-noKF baseline
+# (paper/REVISION.md S3). Already in the graph through the core; no std,
+# as in the core.
+rand_distr = { version = "0.6", default-features = false }

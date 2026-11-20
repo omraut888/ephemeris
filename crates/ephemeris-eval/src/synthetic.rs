@@ -744,6 +744,125 @@ pub fn median_days(xs: &[Option<Day>]) -> Option<Day> {
     (m != Day::MAX).then_some(m)
 }
 
+// ------------------------------------------------------ S4 grid (explore) --
+
+/// S4 (paper/REVISION.md): sparsity levels (purchases a day) and the four
+/// regularity levels.
+pub const GRID_SPARSITY: [f64; 4] = [2.5, 0.5, 0.15, 0.05];
+pub const GRID_REGULARITY: usize = 4;
+pub const GRID_SEEDS: u64 = 50;
+
+pub fn grid_config(sparsity: usize, regularity: usize) -> SynthConfig {
+    use ephemeris_core::synth::SpendModel;
+    let mut c = Generator::Realistic.config(PANEL_DAYS);
+    c.spend = SpendModel::PoissonLogNormal {
+        mean_count: GRID_SPARSITY[sparsity],
+        sigma_log: 0.9,
+    };
+    let set = |c: &mut SynthConfig, jitter: f64, max: u32, sd: f64, drift: Option<f64>| {
+        c.income.jitter_prob = jitter;
+        c.income.max_jitter_days = max;
+        c.income.amount_sd = sd;
+        if let Some(d) = drift {
+            for s in &mut c.subscriptions {
+                s.drift_prob = d;
+            }
+        }
+    };
+    match regularity {
+        0 => set(&mut c, 0.0, 1, 1.0, Some(0.0)),
+        1 => {}
+        2 => set(&mut c, 0.6, 3, 150.0, Some(0.5)),
+        3 => set(&mut c, 0.9, 5, 300.0, Some(0.9)),
+        _ => panic!("regularity level"),
+    }
+    c
+}
+
+/// One seed of one S4 cell: rows for V0, V2, B-SA+, B-EQ, B-EQc, B-SR and
+/// CP-noKF, and how many origins V2's sparse rule fired at.
+pub fn grid_seed(cfg: &SynthConfig, seed: u64) -> (Vec<Row>, usize) {
+    use crate::explore::{Ctx as ECtx, cp_paths, eq_cal, paths_dist, sched, sched_resid};
+    let run = generate(cfg, seed).expect("generate");
+    let origins = panel_origins();
+    let last = *origins.last().expect("origins");
+    let stops: BTreeSet<Day> = origins.iter().copied().collect();
+    let tcfg = tracker_config(true, None);
+    let mut at: BTreeMap<Day, AtOrigin> = BTreeMap::new();
+    let log = pass(&run, tcfg, last, &stops, None, |s| {
+        let schedule = detect_schedule(s.snap);
+        let dists0 = cone(s.est, &schedule, &tcfg, seed_for(seed, s.day), None);
+        let dists2 = sparse_spending(s.snap, START, s.day)
+            .map(|sp| cone(s.est, &schedule, &tcfg, seed_for(seed, s.day), Some(sp)));
+        at.insert(
+            s.day,
+            AtOrigin {
+                ctx: Ctx {
+                    income_detected: schedule.income.is_some(),
+                    alarm_recent: s.alarm_recent,
+                },
+                dists0,
+                dists2,
+                snap: s.snap.to_vec(),
+                schedule,
+            },
+        );
+    });
+    let bal = &log.available;
+    let idx = |d: Day| (d - START) as usize;
+    let mut sa_cache: HashMap<Day, [f64; 3]> = HashMap::new();
+    let mut sa_at = |g: Day| -> [f64; 3] {
+        *sa_cache.entry(g).or_insert_with(|| {
+            let snap = run.snapshot(g);
+            let schedule = detect_schedule(&snap);
+            HORIZONS.map(|h| schedule_aware_delta(&snap, &schedule, g, h))
+        })
+    };
+    let mut rows = Vec::new();
+    let mut fired = 0;
+    for (&o, a) in &at {
+        fired += usize::from(a.dists2.is_some());
+        let t = idx(o);
+        let c = ECtx {
+            bal,
+            first: START,
+            t,
+            txns: &a.snap,
+            schedule: &a.schedule,
+            seed: seed_for(seed, o),
+        };
+        let sc = sched(&c);
+        let paths = cp_paths(&c, &sc);
+        for (hi, &h) in HORIZONS.iter().enumerate() {
+            let hu = h as usize;
+            let truth = run.truth_on(o + h).expect("truth").b;
+            let sa_point = bal[t] + schedule_aware_delta(&a.snap, &a.schedule, o, h);
+            let mut sa_errors = Vec::new();
+            let mut g = START + SA_GRID_START;
+            while g + h <= o {
+                if (o - g) as usize <= LOOKBACK {
+                    sa_errors.push(bal[idx(g + h)] - (bal[idx(g)] + sa_at(g)[hi]));
+                }
+                g += SA_GRID_STEP;
+            }
+            let v2 = a.dists2.as_ref().map_or(&a.dists0[hi], |d| &d[hi]).clone();
+            let dists: [(&str, Dist); 7] = [
+                ("V0", a.dists0[hi].clone()),
+                ("V2", v2),
+                ("B-SA+", schedule_aware_plus(sa_point, &sa_errors)),
+                ("B-EQ", empirical_changes(bal, t, h)),
+                ("B-EQc", eq_cal(&c, hu).0),
+                ("B-SR", sched_resid(&c, &sc, hu)),
+                ("CP-noKF", paths_dist(&paths, hu)),
+            ];
+            for (m, d) in &dists {
+                rows.push(row(seed, o, h, m, truth, d, &a.ctx));
+            }
+        }
+    }
+    (rows, fired)
+}
+
 // ------------------------------------------------------------ plumbing --
 
 /// `f` over `items` on `threads` threads; results in item order.

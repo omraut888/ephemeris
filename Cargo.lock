@@ -1012,6 +1012,7 @@ dependencies = [
  "ephemeris-sync",
  "rand",
  "rand_chacha",
+ "rand_distr",
 ]
 
 [[package]]
