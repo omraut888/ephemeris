@@ -64,15 +64,10 @@ fn native_matches_the_identity_manifest() {
     compare(&actual);
 }
 
-/// FAILS as of 2026-11-18 (paper/PLAN.md §11, C1): case 54's report differs
-/// from native arm64 in one quantile by one ulp. `rand_distr`'s f64 normal
-/// and exponential samplers call std's `exp`/`ln` in a std build, which are
-/// the platform's math natively and Rust's libm port in WASM. Ignored, not
-/// deleted, so the failure stays visible (`--include-ignored`) until a fix
-/// is approved; the fix changes the engine.
+/// Failed for the frozen engine on case 54 (one ulp; paper/PLAN.md §11,
+/// C1); passes since the post-freeze fix that keeps `rand_distr` off std.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test::wasm_bindgen_test]
-#[ignore = "fails on case 54 by one ulp; see paper/PLAN.md §11 (C1)"]
 fn wasm_matches_the_identity_manifest() {
     compare(&lines());
 }
