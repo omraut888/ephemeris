@@ -435,3 +435,7 @@ and B-GLOBAL (the fits) are dropped to stay under 30 minutes.
 - **S8.** Added offset 0 to the shifted grids before running, as a check:
   its rows must equal the frozen development rows. This adds no new
   analysis.
+- **S8, runtime.** The first S8 run took about 12 minutes per offset.
+  Three full offsets would have exceeded the 30-minute limit. It was
+  stopped during offset 0 and rerun with offsets +10 and +20 in full, and
+  the offset-0 identity check on the first 100 development accounts only.

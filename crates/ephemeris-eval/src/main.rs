@@ -760,9 +760,12 @@ fn explore(what: &str, data: &Path, out: &Path, threads: usize) -> Result<(), St
         }
         "phase" => {
             let accts = dev_accounts(data, true)?;
+            // Offset 0 is only the identity check, on the first 100 accounts.
             for offset in [0, 10, 20] {
+                let take = if offset == 0 { 100 } else { accts.len() };
                 let items: Vec<(&Account, i32)> = accts
                     .iter()
+                    .take(take)
                     .flat_map(|a| {
                         ex::shifted_origins(a, offset)
                             .into_iter()

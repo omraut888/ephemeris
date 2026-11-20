@@ -368,6 +368,22 @@ def s7():
         show(panel(data, methods, pairs, out, label=label)[1])
 
 
+def s8():
+    out = OUT / "s8-phase"
+    # Check: offset 0 reproduces the frozen development rows.
+    fz = load(FROZEN_DEV, {"V2", "B-EQ", "B-SA+"})
+    z = load([B / "explore/phase/rows-offset0.csv"])
+    cols = lambda r: {c: r[c] for c in r if c != "method"}  # noqa: E731
+    keys = [(k, m) for k, v in z.items() for m in v]
+    same = sum(fz.get(k, {}).get(m) is not None and cols(fz[k][m]) == cols(z[k][m]) for k, m in keys)
+    write(out / "offset0-identity.csv", [["key", "value"], ["compared", len(keys)], ["identical", same]])
+    print(f"offset 0 identity: {same}/{len(keys)}")
+    for off in (0, 10, 20):
+        data = load([B / f"explore/phase/rows-offset{off}.csv"])
+        show(panel(data, ["V2", "B-EQ", "B-SA+"], [("V2", "B-SA+"), ("B-EQ", "B-SA+"), ("V2", "B-EQ")], out,
+                   label=f"-offset{off}")[1])
+
+
 if __name__ == "__main__":
     for a in sys.argv[1:]:
         globals()[a.lower()]()
