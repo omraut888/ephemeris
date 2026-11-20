@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Rebuild the paper's results from the pinned datasets (paper/PLAN.md §6).
 #
-#   scripts/paper.sh            every stage below, then the figures
+#   scripts/paper.sh            every stage below, then the figures and the PDF
+#   scripts/paper.sh --pdf-only the numbers, tables and PDF from committed results
 #
 # Stages:
 #   - development split: Berka backtest, B-GLOBAL, the revision candidates
@@ -13,7 +14,6 @@
 # The held-out run is not here: it ran once, guarded and logged
 # (scripts/paper-heldout.sh, PLAN §10-§11). Its tables are committed; the
 # figure data reads its rows from paper/build/heldout/ when present.
-# Still to come: the PDF.
 #
 # Needs: the Python environment (uv venv --python 3.11 paper/.venv, then
 # uv pip install --python paper/.venv/bin/python --require-hashes
@@ -24,6 +24,26 @@ cd "$(dirname "$0")/.."
 PY=paper/.venv/bin/python
 BUILD=paper/build
 RESULTS=paper/results
+
+# The numbers, tables, timeline and PDF (the last stage, or the only one).
+pdf() {
+  # The timeline's GitHub push times need `gh`; without it, keep the
+  # committed paper/results/timeline.csv.
+  if gh api rate_limit >/dev/null 2>&1; then
+    "$PY" -I paper/analysis/timeline.py >/dev/null
+  else
+    echo "gh unavailable: keeping the committed timeline" >&2
+  fi
+  "$PY" -I paper/analysis/macros.py
+  (cd paper && latexmk -pdf -interaction=nonstopmode -halt-on-error \
+     -outdir=build/latex main.tex >build/latex.log 2>&1) \
+    || { echo "LaTeX failed: see paper/build/latex.log" >&2; exit 1; }
+  echo "PDF: paper/build/latex/main.pdf" >&2
+}
+if [ "${1:-}" = "--pdf-only" ]; then
+  pdf
+  exit 0
+fi
 
 # 1. Data present and matching the pinned checksums (never re-fetched here).
 "$PY" -I - <<'EOF'
@@ -89,3 +109,6 @@ else
   echo "no held-out rows here: keeping the committed figure data" >&2
 fi
 "$PY" -I paper/figures/src/make_figures.py
+
+# 10. Numbers, tables and the PDF.
+pdf
