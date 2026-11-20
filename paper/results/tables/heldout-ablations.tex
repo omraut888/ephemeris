@@ -1,0 +1,14 @@
+\begin{tabular}{l rrrr rrrr rrrr}
+\toprule
+ & \multicolumn{4}{c}{all origins} & \multicolumn{4}{c}{alarm in last 28 days} & \multicolumn{4}{c}{no recent alarm}\\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+ & \multicolumn{2}{c}{skill} & \multicolumn{2}{c}{$\Delta$cov90} & \multicolumn{2}{c}{skill} & \multicolumn{2}{c}{$\Delta$cov90} & \multicolumn{2}{c}{skill} & \multicolumn{2}{c}{$\Delta$cov90}\\
+Ablation & 30 & 90 & 30 & 90 & 30 & 90 & 30 & 90 & 30 & 90 & 30 & 90\\
+\midrule
+fixed-noise & +0.031 & +0.049 & +0.2 & \textminus{}0.8 & +0.091 & +0.064 & +8.5 & +10.2 & +0.012 & +0.023 & \textminus{}0.2 & \textminus{}1.3 \\
+no-var-draw & \textminus{}0.002 & \textminus{}0.002 & \textminus{}0.3 & \textminus{}0.5 & \textminus{}0.002 & \textminus{}0.002 & \textminus{}1.5 & \textminus{}0.8 & \textminus{}0.001 & \textminus{}0.001 & \textminus{}0.2 & \textminus{}0.4 \\
+no-lumps & \textminus{}0.254 & \textminus{}0.430 & \textminus{}47.9 & \textminus{}50.6 & \textminus{}0.107 & \textminus{}0.244 & \textminus{}26.8 & \textminus{}24.3 & \textminus{}0.264 & \textminus{}0.452 & \textminus{}48.9 & \textminus{}51.9 \\
+no-detector & \textminus{}0.021 & \textminus{}0.038 & +1.2 & +0.9 & \textminus{}0.011 & \textminus{}0.040 & +14.7 & +17.3 & \textminus{}0.041 & \textminus{}0.071 & +0.6 & +0.1 \\
+no-floor & +0.001 & \textminus{}0.004 & +0.2 & +0.7 & \textminus{}0.099 & \textminus{}0.138 & +0.2 & +0.6 & +0.004 & +0.003 & +0.2 & +0.7 \\
+\bottomrule
+\end{tabular}
