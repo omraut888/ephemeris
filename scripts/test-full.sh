@@ -4,7 +4,9 @@
 # Extra arguments go to the test binaries, e.g. scripts/test-full.sh --nocapture
 set -euo pipefail
 cd "$(dirname "$0")/.."
-cargo test --release -- --include-ignored "$@"
+# one_seed reruns a single seed from $SEED (convergence.rs); it stays strict,
+# so it is skipped here and run by hand with SEED set.
+cargo test --release -- --include-ignored --skip one_seed "$@"
 # The fetch script keeps the Plaid token out of every process's arguments
 # (a recording stand-in for `security`; no Plaid, no real Keychain).
 python3 -I scripts/test_fetch_plaid_sandbox.py
