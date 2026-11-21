@@ -1,0 +1,4 @@
+stratum,origins,accounts,median_amount_error,mean_date_error_days,missed_rate,extra_rate
+predictable,9285,624,0.004,0.04,0.010,0.001
+middle,9285,620,0.231,0.42,0.066,0.012
+unpredictable,9285,514,0.819,1.25,0.242,0.123
