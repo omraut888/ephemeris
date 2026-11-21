@@ -6,12 +6,16 @@
   \R{ho/var/V2/30/cov50}\% at \hB\ days. The selection rule checked only the
   \lC\% level. A user reading the cone's middle as a likely range is
   misled.
-\item \textbf{CRPS.} On Berka, an empirical baseline from the account's own
-  history has lower CRPS than the model at \hB\ and \hC\ days. We have not
-  tested why.
-\item \textbf{Overdraft risk is not evaluated.} We scored fixed-horizon
-  balances, not whether the balance falls below a threshold within the
-  horizon.
+\item \textbf{The explanation is exploratory.} The analyses of
+  \S\ref{sec:explanation} and \S\ref{sec:overdraft} were specified and run
+  after the held-out results were known. They were developed on the
+  development split, but they are not confirmatory. Schedule irregularity
+  in Berka was not measured directly, and the simulation uses our own
+  generator.
+\item \textbf{Overdraft events.} Falling below zero is rare in Berka
+  (\R{xh/s5/u0/30/prevalence}\% of held-out origins at \hB\ days), so its
+  Brier scores rest on few events. The thresholds were fixed in our written
+  specification, not chosen by users.
 \item \textbf{Estimands.} The planned skill is a mean of per-account ratios,
   which accounts with small reference CRPS can move a lot. We report the
   pooled ratio beside it; signs agree, magnitudes do not.

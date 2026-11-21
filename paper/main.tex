@@ -31,10 +31,12 @@
 \newcommand{\lA}{\R{c/l1}}\newcommand{\lB}{\R{c/l2}}\newcommand{\lC}{\R{c/l3}}\newcommand{\lD}{\R{c/l4}}
 % Tables shrink only when wider than the text.
 \newcommand{\tab}[1]{\adjustbox{max width=\linewidth}{\input{results/tables/#1.tex}}}
+% Pooled skill with the account mean in brackets, from one comparison key.
+\newcommand{\pq}[2]{\R{#1/#2/skill_pooled}\,{\scriptsize(\R{#1/#2/skill_mean})}}
 \newcommand{\TODO}[1]{\textcolor{red}{[TODO: #1]}}
 
-\title{Probabilistic Forecasts of Personal Bank Balances:\\
-a Local-First State-Space Forecaster Evaluated under a Documented Analysis Plan}
+\title{When Does Transaction History Beat a State-Space Model?\\
+Probabilistic Balance Forecasting on Sparse Bank Accounts}
 \author{Om Raut\\ \small Northeastern University\\ \small\texttt{omraut0888@gmail.com}}
 \date{Draft, \today}
 
@@ -46,10 +48,11 @@ a Local-First State-Space Forecaster Evaluated under a Documented Analysis Plan}
 \input{sections/related}
 \input{sections/method}
 \input{sections/protocol}
-\input{sections/results}
-\input{sections/regime}
-\input{sections/ablations}
-\input{sections/identity}
+\input{sections/reversal}
+\input{sections/explanation}
+\input{sections/overdraft}
+\input{sections/calibration}
+\input{sections/components}
 \input{sections/limitations}
 \input{sections/conclusion}
 \input{sections/statements}
@@ -58,6 +61,11 @@ a Local-First State-Space Forecaster Evaluated under a Documented Analysis Plan}
 \bibliography{refs}
 
 \appendix
-\input{sections/appendix}
+\input{sections/app-protocol}
+\input{sections/app-tables}
+\input{sections/app-regime}
+\input{sections/app-identity}
+\input{sections/app-moneydata}
+\input{sections/app-repro}
 
 \end{document}

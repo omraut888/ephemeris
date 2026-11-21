@@ -1,0 +1,86 @@
+\section{Overdraft events (exploratory)}
+\label{sec:overdraft}
+
+An overdraft warning needs a different quantity from any interval: the
+probability that the balance falls below a threshold $u$ on some day
+within the horizon. We scored that event at two thresholds:
+\begin{itemize}
+\item $u = 0$, the overdraft itself;
+\item $u$ = the account's own tenth percentile of daily balances over the
+  past year, a dip that is common enough to measure well.
+\end{itemize}
+\textbf{The forecasts:}
+\begin{itemize}
+\item \textbf{V2:} the share of its Monte Carlo paths whose running
+  minimum falls below $u$, from the frozen configuration and seed;
+\item \textbf{CP-noKF:} the same, from its paths;
+\item \textbf{B-EQp:} the account's past $h$-day balance \emph{paths},
+  shifted to today's balance;
+\item \textbf{B-SRp:} the schedule plus past residual paths;
+\item \textbf{the account's climatology (CLIM):} the share of its past
+  $h$-day windows in which its own balance fell below $u$.
+\end{itemize}
+All empirical forecasts are coherent path forecasts over the same
+\R{c/lookback} days. Table~\ref{tab:overdraft} gives the prevalence and
+Brier scores, on held-out accounts (with development in brackets);
+Figure~\ref{fig:overdraft} shows the reliability.
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{ll r rrrrr}
+\toprule
+Event & $h$ & prevalence (\%) & V2 & CP-noKF & B-EQp & B-SRp & CLIM\\
+\midrule
+below 0 & \hA & \R{xh/s5/u0/7/prevalence} {\scriptsize(\R{xd/s5/u0/7/prevalence})} & \R{xh/s5/u0/7/brier_V2} & \R{xh/s5/u0/7/brier_CP-noKF} & \R{xh/s5/u0/7/brier_B-EQp} & \R{xh/s5/u0/7/brier_B-SRp} & \R{xh/s5/u0/7/brier_CLIM}\\
+ & \hB & \R{xh/s5/u0/30/prevalence} {\scriptsize(\R{xd/s5/u0/30/prevalence})} & \R{xh/s5/u0/30/brier_V2} & \R{xh/s5/u0/30/brier_CP-noKF} & \R{xh/s5/u0/30/brier_B-EQp} & \R{xh/s5/u0/30/brier_B-SRp} & \R{xh/s5/u0/30/brier_CLIM}\\
+ & \hC & \R{xh/s5/u0/90/prevalence} {\scriptsize(\R{xd/s5/u0/90/prevalence})} & \R{xh/s5/u0/90/brier_V2} & \R{xh/s5/u0/90/brier_CP-noKF} & \R{xh/s5/u0/90/brier_B-EQp} & \R{xh/s5/u0/90/brier_B-SRp} & \R{xh/s5/u0/90/brier_CLIM}\\
+\addlinespace
+below own tenth pct. & \hA & \R{xh/s5/u10/7/prevalence} {\scriptsize(\R{xd/s5/u10/7/prevalence})} & \R{xh/s5/u10/7/brier_V2} & \R{xh/s5/u10/7/brier_CP-noKF} & \R{xh/s5/u10/7/brier_B-EQp} & \R{xh/s5/u10/7/brier_B-SRp} & \R{xh/s5/u10/7/brier_CLIM}\\
+ & \hB & \R{xh/s5/u10/30/prevalence} {\scriptsize(\R{xd/s5/u10/30/prevalence})} & \R{xh/s5/u10/30/brier_V2} & \R{xh/s5/u10/30/brier_CP-noKF} & \R{xh/s5/u10/30/brier_B-EQp} & \R{xh/s5/u10/30/brier_B-SRp} & \R{xh/s5/u10/30/brier_CLIM}\\
+ & \hC & \R{xh/s5/u10/90/prevalence} {\scriptsize(\R{xd/s5/u10/90/prevalence})} & \R{xh/s5/u10/90/brier_V2} & \R{xh/s5/u10/90/brier_CP-noKF} & \R{xh/s5/u10/90/brier_B-EQp} & \R{xh/s5/u10/90/brier_B-SRp} & \R{xh/s5/u10/90/brier_CLIM}\\
+\bottomrule
+\end{tabular}
+\caption{Overdraft events on held-out Berka (exploratory): prevalence (\%,
+pooled over origins; development in brackets) and Brier scores (mean over
+origins; lower is better). \R{xh/s5/u0/30/forecasts} origins per horizon in
+\R{xh/s5/u0/30/accounts} accounts. Account-equal Brier scores, Brier skill
+against CLIM with \R{c/ci-level}\% account-bootstrap intervals, and the
+development results are in
+\texttt{paper/results/exploratory*/s5-overdraft/}.}
+\label{tab:overdraft}
+\end{table}
+
+\paragraph{Below zero: no method beats the account's climatology.} The
+event is rare: \R{xh/s5/u0/7/prevalence}, \R{xh/s5/u0/30/prevalence} and
+\R{xh/s5/u0/90/prevalence}\% of origins at \hA, \hB\ and \hC\ days on
+held-out accounts. Every forecast has a higher Brier score than CLIM. V2's
+Brier skill against CLIM is \R{xh/s5/u0/30/bss_V2} at \hB\ days and
+\R{xh/s5/u0/90/bss_V2} at \hC.
+
+\paragraph{Below the account's own tenth percentile: every method beats
+climatology.} At \hB\ days the Brier skills against CLIM are:
+\begin{itemize}
+\item V2: \R{xh/s5/u10/30/bss_V2} [\R{xh/s5/u10/30/bss_V2_lo},
+  \R{xh/s5/u10/30/bss_V2_hi}];
+\item B-EQp: \R{xh/s5/u10/30/bss_B-EQp}.
+\end{itemize}
+The schedule-based forecasts are best at \hA\ days and B-EQp at \hC,
+mirroring the horizon reversal in CRPS.
+
+\paragraph{Every method is too pessimistic about dips.} The reliability
+curves of all forecasts lie below the diagonal (Figure~\ref{fig:overdraft}):
+when a method says a dip is likely, it happens less often. That matches
+V2's few misses below its intervals (\S\ref{sec:calibration}). A
+probability of going overdrawn from any of these methods is a cautious
+upper estimate, not a calibrated one.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/overdraft-heldout.pdf}
+\caption{Reliability of the overdraft-event probabilities on held-out Berka
+(exploratory): observed frequency against forecast probability in ten
+equal-width bins, shown where a bin holds at least twenty forecasts.
+Below the diagonal: the method over-predicts the event. Bin counts are in
+\texttt{paper/results/exploratory-heldout/s5-overdraft/reliability.csv}.}
+\label{fig:overdraft}
+\end{figure}

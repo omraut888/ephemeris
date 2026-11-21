@@ -1,0 +1,27 @@
+\section{Reproducing the paper}
+\sloppy
+Two levels of reproduction are possible:
+\begin{itemize}
+\item \textbf{Rebuild from committed artifacts.} Every result file the text
+  quotes is committed under \texttt{paper/results/}.
+  \texttt{scripts/paper.sh --pdf-only} regenerates the numbers, the tables
+  and this PDF from them, without the raw data. Every number in the text
+  is read from those files by \texttt{paper/analysis/macros.py}.
+\item \textbf{Recompute from the raw data.}
+  \texttt{scripts/fetch\_paper\_data.py} downloads Berka and MoneyData, and
+  \texttt{scripts/paper.sh} recomputes every development, synthetic,
+  MoneyData and identity result, then the figures and the PDF. The script
+  first checks the files against pinned SHA-256 checksums
+  (\texttt{paper/data.sha256}); for the two transaction files they are:
+  \begin{itemize}
+  \item \texttt{berka/trans.tsv}:\\
+    \texttt{\scriptsize\R{sha/berka/trans.tsv}}
+  \item \texttt{moneydata/transactions.tsv}:\\
+    \texttt{\scriptsize\R{sha/moneydata/transactions.tsv}}
+  \end{itemize}
+  The held-out evaluation is not rerun by that script. It ran once,
+  behind its guard, and recomputing it requires the guarded command with
+  a logged reason.
+\end{itemize}
+The protocol, every decision and its date, and the claims as first written
+are in \texttt{paper/PLAN.md}.

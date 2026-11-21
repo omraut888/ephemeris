@@ -2,39 +2,52 @@
 
 ## Resume here (updated after every step)
 
-**Current step: 1 (exploratory held-out runs), with step 3 (paper
-restructure) drafted in parallel.**
+**Current step: 1, waiting for run (a), with step 3 (restructure) mostly
+drafted.**
 
 **Finished:**
-- the guarded held-out modes (commit `3b433c0`);
-- step 2, the README known gaps (`b5419b0`);
-- the compact protocol section and its appendix (`2ffb6bb`);
-- new figure code (`3360515`);
-- abstract, introduction and reversal sections drafted, not yet built.
+- the guarded modes;
+- step 2 (README);
+- the new sections: abstract, introduction, protocol, reversal,
+  explanation, overdraft, calibration, components, conclusion and
+  limitations;
+- the appendices: `app-protocol`, `app-tables`, `app-regime`,
+  `app-identity`, `app-moneydata`, `app-repro`;
+- `main.tex` rewired with the new title.
+
+The paper will **not compile** until the held-out exploratory summaries
+exist, because the `xh/...` macros are missing.
 
 **Half-done:**
-- **Run (a)**, the held-out reversal, overdraft and ablation pass, is
-  running in the background. It writes to `paper/build/explore-heldout/berka/`
-  and logs to `paper/build/explore-heldout-berka.log`.
-  - Its guard entry is already committed in
-    `paper/results/heldout-runs.log`.
-  - If it was interrupted (no "exit" line in its log), rerun it with
-    `--rerun-reason "rerun of exploratory run (a): first attempt
-    interrupted"`, after `git status` is clean. It is safe to rerun: the
-    output directory is simply overwritten.
-- **Run (b)**, held-out B-GLOBAL, was killed for memory (D1.5) with no
-  output. It still needs to run after (a) finishes.
-- **The binary is not rebuilt** since `lgbm_cf.py` got the lean loader. Run
-  `cargo build --release -p ephemeris-eval` first.
+- **Run (a)** is running in the background (log:
+  `paper/build/explore-heldout-berka.log`). If it was interrupted (no
+  "exit" line), rerun it with
+  `--rerun-reason "rerun of exploratory run (a): first attempt interrupted"`,
+  after a clean `git status`. That is safe.
+- **Run (b)** has not run yet (killed for memory; see D1.5). Rebuild the
+  binary first.
 
-**Next action:**
-1. When run (a)'s log has an "exit" line:
-   `paper/.venv/bin/python -I paper/analysis/explore_summary.py --heldout S3 S5 S6`.
-2. Commit `paper/results/exploratory-heldout/`.
-3. Rebuild the binary.
-4. Run (b):
-   `target/release/ephemeris-eval explore bglobal --held-out --rerun-reason "rerun of the exploratory B-GLOBAL run: first attempt killed for memory exhaustion before writing any output" --out paper/build/explore-heldout/bglobal`.
-5. Then `explore_summary.py --heldout S7`, and compare with development.
+**Next actions:**
+1. After (a):
+   `paper/.venv/bin/python -I paper/analysis/explore_summary.py --heldout S3 S5 S6`,
+   then commit `paper/results/exploratory-heldout/`.
+2. `cargo build --release -p ephemeris-eval`; commit, so the tree is clean.
+3. Run (b) with `--rerun-reason "rerun of the exploratory B-GLOBAL run:
+   first attempt killed for memory exhaustion before writing any output"`.
+4. Then `--heldout S7`.
+5. Then `python paper/figures/src/make_figures.py`, `macros.py` and
+   `scripts/paper.sh --pdf-only`.
+
+**Claims to verify against the held-out numbers before the final build:**
+- In explanation.tex: "on both splits" for every row of the
+  explanation table; calendar alignment slightly worse; CP-noKF worse than
+  V2.
+- In overdraft.tex: every method's Brier score above CLIM below zero;
+  every method beating CLIM at the tenth percentile; the schedule-based
+  methods best at 7 days and B-EQp at 90; all reliability curves below
+  the diagonal.
+- In components.tex: fixed noise marginally better in both models; no
+  filter slightly worse; G-cf below B-EQ in CRPS.
 
 *(The final summary goes here at the end.)*
 

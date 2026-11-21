@@ -71,7 +71,7 @@ def fmt(col, v):
     c = col
     if c.endswith("_diff") or c.endswith("_diff_lo") or c.endswith("_diff_hi"):
         return points(v)
-    if c.startswith("miss") or c.startswith("prevalence"):
+    if c.startswith("miss") or c.startswith("prevalence") or c.startswith("share") or c == "values_moved_share":
         return pct(v)
     if c.startswith("brier"):
         return f"{float(v):.3f}"
@@ -172,6 +172,8 @@ def constants():
     put("c/settle-days", c["synthetic/SETTLE_DAYS"])
     put("c/md-origin-step", c["moneydata/ORIGIN_STEP"])
     put("c/lgbm-rounds", c["lgbm/ROUNDS"])
+    put("c/lookback", c["explore/L"])
+    put("c/cal-half", c["explore/CAL_HALF_WIDTH"])
     dist_src = (ROOT / "crates/ephemeris-eval/src/dist.rs").read_text()
     put("c/crps-grid", re.search(r"pub const CRPS_GRID: usize = (\d+);", dist_src).group(1))
     lv = re.search(r"^LEVELS = \[([0-9., ]+)\] \+ \[round\(0\.05 \* i, 2\) for i in range\(1, (\d+)\)\] \+ \[([0-9., ]+)\]",

@@ -7,18 +7,20 @@ transactions of \R{ho/data/accounts_total} accounts of a Czech bank from
 \R{berka/first_year} to \R{berka/last_year}. Activity is sparse and booked:
 the median held-out account has \R{ho/data/median_records_per_month}
 records a month, with no pending state.
-- The end-of-day balance is the running sum of amounts from the opening
+\begin{itemize}
+  \item The end-of-day balance is the running sum of amounts from the opening
   balance. The bank's balance field is used only to validate it.
-- Two adapter decisions were committed before any development result: an
+  \item Two adapter decisions were committed before any development result: an
   every-day holiday calendar, and the exclusion of accounts whose running
   sum drifts from the reported balances by more than \R{c/max-drift}
   crowns.
-- Of the \R{ho/data/accounts_in_split} held-out accounts,
+  \item Of the \R{ho/data/accounts_in_split} held-out accounts,
   \R{ho/data/accounts_excluded_balance_inconsistent} are excluded for
   drift, and \R{ho/data/accounts_with_eligible_origin} have eligible
   origins (\R{ho/data/eligible_origins} origins).
-- Amounts are rescaled per origin by $k = \R{c/reference-scale}/s$, where
+  \item Amounts are rescaled per origin by $k = \R{c/reference-scale}/s$, where
   $s$ is the account's median monthly gross flow.
+\end{itemize}
 
 Appendix~\ref{app:protocol} gives these details, including a recount of the
 drift rule. We also use two synthetic generators and one UK account
@@ -29,46 +31,56 @@ from day \R{c/warmup} of an account's history. Each forecast uses only the
 records dated on or before its origin. A test that cut the input at
 \R{au/prefix/origins} random development origins reproduced all
 \R{au/prefix/truncated_equals_full} forecasts exactly.
-- \textbf{V2} is the primary model, frozen.
-- \textbf{B-EQ} is today's balance plus the account's own past $h$-day
+\begin{itemize}
+  \item \textbf{V2} is the primary model, frozen.
+  \item \textbf{B-EQ} is today's balance plus the account's own past $h$-day
   changes over the last year.
-- \textbf{B-SA+}, the plan's reference, is the detected schedule plus the
+  \item \textbf{B-SA+}, the plan's reference, is the detected schedule plus the
   empirical distribution of its own past errors.
-- \textbf{B-GLOBAL} is gradient-boosted quantile regression
+  \item \textbf{B-GLOBAL} is gradient-boosted quantile regression
   \citep{ke2017lightgbm} pooled across accounts.
+\end{itemize}
 
 Four further per-account baselines and the scoring details are in
 Appendix~\ref{app:protocol}.
 
 \paragraph{Scores.}
-- Coverage of central intervals, pooled.
-- CRPS, and the probability integral transform (PIT).
-- CRPS skill of $m$ against a reference, given two ways over the forecasts
+\begin{itemize}
+  \item Coverage of central intervals, pooled.
+  \item CRPS, and the probability integral transform (PIT).
+  \item CRPS skill of $m$ against a reference, given two ways over the forecasts
   both made:
-  - the \emph{account mean}
+  \begin{itemize}
+    \item the \emph{account mean}
     $\operatorname{mean}_a(1-\sum_a \mathrm{CRPS}_m/\sum_a
     \mathrm{CRPS}_{\text{ref}})$, the planned estimand;
-  - the \emph{pooled} ratio over all origins.
-- Intervals are \R{c/ci-level}\% intervals from \R{c/bootstrap}
+    \item the \emph{pooled} ratio over all origins.
+  \end{itemize}
+  \item Intervals are \R{c/ci-level}\% intervals from \R{c/bootstrap}
   resamples of whole accounts.
-- All methods share one origin set: \R{ho/var/V2/30/forecasts} held-out
+  \item All methods share one origin set: \R{ho/var/V2/30/forecasts} held-out
   forecasts in \R{ho/var/V2/30/accounts} accounts per horizon.
+\end{itemize}
 
 \paragraph{The analysis plan, the revision and the freeze.} The plan fixed
 falsifiable claims before any real-data run. Its two central claims:
-- \textbf{A2:} on held-out data, every central interval within
+\begin{itemize}
+  \item \textbf{A2:} on held-out data, every central interval within
   $\pm\R{c/a2-tol}$ points of nominal at \hA\ and \hB\ days and
   $\pm\R{c/a2-tol-90}$ at \hC;
-- \textbf{B1:} CRPS skill against \emph{each} baseline positive at \hB\ and
+  \item \textbf{B1:} CRPS skill against \emph{each} baseline positive at \hB\ and
   \hC\ days, with an interval excluding zero.
+\end{itemize}
 
 On development data, the original model V0 failed A2: its \lC\% interval
 covered \R{dev/var/V0/90/cov90}\% at \hC\ days. A revision rule written
 before any revision code chose among four candidates:
-- \textbf{V1:} conformal recalibration \citep{gibbs2021aci};
-- \textbf{V2:} compound-Poisson discretionary spending;
-- \textbf{V3:} pooled priors;
-- \textbf{V4:} V2 and V3 combined, recalibrated as V1.
+\begin{itemize}
+  \item \textbf{V1:} conformal recalibration \citep{gibbs2021aci};
+  \item \textbf{V2:} compound-Poisson discretionary spending;
+  \item \textbf{V3:} pooled priors;
+  \item \textbf{V4:} V2 and V3 combined, recalibrated as V1.
+\end{itemize}
 
 The rule required \lC\% coverage within $\pm\R{c/select-tol}$ points at
 every horizon, then chose the lowest CRPS. It selected V2, which was
@@ -80,25 +92,29 @@ a logged reason. The main held-out evaluation ran once.
 
 \paragraph{What is exploratory.} Everything reported after that run is
 labelled exploratory, with no confirmatory status:
-- a second, logged run of the planned ablations, which run~1 omitted
+\begin{itemize}
+  \item a second, logged run of the planned ablations, which run~1 omitted
   through a harness gap;
-- post-hoc summaries of the stored forecasts (paired comparisons, pooled
+  \item post-hoc summaries of the stored forecasts (paired comparisons, pooled
   skills, one-sided misses, per-cell verdicts);
-- the analyses behind \S\ref{sec:explanation} and \S\ref{sec:overdraft}.
+  \item the analyses behind \S\ref{sec:explanation} and \S\ref{sec:overdraft}.
   They were specified in writing (the repository's
   \texttt{paper/REVISION.md}), developed on the development split, and
   then run on held-out accounts in two further logged runs.
+\end{itemize}
 
 \paragraph{Timeline.}
 \label{sec:timeline}
 Git commit times are set by the author's machine; GitHub's record of when
 it first received each commit is not.
-- The freeze was on GitHub at \R{tl/70a7bca/pushed}, before held-out run~1
+\begin{itemize}
+  \item The freeze was on GitHub at \R{tl/70a7bca/pushed}, before held-out run~1
   began at \R{tl/run1/time}.
-- The held-out results were on GitHub at \R{tl/cdf070d/pushed}, before the
+  \item The held-out results were on GitHub at \R{tl/cdf070d/pushed}, before the
   ablation run began at \R{tl/run2/time}.
-- The plan was first pushed at \R{tl/8c40faf/pushed}, together with the
+  \item The plan was first pushed at \R{tl/8c40faf/pushed}, together with the
   first development results. Its precedence over them rests on its
   author-controlled commit time, \R{tl/8c40faf/time}.
+\end{itemize}
 
 The full timeline and every deviation are in Appendix~\ref{app:protocol}.

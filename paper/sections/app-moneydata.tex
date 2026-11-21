@@ -1,0 +1,27 @@
+\section{MoneyData: one account, descriptive}
+\label{app:moneydata}
+On the single MoneyData account (Table~\ref{tab:moneydata};
+\R{md/data/eligible_origins} weekly origins), V2's sparse rule did not fire
+(the account has \R{md/data/records_per_month} records a month), so V2
+equals V0. V0 is badly miscalibrated: its \lC\% interval covers
+\R{md/main/V0/7/cov90}, \R{md/main/V0/30/cov90} and
+\R{md/main/V0/90/cov90}\%. V1's recalibration brings this to
+\R{md/main/V1/7/cov90}, \R{md/main/V1/30/cov90} and
+\R{md/main/V1/90/cov90}\%, and B-EQ has the lowest CRPS.
+
+About \R{d/md-irregular-share}\% of the account's gross flow is one-off:
+inflows of up to \pounds\R{d/md-largest-inflow}, an account transfer of
+\pounds\R{d/md-transfer}, and investment purchases. The model has no term
+for such flows. We draw no general conclusion from one account.
+Figure~\ref{fig:cone} (Appendix) shows an example forecast on a Berka
+development account.
+
+\begin{table}[h]
+\centering\footnotesize
+\tab{moneydata}
+\caption{MoneyData, one account, \R{md/data/eligible_origins} weekly
+origins: point estimates only, because one account cannot be bootstrapped
+by account. Skill is the pooled ratio over the account's origins. V2's
+sparse rule never fired, so V2 equals V0.}
+\label{tab:moneydata}
+\end{table}

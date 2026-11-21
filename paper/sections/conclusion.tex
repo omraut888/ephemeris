@@ -1,35 +1,28 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Table~\ref{tab:claims} lists every claim in the analysis plan and its
-outcome. On held-out sparse bank accounts, a Kalman-filter Monte Carlo
-forecaster has these properties. It was revised by a rule fixed in
-advance and then frozen.
+On sparse booked bank accounts, the empirical distribution of an account's
+own past balance changes is a hard baseline for a state-space forecaster.
 \begin{itemize}
-\item Its \lC\% intervals meet the planned band, and it misses below them
-  less often than nominal.
-\item It has lower CRPS than a careful schedule-aware baseline.
-\item Its \lA\% intervals are too wide.
-\item A simple empirical forecast built from the same account's history
-  has lower CRPS at \hB\ and \hC\ days, with narrower intervals.
-\item A model pooled across accounts has lower CRPS still. A local-first
-  design gives that up by choice.
+\item \textbf{The state-space model wins at short horizons and with short
+  histories,} and its intervals are the more cautious about the downside.
+\item \textbf{The empirical forecast wins at a month and beyond,} once an
+  account has about a year of history.
+\item \textbf{Projecting a detected schedule is the costly component.}
+  Our exploratory analyses point there, and our simulation reproduces the
+  reversal only when schedules are irregular. We did not measure schedule
+  irregularity in the bank data itself.
+\item \textbf{Overdraft probabilities are over-predicted by every method
+  we tried,} and none beats an account's own historical frequency of
+  falling below zero.
+\item \textbf{The planned calibration and sharpness claims fail in
+  part,} and the paper says where (Table~\ref{tab:claims}).
 \end{itemize}
-We have not evaluated the probability of crossing a threshold such as
-zero, which is what an overdraft warning needs.
-
-The analysis plan did its job. The original model's failure, the
-revision, the losses to two baselines, the omitted ablations and the
-cross-platform difference are all reported because the plan fixed the
-tests before the held-out results existed. The next steps follow from the
-failures:
-\begin{itemize}
-\item understand why the empirical baseline wins, by varying sparsity and
-  schedule regularity, and by ablating V2 itself;
-\item evaluate overdraft events directly;
-\item select on calibration at every level, where V1 already does well;
-\item test on modern accounts with pending transactions.
-\end{itemize}
+Two directions follow. One is a hybrid that uses the schedule only when
+it has been regular, and the account's empirical changes otherwise,
+selected on calibration at every level. The other is a test on modern,
+card-heavy accounts with pending transactions, which these data cannot
+provide.
 
 \begin{table}[t]
 \centering\footnotesize

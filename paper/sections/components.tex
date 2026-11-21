@@ -1,0 +1,77 @@
+\section{Components and the pooled reference}
+\label{sec:components}
+
+\paragraph{Ablations of V0 (the plan's claim D1) and of V2 (exploratory).}
+The plan's ablations removed components from V0, because they were
+written before V2 existed. They were run on held-out accounts in a second,
+separately logged run, after the main results were known
+(Table~\ref{tab:ablations}, Appendix~\ref{app:tables}). The V2 ablations
+were added later, on both splits. Skill below is the variant's account-mean
+skill against its full model at \hB\ and \hC\ days (positive: removing the
+component lowers CRPS).
+
+\begin{center}\scriptsize
+\begin{tabular}{l ll ll}
+\toprule
+ & \multicolumn{2}{c}{in V0 (held-out)} & \multicolumn{2}{c}{in V2 (held-out; development in brackets)}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Component removed & \hB\ d & \hC\ d & \hB\ d & \hC\ d\\
+\midrule
+adaptive noise & \R{ho/ablp/all/abl-fixed-noise/30/skill@3} & \R{ho/ablp/all/abl-fixed-noise/90/skill@3} & \R{xh/s6/V2-noadapt-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-noadapt-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-noadapt-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-noadapt-vs-V2/90/skill_mean@3})}\\
+regime detector & \R{ho/ablp/all/abl-no-detector/30/skill@3} & \R{ho/ablp/all/abl-no-detector/90/skill@3} & \R{xh/s6/V2-nodetector-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-nodetector-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-nodetector-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-nodetector-vs-V2/90/skill_mean@3})}\\
+spend floor & \R{ho/ablp/all/abl-no-floor/30/skill@3} & \R{ho/ablp/all/abl-no-floor/90/skill@3} & \R{xh/s6/V2-nofloor-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-nofloor-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-nofloor-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-nofloor-vs-V2/90/skill_mean@3})}\\
+lumps / sparse spending & \R{ho/ablp/all/abl-no-lumps/30/skill@3} & \R{ho/ablp/all/abl-no-lumps/90/skill@3} & \R{xh/s6/V0-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V0-vs-V2/30/skill_mean@3})} & \R{xh/s6/V0-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V0-vs-V2/90/skill_mean@3})}\\
+the filter & -- & -- & \R{xh/s6/cp-nokf-vs-v2/30/skill_mean@3} {\tiny(\R{xd/s6/cp-nokf-vs-v2/30/skill_mean@3})} & \R{xh/s6/cp-nokf-vs-v2/90/skill_mean@3} {\tiny(\R{xd/s6/cp-nokf-vs-v2/90/skill_mean@3})}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Held-out origins: \R{ho/abldata/eligible_origins} per horizon for
+V0's ablations and \R{xh/s6/V2-nodetector-vs-V2/30/forecasts} for V2's.
+
+\begin{itemize}
+\item \textbf{Inside V2, the detector matters most:} removing it raises
+  CRPS sharply. That reverses the descriptive real-data result for V0
+  (Appendix~\ref{app:regime}).
+\item \textbf{The spend floor has no effect in V2}, whose spending model
+  does not use the rate the floor acts on.
+\item \textbf{Fixed noise priors are marginally better} in both models.
+\item \textbf{Removing V2's sparse spending} (V0) is much worse.
+\item \textbf{Removing the filter} (CP-noKF) is slightly worse.
+\end{itemize}
+V0's lumps row and V2's sparse-spending row are different components that
+play the same role, the heavy tail of spending.
+
+\paragraph{B-GLOBAL: what pooling buys, and whether look-ahead explains it
+(exploratory).} B-GLOBAL learns from \R{dev/data/accounts_run} other
+accounts, which the local-first design forbids. It has the lowest CRPS of
+any method on held-out data (Table~\ref{tab:pairwise}). Its training used
+development origins of all dates, which is calendar look-ahead for early
+held-out origins.
+
+We removed the look-ahead by training only on development data with
+outcomes before each quarter's start (G-cf, calendar-forward), or before a
+single cutoff (G-cut). On held-out accounts, against the original
+B-GLOBAL, at \hB\ and \hC\ days:
+\begin{itemize}
+\item \textbf{G-cf loses little:} account-mean skill
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean} (development:
+  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
+  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean}).
+\item \textbf{It still has far lower CRPS than V2}, whose skill against it
+  is \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/skill_mean} and
+  \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/90/skill_mean}.
+\item \textbf{And lower than B-EQ.}
+\end{itemize}
+Pooling, not look-ahead, is what makes it strong.
+
+\textbf{Its calibration is weaker.} G-cf's \lC\% interval covers
+\R{xh/s7/stats-cf/B-GLOBAL-cf/30/cov90} and
+\R{xh/s7/stats-cf/B-GLOBAL-cf/90/cov90}\% at \hB\ and \hC\ days, against
+V2's \R{xh/s7/stats-cf/V2/30/cov90} and \R{xh/s7/stats-cf/V2/90/cov90}\% on
+the same origins (\R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/forecasts} per horizon).
+
+A model trained across other people's accounts and shipped frozen to a
+device would keep most of this advantage. Whether that is acceptable is a
+product question this paper does not settle.

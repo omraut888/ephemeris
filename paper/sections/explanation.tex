@@ -1,0 +1,134 @@
+\section{Why the empirical forecast wins at long horizons (exploratory)}
+\label{sec:explanation}
+
+We tested four explanations, each specified in writing before running
+(\texttt{paper/REVISION.md}):
+\begin{itemize}
+\item calendar alignment;
+\item the cost of projecting the schedule;
+\item sparse event counts;
+\item history length;
+\end{itemize}
+plus an independent simulation. Every new method uses the same \R{c/lookback}-day
+lookback, the same origins and the same information as B-EQ.
+\begin{itemize}
+\item \textbf{B-EQc} restricts B-EQ's past windows to those starting
+  within \R{c/cal-half} days of the origin's day of the month.
+\item \textbf{B-SR} adds to the detected schedule's projection the
+  account's own past $h$-day \emph{residuals}: past changes minus the
+  schedule's flows in the same window.
+\item \textbf{CP-noKF} is V2's compound-Poisson spending model with the
+  filter removed. Its paths start at today's booked balance and add the
+  schedule's flows and simulated discretionary events.
+\end{itemize}
+All were developed on the development split (\R{xd/s3/V2-vs-B-EQ/30/forecasts}
+origins per horizon) and then run once on held-out accounts in a logged
+run (\R{xh/s3/V2-vs-B-EQ/30/forecasts} origins). Table~\ref{tab:explain}
+gives both.
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l ll ll}
+\toprule
+ & \multicolumn{2}{c}{Development} & \multicolumn{2}{c}{Held-out}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Comparison (skill of the first) & \hB\ d & \hC\ d & \hB\ d & \hC\ d\\
+\midrule
+B-EQc vs B-EQ & \pq{xd/s3/B-EQc-vs-B-EQ}{30} & \pq{xd/s3/B-EQc-vs-B-EQ}{90} & \pq{xh/s3/B-EQc-vs-B-EQ}{30} & \pq{xh/s3/B-EQc-vs-B-EQ}{90}\\
+B-SR vs B-EQ & \pq{xd/s3/B-SR-vs-B-EQ}{30} & \pq{xd/s3/B-SR-vs-B-EQ}{90} & \pq{xh/s3/B-SR-vs-B-EQ}{30} & \pq{xh/s3/B-SR-vs-B-EQ}{90}\\
+V2 vs B-EQ & \pq{xd/s3/V2-vs-B-EQ}{30} & \pq{xd/s3/V2-vs-B-EQ}{90} & \pq{xh/s3/V2-vs-B-EQ}{30} & \pq{xh/s3/V2-vs-B-EQ}{90}\\
+CP-noKF vs B-EQ & \pq{xd/s3/cp-nokf-vs-b-eq}{30} & \pq{xd/s3/cp-nokf-vs-b-eq}{90} & \pq{xh/s3/cp-nokf-vs-b-eq}{30} & \pq{xh/s3/cp-nokf-vs-b-eq}{90}\\
+B-EQ vs B-SA+ & \pq{xd/s3/B-EQ-vs-B-SA+}{30} & \pq{xd/s3/B-EQ-vs-B-SA+}{90} & \pq{xh/s3/B-EQ-vs-B-SA+}{30} & \pq{xh/s3/B-EQ-vs-B-SA+}{90}\\
+\addlinespace
+B-SR vs V2 & \pq{xd/s3/B-SR-vs-V2}{30} & \pq{xd/s3/B-SR-vs-V2}{90} & \pq{xh/s3/B-SR-vs-V2}{30} & \pq{xh/s3/B-SR-vs-V2}{90}\\
+CP-noKF vs V2 & \pq{xd/s3/cp-nokf-vs-v2}{30} & \pq{xd/s3/cp-nokf-vs-v2}{90} & \pq{xh/s3/cp-nokf-vs-v2}{30} & \pq{xh/s3/cp-nokf-vs-v2}{90}\\
+\bottomrule
+\end{tabular}
+\caption{The explanation's comparisons (exploratory): pooled CRPS skill of
+the first method against the second, with the account mean in brackets
+(negative: the first has higher CRPS). Same origins for all methods within
+a split. Development: \R{xd/s3/V2-vs-B-EQ/30/forecasts} origins in
+\R{xd/s3/V2-vs-B-EQ/30/accounts} accounts per horizon. Held-out:
+\R{xh/s3/V2-vs-B-EQ/30/forecasts} in \R{xh/s3/V2-vs-B-EQ/30/accounts}.
+Intervals are in the result files (\texttt{paper/results/exploratory*}).}
+\label{tab:explain}
+\end{table}
+
+\paragraph{Projecting the schedule is the costly component.} Four methods
+project the detected pay-and-bill schedule: V2, CP-noKF, B-SR and B-SA+.
+All four have higher CRPS than B-EQ at \hB\ and \hC\ days, by similar
+margins, on both splits (Table~\ref{tab:explain}). B-SR is the cleanest
+contrast. It uses exactly the empirical residual distribution B-EQ uses,
+and adds only the schedule's projection, yet it loses clearly: pooled
+skill \R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
+\R{xh/s3/B-SR-vs-B-EQ/90/skill_pooled} on held-out accounts. B-SR's \lC\%
+intervals are about as narrow as B-EQ's (median
+\R{xh/s3/stats/B-SR/90/median_width90} against
+\R{xh/s3/stats/B-EQ/90/median_width90} at \hC\ days, normalized), so the
+loss is not a matter of width. Projecting the detected schedule adds error
+that the account's raw past changes avoid.
+
+\paragraph{History length.} With under a year of history, the gap between
+V2 and B-EQ is absent or reversed. With more history it is large
+(\S\ref{sec:reversal}). This held on development and again on held-out
+accounts:
+
+\begin{center}\footnotesize
+\begin{tabular}{lll}
+\toprule
+V2 vs B-EQ, pooled skill & under 12 months & 24 months or more\\
+\midrule
+Development, \hB\ / \hC\ d & \R{xd/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled} / \R{xd/s3-history-lt12/V2-vs-B-EQ/90/skill_pooled} & \R{xd/s3-history-ge24/V2-vs-B-EQ/30/skill_pooled} / \R{xd/s3-history-ge24/V2-vs-B-EQ/90/skill_pooled}\\
+Held-out, \hB\ / \hC\ d & \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled} / \R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_pooled} & \R{xh/s3-history-ge24/V2-vs-B-EQ/30/skill_pooled} / \R{xh/s3-history-ge24/V2-vs-B-EQ/90/skill_pooled}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The relation is not monotone: the gap is largest at 12--23 months. B-EQ
+needs enough past windows to represent the distribution of changes.
+
+\paragraph{Simulation: schedule regularity, not sparsity.} We crossed four
+levels of spending sparsity, from \R{xd/s4/0/0/V2-vs-B-EQ/30/mean_count} down
+to \R{xd/s4/3/0/V2-vs-B-EQ/30/mean_count} purchases a day, with four levels
+of schedule regularity. The regularity factors are pay-date jitter,
+paycheck amount noise and bill drift. Figure~\ref{fig:grid} shows the
+result:
+\begin{itemize}
+\item \textbf{Regular schedules:} V2 has lower CRPS than B-EQ at every
+  sparsity, including the sparsest
+  (\R{xd/s4/3/1/V2-vs-B-EQ/30/skill_pooled} at \hB\ days).
+\item \textbf{The most irregular level:} B-EQ wins at every sparsity
+  (\R{xd/s4/3/3/V2-vs-B-EQ/30/skill_pooled} in the sparsest cell).
+\item \textbf{Sparsity alone} shrinks V2's lead but never reverses it.
+\end{itemize}
+In our generator, the reversal needs irregular schedules. That is
+consistent with schedule projection being the costly component on Berka.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/grid-synthetic.pdf}
+\caption{Simulation (exploratory): pooled CRPS skill of V2 against B-EQ by
+spending sparsity and schedule regularity, \R{xd/s4/0/0/V2-vs-B-EQ/30/accounts}
+seeds and \R{xd/s4/0/0/V2-vs-B-EQ/30/forecasts} origins per cell and
+horizon. Blue: V2 has lower CRPS; orange: B-EQ does. Seed-bootstrap
+intervals are in \texttt{paper/results/exploratory/s4-grid/}.}
+\label{fig:grid}
+\end{figure}
+
+\paragraph{Rejected explanations.}
+\begin{itemize}
+\item \textbf{Calendar alignment.} Aligning B-EQ's past windows to the
+  origin's day of the month makes it slightly \emph{worse}, on both
+  splits (Table~\ref{tab:explain}).
+\item \textbf{Sparse event counts.} Modelling spending as sparse discrete
+  events (CP-noKF) loses to B-EQ as clearly as V2 does. In simulation,
+  sparsity alone never produces the reversal. The filter itself helps a
+  little: removing it (CP-noKF against V2) raises CRPS slightly on both
+  splits.
+\end{itemize}
+
+\paragraph{What we did not show.} We did not measure schedule irregularity
+in Berka directly. The explanation rests on the comparisons above and on
+the simulation, which uses our own generator. A direct test would
+measure, per account, how far realized paychecks and bills depart from
+the detected schedule, and relate that to the V2--B-EQ gap.
