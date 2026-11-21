@@ -729,3 +729,51 @@ the rule that defines S_hist, applied to the later tagging.
 F_w and the predictability measures are unchanged, and only the oracle's
 rows are expected to change. The first run's oracle results are kept in
 `s11-schedule/first-run-oracle/`, labelled superseded.
+
+# Round 4: the user's decisions on the round 3 checkpoint
+
+## S13 (round 4, item 1) The paycheck channel without the detector (development)
+
+**Hypothesis (from S9).** The income channel starts from a small first
+income record. A confident posterior then puts the real paychecks far
+outside the gate, so they skip the paycheck update. R_inc's adaptation
+(samples capped at gate·S) inflates R until the paychecks pass the gate,
+but by then the Kalman gain P_mm/(P_mm + R) is tiny, because P_mm grows
+only by q_m per day, so m̂ creeps.
+
+**Trace.** At each development account's last eligible origin, ingest the
+records twice, with and without the detectors (V2's tracker; V0's is the
+same). For every income observation, in order, record from the ingest
+report: the innovation ν, its variance S, the NIS, whether it was gated,
+and the amount, giving m̂ before the update = amount − ν. The gain is
+estimated as K_i = (m̂_{i+1} − m̂_i)/ν_i (the m random walk has mean zero).
+
+**Per account:**
+- the number of income observations, the first and last amounts, and the
+  gated share among the first 12 and over all observations;
+- the first observation after the first at which |m̂ − amount| < 20% of
+  the amount;
+- the median K over the last 12 observations;
+- the final S relative to the last paycheck squared;
+- the final m̂ relative to the last paycheck.
+
+These are summarized by the S9 stratum (an income alarm with the detector
+on, or none).
+
+**V0's smaller bias.** From S9's stored results: the change in the 90-day
+median bias caused by removing the detector, for V0 and for V2, in the
+income-alarm stratum. If V0's smaller bias is a different starting point
+rather than compensation, the two changes are of similar size.
+
+**The fix's effect (after the post-freeze fix, development only).**
+- Rerun V0 and V2 as frozen (detector on) on the first 100 development
+  accounts with the fixed engine, and compare with the frozen rows: the
+  number of forecasts changed; the mean CRPS, the 90-day median bias and
+  the coverage at each level, before and after.
+- Rerun S9 on all development origins with the fixed engine, for the
+  detector-off effect.
+
+The frozen results are not regenerated.
+
+Code: `ephemeris-eval explore income-trace`; summary `explore_summary.py
+s13`. Results: `paper/results/exploratory/s13-income/`.
