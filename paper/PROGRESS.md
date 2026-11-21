@@ -3,13 +3,23 @@
 ## Resume here (updated after every step)
 
 **Round 3 (second referee report), in progress.**
-- Done: the x86_64 identity item (`e39d143`).
-- Current: Tier A1, the detector-ablation investigation (read-only
-  diagnostics on development; nothing written to the frozen results).
-- Half-done: nothing.
-- Next: A1, then A2 (text), then B1/B2 specifications in REVISION.md
-  (commit before running), then the development runs, the Tier C plan, and
-  the checkpoint summary.
+- **Done:**
+  - x86_64 identity (`e39d143`);
+  - A2 text corrections except §9's detector paragraph;
+  - S9 (A1) first run: all identity checks pass, so no bug;
+  - specifications for S11 (B1), S12 (B2) and Tier C, committed;
+  - runners for S11 and S12, committed.
+- **Running:** the S9 rerun with the added fields, into
+  `paper/build/explore/detector` (first run kept in `detector-run1`). It
+  is safe to rerun: `target/release/ephemeris-eval explore detector --out
+  paper/build/explore/detector`.
+- **Next:**
+  1. `explore_summary.py s9`, and commit the S9 results;
+  2. write §9 and the A1 report;
+  3. `cargo build --release`, then run `explore schedule` and `explore
+     shortfall` (development) and summarize them (s11 and s12 are still to
+     be written in `explore_summary.py`);
+  4. the checkpoint summary.
 
 ## Round 2: the user's decisions on Q1–Q5 (2026-11-21)
 
