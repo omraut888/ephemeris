@@ -21,20 +21,21 @@ data, the state-space model chosen by our analysis plan, V2, has lower CRPS
 than B-EQ at \hA\ days. B-EQ has lower CRPS at \hB\ and \hC\ days, under
 either way of averaging scores (\S\ref{sec:reversal},
 Figure~\ref{fig:reversal}). The picture differs by history length. With
-under a year of history, the two are close: B-EQ is slightly better at
-\hB\ days and V2 at \hC. V2's long-horizon intervals cover far better
+under a year of history, the pooled scores are close (B-EQ slightly better
+at \hB\ days, V2 at \hC), but the account mean still favours B-EQ at both.
+V2's long-horizon intervals cover far better
 than B-EQ's.
 
 \paragraph{An explanation, tested on development data and then on held-out
 accounts (exploratory).} Projecting the detected schedule is the costly
 component:
 \begin{itemize}
-\item every schedule-based method we tried loses to B-EQ by a similar
-  margin, including the detected schedule plus exactly the empirical
+\item every schedule-based method we tried loses to B-EQ at \hB\ and
+  \hC\ days, including the detected schedule plus exactly the empirical
   residuals that B-EQ samples;
-\item the gap needs at least a year of history to appear;
-\item in simulation, irregular pay and bill schedules reproduce the
-  reversal, while sparse spending alone does not.
+\item with under a year of history the pooled gap is small or reversed;
+\item in simulation, irregular pay and bill schedules give B-EQ its
+  long-horizon advantage, while sparse spending alone does not.
 \end{itemize}
 Aligning past windows to the calendar, and modelling sparse spending as
 discrete events, do not explain it (\S\ref{sec:explanation}). We did not

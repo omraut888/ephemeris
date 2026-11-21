@@ -2,7 +2,7 @@
 \label{app:tables}
 
 \subsection{All methods on held-out Berka}
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/coverage-heldout.pdf}
 \caption{Empirical against nominal pooled coverage of central intervals at
@@ -10,7 +10,7 @@ every level of a fine grid, held-out Berka (\R{ho/var/V2/30/forecasts}
 origins per horizon and method).}
 \label{fig:coverage}
 \end{figure}
-\begin{table}[h]
+\begin{table}[htbp]
 \centering\footnotesize\setlength{\tabcolsep}{4pt}
 \tab{heldout-main}
 \caption{Held-out Berka, every method on the same
@@ -26,14 +26,14 @@ mean CRPS and intervals for V2's comparisons are in
 Table~\ref{tab:pairwise}.}
 \label{tab:heldout}
 \end{table}
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/skill-v2-heldout.pdf}
 \caption{V2's account-mean CRPS skill against each baseline by horizon
 (held-out, post hoc paired intervals).}
 \label{fig:skill}
 \end{figure}
-\begin{table}[h]
+\begin{table}[htbp]
 \centering\scriptsize\setlength{\tabcolsep}{3.5pt}
 \tab{heldout-strata}
 \caption{Held-out strata: pooled \lC\% coverage (\%) and account-mean skill
@@ -42,7 +42,7 @@ stratum. Strata are defined per origin, so an account can appear in more
 than one stratum of a pair.}
 \label{tab:strata}
 \end{table}
-\begin{table}[h]
+\begin{table}[htbp]
 \centering\footnotesize
 \tab{devho-v2}
 \caption{V2 on the development split (\R{dev/var/V2/30/forecasts} origins in
@@ -51,7 +51,7 @@ than one stratum of a pair.}
 pooled; skill is the account mean.}
 \label{tab:devho}
 \end{table}
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=0.85\linewidth]{figures/cone-example.pdf}
 \caption{V2's and V0's \hC-day forecasts for development account
@@ -109,7 +109,7 @@ never fired, so V2 equals V0. V3 was not run on synthetic data.}
 \end{table}
 
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering\footnotesize
 \tab{synthetic-a1}
 \caption{Claim A1: V0's pooled coverage (\%) on model-matched data with the

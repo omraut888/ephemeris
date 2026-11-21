@@ -2,23 +2,17 @@
 
 ## Resume here (updated after every step)
 
-**Current step: 5 (self-review).**
+**Current step: 6 (test-full, disk).**
 
-**Finished:**
-- steps 1–2;
-- step 3 (the restructure);
-- step 4: the PDF builds at 26 pages, the main text about 12.5; 0
-  warnings, overfull boxes and undefined references; captions checked
-  (`cc77171` and later).
+**Finished:** steps 1–5. Step 5's fixes are committed; the PDF builds at 27
+pages (main text to p. 13, appendix from p. 16) with 0 warnings.
 
 **Half-done:** nothing running.
 
 **Next actions:**
-1. Step 5: scan the `.tex` sources for digits outside macros, and read
-   the PDF text for unsupported claims and inconsistencies. Write the
-   findings under "Step 5" below.
-2. Step 6: `scripts/test-full.sh`.
-3. The final summary.
+1. Step 6: `scripts/test-full.sh`; `du -sh target`, and `cargo clean` if
+   it is over 8 GB.
+2. The final summary at the top of this file.
 
 *(The final summary goes here at the end.)*
 
@@ -131,3 +125,60 @@ Pooled skill at 30 / 90 days, account mean in brackets:
   The schedule-based methods are best at 7 days, and B-EQp at 30 and 90.
 
 **No disagreement in sign** anywhere in S3, S5, S6 or S7.
+
+### Step 5: self-review
+
+**Numbers not from macros:** none. A scan of the `.tex` sources for digits
+outside `\R{}`, labels, citations and layout found no hand-typed result
+numbers. Fixed constants (365, ±3 days, tenth percentile, 0.5%) are macros.
+
+**Unsupported or overstated claims, fixed:**
+- **R1.** Introduction: "the gap needs at least a year of history to
+  appear". It is "small or reversed" with under a year (pooled). Fixed.
+- **R2.** "Every schedule-based method loses to B-EQ by a similar margin"
+  (abstract, introduction, §6): false for B-SA+, which loses by far more
+  (B-EQ vs B-SA+ +0.35 / +0.54). Now "loses at 30 and 90 days (B-SA+ by the
+  most)".
+- **R3.** "In simulation, irregular schedules reproduce the reversal"
+  (abstract, introduction, §6, conclusion): the grid has only 30 and 90
+  days, so it shows B-EQ's long-horizon advantage, not the 7-day half of
+  the reversal. Reworded everywhere.
+- **R4 (most important).** Under a year of history the *pooled* skill of V2
+  vs B-EQ is −0.02 / +0.05 (held-out), but the planned *account-mean* skill
+  is −0.23 / −0.23 (CI excludes 0), and at 7 days the account mean is −0.01
+  (n.s.) while the pooled skill is +0.23. The introduction ("V2 at 90") and the
+  conclusion ("the state-space model wins ... at three months when an
+  account has under a year of history") relied on the pooled estimand
+  only. Now the account mean is reported in §5 and §6 and the claims say
+  "on the pooled score only".
+- **R5.** §7: "B-EQp best at 90 days" for the tenth-percentile event; it is
+  best at 30 days as well (Brier 0.126 vs 0.129–0.138). Fixed.
+
+**Checked and consistent:** the abstract's and conclusion's overdraft claims
+(V2 never beats CLIM below 0; the 7-day B-EQp exception marked unreliable),
+the A2 counts (4 fail, 7 pass, 1 inconclusive) against Table 4, the B1
+outcomes against Table 1, the ablation signs against the prose, G-cf
+coverage (stated on its own 109,363 common origins, so it differs slightly
+from Table 4's V2 numbers on 115,235), and the limitations against the
+sections they cite.
+
+**Build:** the 9 "`h` float specifier changed to `ht`" warnings predated
+this step (confirmed by building the previous commit). The appendix floats
+now use `[htbp]`: 0 warnings, 27 pages (the appendix grew by one page; the
+main text is unchanged).
+
+**Needs the user's decision:**
+- **Q1. Which estimand leads the history-length story.** The pooled and
+  account-mean skills disagree in sign for under-a-year accounts at 7 and
+  90 days. The paper now reports both. You may prefer to drop the history
+  claim from the abstract and conclusion entirely.
+- **Q2. "Every method is too pessimistic about dips"** is a reading of the
+  reliability plots (mostly below the diagonal) with one stated
+  exception. No single summary number (for example, a mean forecast minus
+  the observed frequency) backs it. Adding one would be a new exploratory
+  quantity; I did not add it.
+- **Q3. Page budget.** The main text runs to p. 13 (sections 1–11) plus the
+  statements on p. 14, about 12.5–13 pages against the target of about 12.
+  Further cuts would come from §9 (B-GLOBAL) or §8's V1 paragraph.
+- **Q4.** The author e-mail in `main.tex` is omraut0888@gmail.com (as set
+  earlier); confirm it is the one to submit with.

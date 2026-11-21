@@ -56,8 +56,8 @@ Intervals are in the result files (\texttt{paper/results/exploratory*}).}
 
 \paragraph{Projecting the schedule is the costly component.} Four methods
 project the detected pay-and-bill schedule: V2, CP-noKF, B-SR and B-SA+.
-All four have higher CRPS than B-EQ at \hB\ and \hC\ days, by similar
-margins, on both splits (Table~\ref{tab:explain}). B-SR is the cleanest
+All four have higher CRPS than B-EQ at \hB\ and \hC\ days, on both splits
+(B-SA+ by the most) (Table~\ref{tab:explain}). B-SR is the cleanest
 contrast. It uses exactly the empirical residual distribution B-EQ uses,
 and adds only the schedule's projection, yet it loses clearly: pooled
 skill \R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
@@ -68,8 +68,11 @@ intervals are about as narrow as B-EQ's (median
 loss is not a matter of width. Projecting the detected schedule adds error
 that the account's raw past changes avoid.
 
-\paragraph{History length.} With under a year of history, the gap between
-V2 and B-EQ is small or reversed. With more history it is large
+\paragraph{History length.} With under a year of history, the pooled gap between
+V2 and B-EQ is small or reversed. The account mean still favours B-EQ
+(held-out: \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_mean} and
+\R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_mean}), and the pooled score, which weights accounts
+with large errors more, is what reverses. With more history the gap is large
 (\S\ref{sec:reversal}). This held on development and again on held-out
 accounts:
 
@@ -101,7 +104,7 @@ result:
   (\R{xd/s4/3/3/V2-vs-B-EQ/30/skill_pooled} in the sparsest cell).
 \item \textbf{Sparsity alone} shrinks V2's lead but never reverses it.
 \end{itemize}
-In our generator, the reversal needs irregular schedules. That is
+In our generator, B-EQ's advantage at \hB\ and \hC\ days needs irregular schedules. That is
 consistent with schedule projection being the costly component on Berka.
 
 \begin{figure}[t]
@@ -122,7 +125,7 @@ intervals are in \texttt{paper/results/exploratory/s4-grid/}.}
   splits (Table~\ref{tab:explain}).
 \item \textbf{Sparse event counts.} Modelling spending as sparse discrete
   events (CP-noKF) loses to B-EQ as clearly as V2 does. In simulation,
-  sparsity alone never produces the reversal. The filter itself helps a
+  sparsity alone never gives B-EQ the advantage. The filter itself helps a
   little: removing it (CP-noKF against V2) raises CRPS slightly on both
   splits.
 \end{itemize}

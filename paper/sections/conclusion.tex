@@ -4,14 +4,15 @@
 On sparse booked bank accounts, the empirical distribution of an account's
 own past balance changes is a hard baseline for a state-space forecaster.
 \begin{itemize}
-\item \textbf{The state-space model wins at a week, and at three months
-  when an account has under a year of history.} Its intervals are the
-  more cautious about the downside.
+\item \textbf{The state-space model wins at a week.} With under a year
+  of history it is close at longer horizons, and ahead at three months on
+  the pooled score only. Its intervals are the more cautious about the
+  downside.
 \item \textbf{The empirical forecast wins at a month and beyond,} once an
   account has about a year of history.
 \item \textbf{Projecting a detected schedule is the costly component.}
-  Our exploratory analyses point there, and our simulation reproduces the
-  reversal only when schedules are irregular. We did not measure schedule
+  Our exploratory analyses point there, and in our simulation B-EQ wins at a
+  month and beyond only when schedules are irregular. We did not measure schedule
   irregularity in the bank data itself.
 \item \textbf{Overdraft probabilities are over-predicted by every method
   we tried,} and at a month or more none beats an account's own
