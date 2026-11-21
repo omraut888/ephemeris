@@ -12,8 +12,14 @@ guarded, logged run (`../heldout-runs.log`). The frozen held-out results in
 - **Fresh V2 against the frozen held-out V2:** 345,704 of 345,705 rows are
   identical. The other differs in the last digit, from the post-freeze
   fix.
-- **Run (b):** B-GLOBAL without calendar look-ahead (S7). See `s7-bglobal/`
-  once it has run.
+- **Run (b):** B-GLOBAL without calendar look-ahead (S7), trained on
+  development data only. G-cf covers 325,177 of 345,705 held-out forecasts
+  (quarterly, outcome-before-quarter training). G-cut covers 233,328
+  (origins from 1996-07-01; one model trained on outcomes before then).
+  It took 207 s.
+  - The first attempt was killed for memory exhaustion before it wrote
+    any output (`paper/PROGRESS.md` D1.5). Both entries are in the run
+    log.
 
 Summaries: `paper/analysis/explore_summary.py --heldout`. The definitions
 and aggregations are the same as on development.

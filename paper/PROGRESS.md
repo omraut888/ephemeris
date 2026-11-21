@@ -128,3 +128,35 @@ is marked unreliable.
   introduction, overdraft section and conclusion.
 - **The claim now reads:** no method beats CLIM at 30 or 90 days, and V2
   never does.
+
+### Step 1: done. Held-out against development (exploratory)
+
+Pooled skill at 30 / 90 days, account mean in brackets:
+
+| Comparison | Development | Held-out | Agree? |
+|---|---|---|---|
+| V2 vs B-EQ | −0.12 / −0.20 (−0.24 / −0.36) | −0.12 / −0.18 (−0.23 / −0.34) | yes |
+| B-EQc vs B-EQ | −0.014 / −0.012 | −0.015 / −0.012 | yes: alignment slightly worse |
+| B-SR vs B-EQ | −0.09 / −0.18 | −0.10 / −0.19 | yes |
+| CP-noKF vs B-EQ | −0.15 / −0.25 | −0.15 / −0.23 | yes |
+| CP-noKF vs V2 | −0.025 / −0.036 | −0.029 / −0.042 | yes: the filter helps a little |
+| B-SR vs V2 | +0.027 / +0.018 n.s. (90 d mean −0.014 n.s.) | +0.017 / −0.005 n.s. (90 d mean −0.022, CI excludes 0) | mostly; at 90 d the account mean is now significant |
+| History < 12 months, V2 vs B-EQ | −0.017 n.s. / +0.039 | −0.024 / +0.046 | yes in direction; at 30 d now significant (small) |
+| History ≥ 24 months | −0.15 / −0.29 | −0.16 / −0.27 | yes |
+| V2 without detector vs V2 (mean) | −0.19 / −0.46 | −0.21 / −0.49 | yes |
+| V2 without adaptive noise (mean) | +0.006 / +0.002 | +0.005 / +0.001 n.s. | yes |
+| V2 without floor | 0 / 0 | 0 / 0 | yes |
+| G-cf vs B-GLOBAL (mean) | −0.026 / −0.032 | −0.027 / −0.030 | yes |
+| G-cf vs B-EQ (mean) | +0.22 / +0.30 | +0.23 / +0.30 | yes |
+| G-cf 90% coverage | 81% / 77% | 82% / 78% | yes |
+
+**Overdraft (S5):**
+- Prevalence is lower on held-out accounts: below 0 is 0.34 / 0.66 / 1.26%
+  at 7 / 30 / 90 days, against 0.71 / 1.09 / 1.79% on development.
+- **Below 0:** CLIM is best at 30 and 90 days on both splits. At 7 days,
+  B-EQp beats CLIM on both (see correction C1; the held-out cell is marked
+  unreliable).
+- **Below the tenth percentile:** every method beats CLIM on both splits.
+  The schedule-based methods are best at 7 days, and B-EQp at 30 and 90.
+
+**No disagreement in sign** anywhere in S3, S5, S6 or S7.
