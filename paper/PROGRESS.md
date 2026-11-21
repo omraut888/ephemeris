@@ -9,10 +9,13 @@
   - S9 (A1) first run: all identity checks pass, so no bug;
   - specifications for S11 (B1), S12 (B2) and Tier C, committed;
   - runners for S11 and S12, committed.
-- **Running:** the S9 rerun with the added fields, into
-  `paper/build/explore/detector` (first run kept in `detector-run1`). It
-  is safe to rerun: `target/release/ephemeris-eval explore detector --out
-  paper/build/explore/detector`.
+- **Running:** one background job runs S9 (rerun), S11 and S12 in turn on
+  development, into `paper/build/explore/{detector,schedule,shortfall}`;
+  the log is `scratchpad/round3.log`. It is safe to rerun; nothing tracked
+  is written.
+  - Note: the first S9 rerun used a stale binary (only clippy had been
+    run after the code change), so it lacked the new columns and was
+    discarded.
 - **Next:**
   1. `explore_summary.py s9`, and commit the S9 results;
   2. write §9 and the A1 report;
