@@ -796,6 +796,135 @@ def s12():
     write(out / "scores.csv", res)
     show([r for r in res if r[2] in ("V2", "V2-platt", "B-EQp", "CLIM", "CLIM-D")][:60])
 
+# ---------------------------------------------------------------- S13 ----
+
+def s13():
+    """The paycheck channel without the detector (REVISION.md S13)."""
+    d = EXP / "income-trace"
+    out = OUT / "s13-income"
+    res = [["engine", "group", "config", "accounts", "pay_first_over_last", "gated_first12", "never_close_share",
+            "median_k_last12", "final_s_over_pay2", "final_m_over_pay"]]
+    for engine, fname in (("before fix", "trace-prefix.csv"), ("after fix", "trace.csv")):
+        p = d / fname
+        if not p.exists():
+            continue
+        by = defaultdict(dict)
+        for r in csv.DictReader(open(p)):
+            by[r["account"]][r["config"]] = r
+        groups = {"income alarm": [], "no income alarm": []}
+        for v in by.values():
+            if "det" in v and "nodet" in v:
+                groups["income alarm" if int(v["det"]["alarms_income"]) > 0 else "no income alarm"].append(v)
+        for g, L in groups.items():
+            for c in ("det", "nodet"):
+                f = lambda x: np.array([float(v[c][x]) if v[c][x] else np.nan for v in L])  # noqa: E731
+                res.append([engine, g, c, len(L), fmt(float(np.nanmedian(f("pay_first") / f("pay_last"))), 3),
+                            fmt(float(np.nanmedian(f("gated_first12"))), 1),
+                            fmt(float(np.mean(np.isnan(f("first_close")))), 3),
+                            fmt(float(np.nanmedian(f("median_k_last12"))), 4),
+                            fmt(float(np.nanmedian(f("final_s_over_pay2"))), 3),
+                            fmt(float(np.nanmedian(f("final_m_over_pay"))), 3)])
+    write(out / "trace.csv", res)
+    show(res)
+    # V0's smaller bias: the change the detector's removal makes, by model.
+    cb = {(r["stratum"], r["h"]): r for r in csv.DictReader(open(OUT / "s9-detector/crps-bias.csv"))}
+    r = cb[("inc-alarm", "90")]
+    dv0 = float(r["bias_V0-nodet"]) - float(r["bias_V0"])
+    dv2 = float(r["bias_V2-nodet"]) - float(r["bias_V2"])
+    v0 = [["key", "value"], ["bias_V0", r["bias_V0"]], ["bias_V0_nodet", r["bias_V0-nodet"]],
+          ["bias_V2", r["bias_V2"]], ["bias_V2_nodet", r["bias_V2-nodet"]],
+          ["shift_V0", fmt(dv0, 1)], ["shift_V2", fmt(dv2, 1)]]
+    write(out / "v0-bias.csv", v0)
+    show(v0)
+
+
+# ---------------------------------------------------------------- S14 ----
+
+def s14():
+    """Within-window dependence (REVISION.md S14)."""
+    d = EXP / "schedule"
+    out = OUT / "s14-dependence"
+    ms = ["F0", "F1", "O", "EQ-shuf", "EQ-ident", "SR-match", "O-match"]
+    data = load([d / "rows.csv"], set(ms))
+    # The F and O rows must equal S11's (the previous run, kept aside).
+    prev = load([EXP / "schedule-s11/rows.csv"], {"F0", "F0.5", "F1", "O"})
+    n = same = 0
+    for k, v in prev.items():
+        for m in v:
+            if k in data and m in data[k]:
+                n += 1
+                same += data[k][m]["crps"] == v[m]["crps"]
+    worst = max((abs(float(v["EQ-ident"]["crps"]) - float(v["F0"]["crps"])) for v in data.values()
+                 if "EQ-ident" in v and "F0" in v), default=float("nan"))
+    ident = [["check", "compared", "identical", "max_abs_diff"],
+             ["F and O rows = S11 run", n, same, ""],
+             ["EQ-ident (b) = F0 (B-EQ)", len(data), "", f"{worst:.3g}"]]
+    write(out / "identity.csv", ident)
+    show(ident)
+    pairs = [("EQ-shuf", "F0"), ("SR-match", "F1"), ("SR-match", "F0"), ("O-match", "O"), ("O-match", "F0"),
+             ("F1", "F0"), ("O", "F0")]
+    _, c = panel(data, ms, pairs, out)
+    show(c)
+    st = {(r["account"], r["origin"]): r for r in csv.DictReader(open(d / "state.csv"))}
+    cut = [float(r["amount_error"]) for r in csv.DictReader(open(OUT / "s11-schedule/cutpoints.csv"))]
+
+    def tert(k):
+        r = st[(k[0], k[1])]
+        a = float(r["abs_err"]) / float(r["abs_real"]) if float(r["abs_real"]) > 0 else float("nan")
+        if not np.isfinite(a) or int(r["checkpoints"]) < 3:
+            return "other"
+        return "predictable" if a <= cut[0] else ("middle" if a <= cut[1] else "unpredictable")
+
+    for s in ("predictable", "middle", "unpredictable"):
+        panel(data, ms, pairs, out, keep=lambda k, v, s=s: tert(k) == s, label=f"-{s}")
+
+# ------------------------------------------------------------ S5 split ----
+
+def s5split():
+    """Round 4 item 4: the S5 events split by start state (stored events and
+    start balances only; no new forecasts)."""
+    out = OUT / "s5-overdraft"
+    ev = list(csv.DictReader(open(EXP / "berka/events.csv")))
+    b0 = {(r["account"], r["origin"]): float(r["b0"]) for r in csv.DictReader(open(EXP / "startbal/startbal.csv"))}
+    methods = ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM"]
+    rng = np.random.default_rng(SEED)
+    head = ["threshold", "h", "subset", "method", "origins", "accounts", "events", "prevalence", "mean_p",
+            "citl_diff", "citl_lo", "citl_hi", "brier", "bss_vs_clim", "bss_lo", "bss_hi"]
+    res = [head]
+    missing = 0
+    for u in ("u0", "u10"):
+        for h in HS:
+            rows = [r for r in ev if r["threshold"] == u and r["h"] == h]
+            for r in rows:
+                k = (r["account"], r["origin"])
+                if k not in b0:
+                    missing += 1
+                r["start_below"] = "1" if b0.get(k, float("inf")) < float(r["u"]) else "0"
+            for subset, keep in (("all", lambda r: True), ("new crossings", lambda r: r["start_below"] == "0"),
+                                 ("existing negatives", lambda r: r["start_below"] == "1")):
+                sub = [r for r in rows if keep(r)]
+                if not sub:
+                    continue
+                y = np.array([float(r["event"]) for r in sub])
+                acct = np.array([r["account"] for r in sub])
+                ids, inv = np.unique(acct, return_inverse=True)
+                idx = rng.integers(0, len(ids), size=(RESAMPLES, len(ids)))
+                n_a = np.bincount(inv).astype(float)
+                y_a = np.bincount(inv, weights=y)
+                pc = np.array([float(r["p_CLIM"]) for r in sub])
+                for m in methods:
+                    p = np.array([float(r[f"p_{m}"]) for r in sub])
+                    p_a = np.bincount(inv, weights=p)
+                    draw = (p_a[idx].sum(axis=1) - y_a[idx].sum(axis=1)) / n_a[idx].sum(axis=1)
+                    clo, chi = np.quantile(draw, [0.025, 0.975])
+                    bss, lo, hi = bss_boot(p, pc, y, acct, rng)
+                    res.append([u, h, subset, m, len(sub), len(ids), int(y.sum()), fmt(y.mean(), 5), fmt(p.mean(), 5),
+                                fmt(p.mean() - y.mean(), 5), fmt(clo, 5), fmt(chi, 5),
+                                fmt(float(np.mean((p - y) ** 2)), 5), fmt(bss), fmt(lo), fmt(hi)])
+    write(out / "split.csv", res)
+    print("origins without a start balance:", missing)
+    show([r for r in res if r[3] in ("V2", "B-EQp", "CLIM") and r[0] == "u0"])
+
 
 # ----------------------------------------------------------------- S7 ----
 
@@ -836,6 +965,6 @@ if __name__ == "__main__":
     if args and args[0] == "--heldout":
         FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
         args = args[1:]
-        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s6", "s7"}, "held-out: S3, S5, S5c, S6, S7 only"
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7"}, "held-out: S3, S5, S5c, S6, S7 only"
     for a in args:
         globals()[a.lower()]()

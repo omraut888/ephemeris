@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall", "income-trace"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall", "income-trace", "startbal"])]
         what: String,
         /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
         /// logged like the frozen evaluation, with a required reason.
@@ -680,7 +680,7 @@ fn explore(
 ) -> Result<(), String> {
     use ephemeris_eval::explore as ex;
     if held_out {
-        if !["berka", "bglobal"].contains(&what) {
+        if !["berka", "bglobal", "startbal"].contains(&what) {
             return Err(format!("`{what}` has no held-out mode"));
         }
         if rerun_reason.is_none() {
@@ -934,6 +934,29 @@ fn explore(
                 s.push('\n');
             }
             write(&out.join("trace.csv"), &s)?;
+        }
+        "startbal" => {
+            // Round 4 item 4: each eligible origin's booked end-of-day
+            // balance at the origin, in the frozen normalized units. No
+            // forecasts. Held-out mode is guarded and logged.
+            let accts = split_accounts(data, split)?;
+            let mut s = String::from("account,origin,b0\n");
+            for a in &accts {
+                let first = a.first_day();
+                for o in ephemeris_eval::variants::eligible_origins(a) {
+                    let Some(sc) = a.scale_at(o).filter(|&x| x > 0.0) else {
+                        continue;
+                    };
+                    let k = ephemeris_eval::reference::REFERENCE_SCALE / sc;
+                    let b = a.daily_balance(o)[(o - first) as usize] * k;
+                    s.push_str(&format!(
+                        "{},{},{b}\n",
+                        a.id,
+                        ephemeris_core::schema::Date(o)
+                    ));
+                }
+            }
+            write(&out.join("startbal.csv"), &s)?;
         }
         "phase" => {
             let accts = dev_accounts(data, true)?;
