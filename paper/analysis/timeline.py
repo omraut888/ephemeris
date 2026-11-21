@@ -51,6 +51,14 @@ EVENTS = [
     ("1bec1e0", "Bit identity after the fix"),
     ("129e222", "x86_64 workflow extended to the 100 identity cases"),
     ("CI44827652848", "x86_64 workflow run #4 on the fixed engine: passed"),
+    ("9ec075f", "Exploratory specifications S1-S8 fixed (after the held-out results)"),
+    ("c6f577b", "Exploratory results S1-S6, development split"),
+    ("RUN3", "Exploratory held-out run: S3, S5, S6 (logged)"),
+    ("RUN4", "Exploratory held-out run: S7, killed before any output (logged)"),
+    ("RUN5", "Exploratory held-out run: S7 rerun (logged)"),
+    ("7f9e8c5", "Exploratory held-out results S3, S5, S6 committed"),
+    ("5f30843", "Exploratory held-out results S7 committed"),
+    ("bde5b60", "Calibration in the large, from the stored events"),
 ]
 
 

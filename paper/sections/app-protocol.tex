@@ -143,9 +143,11 @@ origin plus \hC\ days stays inside the data. An origin needs at least
   hyperparameters (\R{c/lgbm-rounds} rounds). It is cross-fitted over
   development accounts and, for the held-out run, trained on all of them.
 \end{itemize}
-B-GLOBAL pools data across accounts, which the local-first design forbids.
-It is a reference point, not a like-for-like competitor; B-EQ, which uses
-only the account's own history, is.
+B-GLOBAL is \emph{trained} on data pooled across accounts. A local-first
+application could \emph{run} such a model on the device, but could not
+train it from its own users' data without collecting them. It is a
+reference point, not a like-for-like competitor; B-EQ, which uses only the
+account's own history, is.
 
 
 \subsection{Scoring details}
@@ -186,11 +188,20 @@ two levels crossed, their intervals are exchanged.
     $\operatorname{mean}_a \bigl(1 - \sum_{a} \mathrm{CRPS}_m / \sum_{a}
     \mathrm{CRPS}_{\text{ref}}\bigr)$, which weights accounts equally and
     was the planned estimand;
-  \item the \emph{pooled} ratio
-    $1 - \sum \mathrm{CRPS}_m / \sum \mathrm{CRPS}_{\text{ref}}$ over all
-    origins, which weights origins equally and, unlike the account mean,
-    composes across references and strata.
+  \item the \emph{pooled} skill
+    $1 - \sum_i \mathrm{CRPS}_{m,i} / \sum_i \mathrm{CRPS}_{\text{ref},i}$, a
+    ratio of scores summed over all forecasts $i$. It equals
+    $\sum_i w_i (1 - \mathrm{CRPS}_{m,i}/\mathrm{CRPS}_{\text{ref},i})$ with
+    $w_i = \mathrm{CRPS}_{\text{ref},i} / \sum_j \mathrm{CRPS}_{\text{ref},j}$:
+    an average of per-forecast skills weighted by the reference's score,
+    so forecasts the reference finds hard count more.
   \end{itemize}
+\item \textbf{Zero denominators.} An account whose reference CRPS sums to
+  zero has no account skill and is left out of the account mean. On
+  held-out Berka this applied to \R{xh/s10/zero-total} account, with B-SA
+  as the reference at \hA\ days. The pooled denominator is zero only if
+  every forecast's reference CRPS is; a bootstrap draw where that happened
+  would be dropped.
 \item \textbf{Intervals} are \R{c/ci-level}\% intervals from
   \R{c/bootstrap} bootstrap resamples of whole accounts (seeds, on
   synthetic data).

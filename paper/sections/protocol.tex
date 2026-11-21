@@ -54,7 +54,10 @@ Appendix~\ref{app:protocol}.
     \item the \emph{account mean}
     $\operatorname{mean}_a(1-\sum_a \mathrm{CRPS}_m/\sum_a
     \mathrm{CRPS}_{\text{ref}})$, the planned estimand;
-    \item the \emph{pooled} ratio over all origins.
+    \item the \emph{pooled} skill $1 - \sum \mathrm{CRPS}_m / \sum
+    \mathrm{CRPS}_{\text{ref}}$, a ratio of scores summed over all
+    forecasts: equivalently, a reference-score-weighted average of the
+    per-forecast skills (Appendix~\ref{app:protocol}).
   \end{itemize}
   \item Intervals are \R{c/ci-level}\% intervals from \R{c/bootstrap}
   resamples of whole accounts.
@@ -115,6 +118,11 @@ it first received each commit is not.
   \item The plan was first pushed at \R{tl/8c40faf/pushed}, together with the
   first development results. Its precedence over them rests on its
   author-controlled commit time, \R{tl/8c40faf/time}.
+  \item The exploratory specifications (\S\ref{sec:explanation},
+  \S\ref{sec:overdraft}) were likewise first pushed at
+  \R{tl/9ec075f/pushed}, with their results. Their precedence rests on commit
+  times (\R{tl/9ec075f/time}, against \R{tl/run3/time} for the first
+  exploratory held-out run, which the guard logged).
 \end{itemize}
 
 The full timeline and every deviation are in Appendix~\ref{app:protocol}.
