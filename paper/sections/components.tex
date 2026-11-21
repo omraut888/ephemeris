@@ -43,16 +43,21 @@ V0's lumps row and V2's sparse-spending row are different components that
 play the same role, the heavy tail of spending.
 
 \paragraph{B-GLOBAL, the pooled-data reference (exploratory).} B-GLOBAL
-learns from \R{dev/data/accounts_run} other accounts, which the local-first
-design forbids, and has the lowest CRPS of any method on held-out data
+is trained on \R{dev/data/accounts_run} other accounts, data a local-first
+application cannot collect, though it could run a model trained
+elsewhere. It has the lowest CRPS of any method on held-out data
 (Table~\ref{tab:pairwise}). Its training used development origins of all
 dates, a calendar look-ahead for early held-out origins. Retrained without
 it, quarter by quarter on earlier development data only (G-cf), it loses
-little (account-mean skill against the original
-\R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
-\R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean} at \hB\ and \hC\ days)
-and still has lower CRPS than B-EQ (skill
+little: pooled skill against the original
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_pooled} and
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_pooled} at \hB\ and \hC\ days
+(account mean \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean}). It still has lower
+CRPS than B-EQ: pooled skill
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/30/skill_pooled} and
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/90/skill_pooled} (account mean
 \R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/30/skill_mean} and
-\R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/90/skill_mean}). Pooling, not look-ahead,
-makes it strong. Appendix~\ref{app:bglobal} gives the details and its
-weaker calibration.
+\R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/90/skill_mean}). Its advantage survives the
+removal of calendar look-ahead. Appendix~\ref{app:bglobal} gives the
+details and its weaker calibration.

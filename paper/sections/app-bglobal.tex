@@ -12,23 +12,24 @@ hyperparameters and levels:
   whose outcome precedes a single cutoff, predicting held-out origins on or
   after it (\R{xh/s7-cut/V2-vs-B-SA+/30/forecasts} origins at \hB\ days).
 \end{itemize}
-On held-out accounts, account-mean skill at \hB\ and \hC\ days:
+On held-out accounts, pooled skill at \hB\ and \hC\ days (account mean in
+brackets):
 \begin{itemize}
 \item \textbf{Against the original B-GLOBAL:} G-cf
-  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
-  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean} (development:
-  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
-  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean}); G-cut
-  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL/30/skill_mean} and
-  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL/90/skill_mean}.
+  \pq{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL}{30} and
+  \pq{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL}{90} (development:
+  \pq{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL}{30} and
+  \pq{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL}{90}); G-cut
+  \pq{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL}{30} and
+  \pq{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL}{90}.
 \item \textbf{Against B-EQ:} G-cf
-  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/30/skill_mean} and
-  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/90/skill_mean}; G-cut
-  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ/30/skill_mean} and
-  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ/90/skill_mean}.
+  \pq{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ}{30} and
+  \pq{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ}{90}; G-cut
+  \pq{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ}{30} and
+  \pq{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ}{90}.
 \item \textbf{V2 against G-cf:}
-  \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/skill_mean} and
-  \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/90/skill_mean}.
+  \pq{xh/s7-cf/V2-vs-B-GLOBAL-cf}{30} and
+  \pq{xh/s7-cf/V2-vs-B-GLOBAL-cf}{90}.
 \end{itemize}
 \textbf{Its calibration is weaker.} G-cf's \lC\% interval covers
 \R{xh/s7/stats-cf/B-GLOBAL-cf/30/cov90} and
@@ -38,6 +39,8 @@ the same origins (\R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/forecasts} per horizon).
 Intervals for every comparison are in
 \texttt{paper/results/exploratory-heldout/s7-bglobal/}.
 
-A model trained across other people's accounts and shipped frozen to a
-device would keep most of this advantage. Whether that is acceptable is a
-product question this paper does not settle.
+Training such a model needs other people's accounts; running it does not.
+A model trained elsewhere and shipped frozen to a device would keep most
+of this advantage while the user's own data stayed on the device. Whether
+the training data can be obtained acceptably is a product question this
+paper does not settle.
