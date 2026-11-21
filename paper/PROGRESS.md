@@ -2,19 +2,88 @@
 
 ## Resume here (updated after every step)
 
-**Current step: 6 (test-full, disk).**
+**All steps finished (1–6).** Nothing is running or half-done. Nothing
+was pushed. Next action: the user's review of the open questions below.
 
-**Finished:** steps 1–5. Step 5's fixes are committed; the PDF builds at 27
-pages (main text to p. 13, appendix from p. 16) with 0 warnings.
+## Final summary
 
-**Half-done:** nothing running.
+**Completed:**
+1. **Exploratory held-out runs.** S3 (reversal decomposition), S5
+   (overdraft events), S6 (V2 ablations) and S7 (B-GLOBAL without
+   look-ahead) ran through the guard with logged reasons. The results are in
+   `paper/results/exploratory-heldout/`. Run (b) was killed once for memory
+   (no output seen) and rerun with a logged reason (D1.5).
+2. **README known gaps:** below-$0 over-prediction (with the 7-day
+   correction, C1), and the cone over-wide at the centre for V2 while the
+   shipped V0 is too narrow (D2.1). No app change.
+3. **Paper restructured** under the new title. Section order:
+   - introduction;
+   - related work;
+   - method;
+   - compact protocol;
+   - the reversal (Figure 1);
+   - explanation;
+   - overdraft events;
+   - calibration;
+   - components and B-GLOBAL;
+   - limitations;
+   - conclusion.
+   The detector, identity, MoneyData, protocol details and extra tables are
+   in the appendix.
+4. **PDF:** 0 warnings, no overfull boxes, no undefined references. Every
+   caption states its estimand and counts.
+5. **Self-review:** five overstated claims fixed (R1–R5). The most important
+   is R4: the "under a year of history" claim held on the pooled score only,
+   and the planned account mean disagrees. No hand-typed numbers.
+6. **`scripts/test-full.sh`:** all stages pass except `one_seed` (see
+   below). target/ is 585 MB, so `cargo clean` was not needed.
 
-**Next actions:**
-1. Step 6: `scripts/test-full.sh`; `du -sh target`, and `cargo clean` if
-   it is over 8 GB.
-2. The final summary at the top of this file.
+**Held-out against development (exploratory):** the same sign everywhere
+in S3, S5, S6 and S7. V2 vs B-EQ, pooled skill at 30 / 90 days:
+−0.12 / −0.20 on development, −0.12 / −0.18 on held-out. B-SR, which adds
+the schedule's projection to B-EQ's own residuals, loses to B-EQ by
+−0.10 / −0.19 on held-out. Removing the filter costs a little
+(−0.03 / −0.04). Overdraft prevalence is lower on held-out (below 0:
+0.34 / 0.66 / 1.26% at 7 / 30 / 90 days). Without look-ahead, B-GLOBAL loses
+only about 0.03 and still beats B-EQ (+0.23 / +0.30). The full table is
+under "Step 1: done" below.
 
-*(The final summary goes here at the end.)*
+**Paper:** 27 pages: main text pp. 1–13, statements p. 14, references, and
+the appendix from p. 16. PDF:
+`/Users/omraut/projects/ephemeris/paper/build/latex/main.pdf`.
+
+**Decisions** (details below):
+- D1.1: frozen held-out accounts and origins.
+- D1.2: frozen rows are read, never rewritten.
+- D1.3: the G-cut and G-cf definitions.
+- D1.4 and D1.5: memory pressure; run (b) killed and rerun with a lean loader.
+- D2.1: README wording separates V2's measurements from the shipped V0.
+- C1: the below-zero claim is corrected at 7 days.
+- Step 5: appendix floats are `[htbp]`.
+
+**Open questions for you:**
+- **Q1.** Pooled or account-mean skill for the history-length story? They
+  disagree in sign under a year of history. The paper now shows both;
+  dropping the claim from the abstract and conclusion is the other option.
+- **Q2.** Should a summary number back "every method is too pessimistic
+  about dips"? It would be a new exploratory quantity.
+- **Q3.** The main text is about 13 pages against the target of 12. Candidate
+  cuts are §9 (B-GLOBAL) or §8's V1 paragraph.
+- **Q4.** Confirm the author e-mail in `main.tex` (omraut0888@gmail.com).
+- **Q5.** `test-full.sh` runs `cargo test -- --include-ignored`, which
+  includes `one_seed`. That test needs `$SEED`, so it panics without it,
+  and `set -e` stops the script there. This predates the session. I ran the
+  remaining stages separately: all passed, including the workspace with
+  `--no-fail-fast --skip one_seed` (289 tests), WASM, desktop, FFI, Swift
+  (31) and web (60). Fix options: `--skip one_seed` in the script, or have
+  `one_seed` return when `SEED` is unset. I did not change it.
+
+**Disk:**
+- `target/`: 585 MB.
+- `paper/build/`: 3.1 GB (stored forecasts and features, git-ignored).
+- `ios/build/`: 328 MB.
+- 22 GB free on the volume.
+
 
 ## Step log
 
