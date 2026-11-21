@@ -54,7 +54,8 @@ Intervals are in the result files (\texttt{paper/results/exploratory*}).}
 \label{tab:explain}
 \end{table}
 
-\paragraph{Projecting the schedule is the costly component.} Four methods
+\paragraph{Projecting the schedule is the costly component: the
+best-supported explanation.} Four methods
 project the detected pay-and-bill schedule: V2, CP-noKF, B-SR and B-SA+.
 All four have higher CRPS than B-EQ at \hB\ and \hC\ days, on both splits
 (B-SA+ by the most) (Table~\ref{tab:explain}). B-SR is the cleanest
@@ -68,27 +69,30 @@ intervals are about as narrow as B-EQ's (median
 loss is not a matter of width. Projecting the detected schedule adds error
 that the account's raw past changes avoid.
 
-\paragraph{History length.} With under a year of history, the pooled gap between
-V2 and B-EQ is small or reversed. The account mean still favours B-EQ
-(held-out: \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_mean} and
-\R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_mean}), and the pooled score, which weights accounts
-with large errors more, is what reverses. With more history the gap is large
-(\S\ref{sec:reversal}). This held on development and again on held-out
-accounts:
+\paragraph{History length: weaker, aggregation-dependent evidence.} If
+B-EQ needed a long history to represent the distribution of changes, the
+gap should shrink for short histories. It does only when scores are
+pooled over origins, which weights the accounts with large errors more.
+Under the planned account mean, B-EQ keeps a clear long-horizon advantage
+with under a year of history, on both splits:
 
 \begin{center}\footnotesize
 \begin{tabular}{lll}
 \toprule
-V2 vs B-EQ, pooled skill & under 12 months & 24 months or more\\
+V2 vs B-EQ, pooled (account mean) & under 12 months & 24 months or more\\
 \midrule
-Development, \hB\ / \hC\ d & \R{xd/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled} / \R{xd/s3-history-lt12/V2-vs-B-EQ/90/skill_pooled} & \R{xd/s3-history-ge24/V2-vs-B-EQ/30/skill_pooled} / \R{xd/s3-history-ge24/V2-vs-B-EQ/90/skill_pooled}\\
-Held-out, \hB\ / \hC\ d & \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled} / \R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_pooled} & \R{xh/s3-history-ge24/V2-vs-B-EQ/30/skill_pooled} / \R{xh/s3-history-ge24/V2-vs-B-EQ/90/skill_pooled}\\
+Development, \hB\ d & \pq{xd/s3-history-lt12/V2-vs-B-EQ}{30} & \pq{xd/s3-history-ge24/V2-vs-B-EQ}{30}\\
+Development, \hC\ d & \pq{xd/s3-history-lt12/V2-vs-B-EQ}{90} & \pq{xd/s3-history-ge24/V2-vs-B-EQ}{90}\\
+Held-out, \hB\ d & \pq{xh/s3-history-lt12/V2-vs-B-EQ}{30} & \pq{xh/s3-history-ge24/V2-vs-B-EQ}{30}\\
+Held-out, \hC\ d & \pq{xh/s3-history-lt12/V2-vs-B-EQ}{90} & \pq{xh/s3-history-ge24/V2-vs-B-EQ}{90}\\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The relation is not monotone: the gap is largest at 12--23 months. B-EQ
-needs enough past windows to represent the distribution of changes.
+At \hC\ days the gap is largest at 12--23 months, not at the longest
+histories, under both aggregations and on both splits. Whether
+B-EQ's advantage depends on the number of past windows is therefore not
+settled by these data.
 
 \paragraph{Simulation: schedule regularity, not sparsity.} We crossed four
 levels of spending sparsity, from \R{xd/s4/0/0/V2-vs-B-EQ/30/mean_count} down

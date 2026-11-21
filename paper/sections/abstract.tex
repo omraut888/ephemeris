@@ -11,23 +11,21 @@ than that empirical forecast (B-EQ) at \hA\ days (skill
 \R{ho/pair/B-EQ/7/skill}). B-EQ has lower CRPS at \hB\ and \hC\ days (V2's
 skill \R{ho/pair/B-EQ/30/skill} and \R{ho/pair/B-EQ/90/skill}; pooled over
 origins, \R{ho/pair/B-EQ/30/pooled_skill} and
-\R{ho/pair/B-EQ/90/pooled_skill}). On accounts with under a year of history,
-V2's \lC\% interval at \hC\ days covers
-\R{ho/str/history-lt-12-months/V2/90/cov90}\% against B-EQ's
-\R{ho/str/history-lt-12-months/B-EQ/90/cov90}\%.
+\R{ho/pair/B-EQ/90/pooled_skill}).
 
 \emph{The explanation (exploratory).} Every method that projects the detected
 pay-and-bill schedule loses to B-EQ at \hB\ and \hC\ days. That holds even
 when the schedule is combined with the same empirical residuals B-EQ uses.
-With under a year of history the pooled gap is small or reversed, though
-the account mean still favours B-EQ. In simulation, irregular schedules,
+In simulation, irregular schedules,
 not sparse spending, give B-EQ its long-horizon advantage. Calendar alignment
 and sparse event counts do not explain it.
 
 \emph{Overdraft events (exploratory).} At \hB\ and \hC\ days no method
 beats the account's own historical frequency of falling below zero
 (prevalence \R{xh/s5/u0/90/prevalence}\% at \hC\ days), and V2 does not
-at any horizon. Every method is too pessimistic about dips.
+at any horizon. Every forecast over-predicts dips on average: below zero
+at \hC\ days, V2's mean probability is \R{xh/s5c/u0/90/V2/mean_p}\%
+against \R{xh/s5c/u0/90/V2/observed}\% observed.
 
 \emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
 intervals cover too much, so the planned calibration claim fails.

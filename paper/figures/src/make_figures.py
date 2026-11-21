@@ -282,12 +282,20 @@ def reversal(png):
         ax.errorbar(xs, ys, yerr=[[y - l for y, l in zip(ys, lo)], [u - y for y, u in zip(ys, hi)]],
                     color=color, marker="o", ms=3.5, capsize=2, lw=1.4 if key == "all" else 1.0,
                     label=label)
+        # The planned account-mean skill beside the pooled one: open markers,
+        # dashed (the two disagree for short histories).
+        ax.plot(xs, [float(rows[h]["skill_mean"]) for h in hs], color=color, marker="o", ms=3.5,
+                mfc="none", linestyle="--", lw=0.8)
+    ax.plot([], [], color=INK2, marker="o", ms=3.5, lw=1.0, label="pooled")
+    ax.plot([], [], color=INK2, marker="o", ms=3.5, mfc="none", linestyle="--", lw=0.8,
+            label="account mean")
     ax.set_xticks(range(3), [str(h) for h in hs])
     ax.set_xlabel("horizon (days)")
-    ax.set_ylabel("CRPS skill of V2 vs B-EQ\n(pooled; > 0: V2 lower CRPS)")
+    ax.set_ylabel("CRPS skill of V2 vs B-EQ\n(> 0: V2 lower CRPS)")
+    ax.set_ylim(-1.15, None)  # room for the legend below the data
     ax.set_title("Paired CRPS skill", color=INK)
     tidy(ax)
-    ax.legend(fontsize=6, loc="upper right")
+    ax.legend(fontsize=5.5, loc="lower left", ncol=2)
     st = {(r["method"], int(r["h"])): r for r in read(d / "stats.csv")}
     ax = axes[1]
     for m, style in (("V2", "-"), ("B-EQ", ":")):

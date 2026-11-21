@@ -6,9 +6,10 @@
 \includegraphics[width=\linewidth]{figures/reversal-heldout.pdf}
 \caption{V2 against B-EQ on held-out Berka, from the stored forecasts of the
 frozen evaluation; the history strata and one-sided misses are post hoc
-(exploratory). Left: paired pooled CRPS skill of V2 against B-EQ with
-\R{c/ci-level}\% account-bootstrap intervals, for all accounts and by months
-of history at the origin. Centre: the share of forecasts whose outcome
+(exploratory). Left: paired CRPS skill of V2 against B-EQ, for all
+accounts and by months of history at the origin: pooled over origins
+(filled, with \R{c/ci-level}\% account-bootstrap intervals) and the planned
+mean of per-account ratios (open, dashed). Centre: the share of forecasts whose outcome
 falls below or above the \lC\% interval (nominal: half the misses each).
 Right: V2's median \lC\% interval width relative to B-EQ's. Origins:
 \R{xh/s3/V2-vs-B-EQ/30/forecasts} per horizon in
@@ -39,19 +40,23 @@ The mean CRPS behind the \hB-day comparison is \R{ho/pair/B-EQ/30/mean_crps_norm
 for V2 and \R{ho/pair/B-EQ/30/mean_crps_norm_ref} for B-EQ (normalized
 units).
 
-\paragraph{It depends on history length} (Figure~\ref{fig:reversal}, left;
-exploratory).
+\paragraph{By history length, the two aggregations disagree}
+(Figure~\ref{fig:reversal}, left; exploratory). Skill of V2 against B-EQ
+at \hA, \hB\ and \hC\ days, pooled (account mean in brackets):
 \begin{itemize}
-  \item \textbf{Under a year of history,} B-EQ's pooled advantage at \hB\ days
-  is \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled}
-  [\R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled_lo},
-  \R{xh/s3-history-lt12/V2-vs-B-EQ/30/skill_pooled_hi}]. At \hC\ days
-  V2's pooled skill is \R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_pooled}; its
-  account-mean skill is \R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_mean}.
-  \item \textbf{24 months or more:} the skills are
-  \R{xh/s3-history-ge24/V2-vs-B-EQ/30/skill_pooled} and
-  \R{xh/s3-history-ge24/V2-vs-B-EQ/90/skill_pooled}.
+  \item \textbf{Under a year of history:} \pq{xh/s3-history-lt12/V2-vs-B-EQ}{7},
+  \pq{xh/s3-history-lt12/V2-vs-B-EQ}{30} and
+  \pq{xh/s3-history-lt12/V2-vs-B-EQ}{90}.
+  \item \textbf{24 months or more:} \pq{xh/s3-history-ge24/V2-vs-B-EQ}{7},
+  \pq{xh/s3-history-ge24/V2-vs-B-EQ}{30} and
+  \pq{xh/s3-history-ge24/V2-vs-B-EQ}{90}.
 \end{itemize}
+Pooled over origins, the long-horizon gap closes or reverses for short
+histories. Under the plan's account mean it does not: B-EQ has lower CRPS
+at \hB\ and \hC\ days even with under a year of history (account-mean
+interval at \hC\ days
+[\R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_mean_lo},
+\R{xh/s3-history-lt12/V2-vs-B-EQ/90/skill_mean_hi}]).
 
 B-EQ samples the account's past $h$-day changes. With a short history it
 has few of them, and its long-horizon intervals under-cover: on accounts
