@@ -52,3 +52,17 @@ swap (13.5 of 14 GB). Memory recovered once the workers were fitting.
 - The cost was wall time: run (a) slowed while both ran.
 - The fix for any future run: fewer workers, or a load that keeps only
   arrays and shares them.
+
+**D1.5 Run (b) killed and to be rerun.** The memory pressure got worse:
+- load average about 120, 130 MB of RAM free, swap nearly full, and run
+  (a) slowed to about 150 forecasts a minute;
+- I killed run (b) before it wrote any output, so no result from it was
+  seen;
+- run (a) recovered to about 2,700 a minute.
+
+Run (b) will be rerun after run (a), with a lean loader: the parent loads
+the features once into arrays, and 3 workers share them read-only. It
+will be logged with its own reason, "rerun of the exploratory B-GLOBAL
+run: first attempt killed for memory exhaustion before writing any
+output". The guard log therefore shows two entries for it. The first one
+produced nothing.

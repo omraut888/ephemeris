@@ -1,0 +1,236 @@
+\section{Protocol details}
+\label{app:protocol}
+
+\subsection{Berka: the balance field, adapter decisions and accounts}
+\emph{The balance field.} Each record carries the bank's balance after it.
+We do not use that field as an input or as truth. Instead, the end-of-day
+balance is the account's opening balance (the first record's balance minus
+its amount) plus the running sum of amounts, carried forward over days
+without records. The balance field serves to validate that running sum.
+The export stores amounts and balances as whole crowns, rounded
+separately, so the two drift apart slightly. Among the held-out accounts
+we keep, the largest difference on any day is \R{ho/data/max_drift_czk}
+crowns, and the median account's largest difference is
+\R{ho/data/median_account_max_drift_czk}. In some accounts the reported
+balance resets mid-history.
+
+Two adapter decisions were made on development data and committed before
+any development result was read:
+\begin{enumerate}[label=(\roman*)]
+\item \emph{Calendar.} Berka bookings fall evenly across weekdays,
+  including dates a Czech holiday calendar would skip. With that calendar,
+  no income schedule could be detected. The engine gained a pluggable
+  holiday calendar, and Berka uses an every-day calendar.
+\item \emph{Balance drift.} An account is excluded when, on any day, its
+  running sum differs by more than \R{c/max-drift}~crowns from every
+  balance the bank reported that day. The rule uses each account's full
+  history, which an application could not do at a forecast origin; it is a
+  data-quality selection made once, not a forecast input.
+\end{enumerate}
+The approval of rule (ii) described it, wrongly, as a threshold of
+\R{c/drift-high}~crowns. The code and the plan, committed together before any
+results, use \R{c/max-drift}. Table~\ref{tab:drift} gives the exclusions at
+both thresholds. The held-out set is identical under either. On
+development, the applied rule excluded one account that a \R{c/drift-high}-crown
+rule would have kept.
+
+\begin{table}[t]
+\centering\footnotesize
+\begin{tabular}{l rrrr}
+\toprule
+Split & accounts & drift $>$ \R{c/drift-low} & drift $>$ \R{c/max-drift} (applied) & drift $>$ \R{c/drift-high}\\
+\midrule
+Development & \R{au/drift/development/accounts} & \R{au/drift/development/drift_over_50} & \R{au/drift/development/drift_over_100} & \R{au/drift/development/drift_over_1000}\\
+Held-out & \R{au/drift/held-out/accounts} & \R{au/drift/held-out/drift_over_50} & \R{au/drift/held-out/drift_over_100} & \R{au/drift/held-out/drift_over_1000}\\
+\bottomrule
+\end{tabular}
+\caption{Accounts excluded for balance drift (crowns) at three thresholds,
+recounted from the raw data with the code's rule.}
+\label{tab:drift}
+\end{table}
+
+\emph{Accounts used.} Of the \R{ho/data/accounts_in_split} held-out
+accounts, \R{ho/data/accounts_excluded_balance_inconsistent} are excluded
+for drift. Forecasts are attempted for \R{ho/data/accounts_run}, and
+\R{ho/data/accounts_with_eligible_origin} of them have at least one
+eligible origin (\R{ho/data/eligible_origins} origins). On development the
+same steps give \R{dev/data/accounts_in_split},
+\R{dev/data/accounts_excluded_balance_inconsistent},
+\R{dev/data/accounts_run}, \R{dev/data/accounts_with_eligible_origin} and
+\R{dev/data/eligible_origins}.
+
+
+\subsection{MoneyData}
+This is one UK current account, from
+\R{md/data/first_day} to \R{md/data/last_day}
+\citep{firat2023moneyvis,laramee2026moneydata}, with \R{md/data/records}
+records, used as a descriptive case study only. In the distributed
+spreadsheet, dates whose day was at most twelve had been read with day and
+month swapped. For example, the file's \texttt{\R{d/md-date-raw}} is
+\texttt{\R{d/md-date-repaired}}. After the repair, the dates increase with
+the record numbers and the balance column chains exactly. Records are
+tagged at each origin by the application's own tagger. The default US
+calendar is used, because the engine has no UK calendar.
+
+
+\subsection{Origins, inputs and timing}
+Origins fall every
+\R{c/origin-step} days from day \R{c/warmup} of an account's history, while
+origin plus \hC\ days stays inside the data. An origin needs at least
+\R{c/min-records} records in the \R{c/warmup} days before it.
+\begin{itemize}
+\item \textbf{What a forecast uses.} The records dated on or before the
+  origin, including all records of the origin day. Records are ordered by
+  date and record id.
+\item \textbf{Today's balance.} The end-of-day balance of the origin, the
+  last balance carried forward if the origin has no records. The truth is
+  the end-of-day balance \hA, \hB\ or \hC\ days later.
+\item \textbf{Outcomes known at the origin.} B-SA+'s past errors and V1's
+  calibration outcomes use only forecast dates $g$ with $g + h$ on or
+  before the origin.
+\item \textbf{Prefix test.} For \R{au/prefix/origins} randomly drawn
+  development origins (\R{au/prefix/accounts} accounts), we cut the input
+  file at the origin and recomputed every per-account method. All
+  \R{au/prefix/truncated_equals_full} forecasts equal those made from the
+  full file, and all \R{au/prefix/row_equals_frozen} scored rows are
+  byte-identical to the frozen development results.
+\item \textbf{The non-causal exceptions.} The drift exclusion above. The
+  V3/V4 priors and B-GLOBAL's training use other accounts' data from all
+  dates, so they carry calendar-future information for early origins.
+  Neither affects V0, V1 or V2.
+\item \textbf{Seeds.} The forecast seed is a fixed hash of (account,
+  origin).
+\end{itemize}
+
+
+\subsection{All baselines}
+\begin{itemize}
+\item \textbf{B-30} projects the \R{c/b30-window}-day mean daily change,
+  with a Gaussian band.
+\item \textbf{B-LIN} extends a least-squares line through the last
+  \R{c/blin-window} days.
+\item \textbf{B-SA} is schedule-aware and deterministic: the same detected
+  schedule as the model, the last paycheck and bill amounts, and the
+  \R{c/bsa-window}-day mean of other flows.
+\item \emph{B-SA+}, the planned reference, adds to B-SA the empirical
+  distribution of its own past errors.
+\item \textbf{B-SEAS} is a monthly-seasonal naive forecast with its own
+  past errors.
+\item \emph{B-EQ} adds the account's own past $h$-day balance changes to
+  today's balance.
+\item \emph{B-GLOBAL} is LightGBM quantile regression
+  \citep{ke2017lightgbm} on lagged balance and flow features, with fixed
+  hyperparameters (\R{c/lgbm-rounds} rounds). It is cross-fitted over
+  development accounts and, for the held-out run, trained on all of them.
+\end{itemize}
+B-GLOBAL pools data across accounts, which the local-first design forbids.
+It is a reference point, not a like-for-like competitor; B-EQ, which uses
+only the account's own history, is.
+
+
+\subsection{Scoring details}
+\label{sec:scoring}
+\paragraph{Forecast types.} Each method's forecast for a day is scored as
+one of five kinds:
+\begin{itemize}
+\item \textbf{Monte Carlo cones} (V0, V2, V3) give type-7 quantiles
+  \citep{hyndman1996} of \R{c/paths} paths, on a grid of \R{c/crps-grid} midpoint levels
+  plus the interval ends.
+\item \textbf{Quantile functions} (V1, V4, B-GLOBAL) have \R{c/qf-levels} levels from
+  \R{c/qf-lo}\% to \R{c/qf-hi}\%. They are linear between levels and flat beyond them, and
+  crossing quantiles are repaired by sorting.
+\item \textbf{Empirical samples} (B-SA+, B-SEAS, B-EQ) get the exact CRPS of
+  the sample. Their interval ends are order statistics.
+\item \textbf{Gaussian} forecasts (B-30, B-LIN) get the closed-form CRPS.
+\item \textbf{B-SA} is a point, so its coverage is undefined.
+\end{itemize}
+A quantile function's CRPS is the pinball-loss integral, taken by the
+midpoint rule over \R{c/crps-grid} levels. The flat tails of V1, V4 and B-GLOBAL
+therefore understate their tail spread relative to the cones. PIT inverts
+the forecast's distribution function, at the middle of any jump or flat
+stretch.
+
+\paragraph{V1's quantile function.} Each of V1's central levels has its own
+recursion, so the adjusted levels need not increase with the nominal
+level. The resulting values are sorted into one monotone function. Where
+two levels crossed, their intervals are exchanged.
+
+\paragraph{Coverage, skill and intervals.}
+\begin{itemize}
+\item \textbf{Coverage} of the central $\ell$ interval counts
+  $q_{(1-\ell)/2} \le y \le q_{(1+\ell)/2}$.
+\item \textbf{CRPS skill} of $m$ against a reference is aggregated two
+  ways, over the forecasts both made:
+  \begin{itemize}
+  \item the \emph{account mean},
+    $\operatorname{mean}_a \bigl(1 - \sum_{a} \mathrm{CRPS}_m / \sum_{a}
+    \mathrm{CRPS}_{\text{ref}}\bigr)$, which weights accounts equally and
+    was the planned estimand;
+  \item the \emph{pooled} ratio
+    $1 - \sum \mathrm{CRPS}_m / \sum \mathrm{CRPS}_{\text{ref}}$ over all
+    origins, which weights origins equally and, unlike the account mean,
+    composes across references and strata.
+  \end{itemize}
+\item \textbf{Intervals} are \R{c/ci-level}\% intervals from
+  \R{c/bootstrap} bootstrap resamples of whole accounts (seeds, on
+  synthetic data).
+\end{itemize}
+All methods share one origin set on Berka: every method has the same
+\R{ho/var/V2/30/forecasts} held-out forecasts in
+\R{ho/var/V2/30/accounts} accounts at each horizon.
+
+
+\subsection{The timeline}
+\begin{table}[h]
+\centering\scriptsize
+\tab{timeline}
+\caption{Protocol timeline. Commit times are from git; ``first on GitHub''
+is the time of the first push containing the commit, from GitHub's
+repository activity record. The held-out runs carry the times their guard
+logged.}
+\label{tab:timeline}
+\end{table}
+
+
+\subsection{Deviations and post-hoc analyses}
+\begin{enumerate}[label=(\arabic*)]
+\item The every-day calendar and the balance-drift exclusion for Berka,
+  approved on development data before the held-out run. The approval's
+  description of the drift threshold was wrong (Table~\ref{tab:drift}).
+\item The revision itself. The plan anticipated revision only as a
+  possibility; the rule was written after V0 failed, but before any
+  revision code or revision result existed.
+\item Held-out run~1 omitted the planned ablations through a harness gap:
+  the ablation sample was drawn from the development split only. They were
+  run as a separately logged second run, \emph{after} the main held-out
+  results were known (\S\ref{sec:ablations}).
+\item Computed after the held-out results were known, from the stored
+  forecasts and without new forecasts:
+  \begin{itemize}
+  \item the paired comparisons of V2 with each baseline
+    (Table~\ref{tab:pairwise});
+  \item the pooled skills and mean CRPS reported alongside them;
+  \item the one-sided misses (Table~\ref{tab:widths});
+  \item the per-cell verdicts for A2 (Table~\ref{tab:a2});
+  \item the estimand audit;
+  \item the ablations' paired differences and their alarm strata.
+  \end{itemize}
+\item The synthetic panel was defined after the held-out results:
+  \R{c/panel-seeds} seeds of \R{c/panel-days} days, origins every
+  \R{c/panel-step} days from day \R{c/panel-first-origin}. The A1 check
+  reuses the exact protocol of the engine's earlier calibration test and
+  reproduces its numbers.
+\item The MoneyData adapter (the date repair and the calendar) was set
+  before MoneyData was scored, but after the Berka results.
+\item The bit-identity fix (\S\ref{sec:identity}) came after the freeze. The
+  frozen results were not regenerated.
+\item The analyses of \S\ref{sec:explanation} and \S\ref{sec:overdraft},
+  the V2 ablations and B-GLOBAL without calendar look-ahead were specified
+  after the held-out results were known, in the repository's
+  \texttt{paper/REVISION.md}. They were developed on the development split
+  and run on held-out accounts in two separately logged runs. Their
+  results are exploratory.
+\item Adding B-EQ rows to the development strata table, before the
+  held-out run, shifted other cells' bootstrap bounds slightly, because one
+  random stream spans all cells. Point estimates did not change.
+\end{enumerate}

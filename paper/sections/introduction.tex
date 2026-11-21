@@ -1,79 +1,68 @@
 \section{Introduction}
 \label{sec:intro}
 
-Many people manage money close to the edge: rent clears a few days before
-the paycheck, and an overdraft costs more than the purchase that caused it.
-A useful forecast of the bank balance is therefore not a single line but a
-distribution, and its uncertainty has to be honest. A cone that is too
-narrow invites the very overdraft it should warn about; a cone that is too
-wide says nothing.
+A forecast of a person's bank balance is useful only if its uncertainty is
+honest: too narrow a cone invites the overdraft it should warn about, too
+wide a cone says nothing. There are two natural ways to build one from a
+single account's history, which is all a \emph{local-first} application
+(one whose data never leaves the user's devices) can use:
+\begin{itemize}
+\item a \textbf{state-space model}, which tracks the balance, the spending
+  rate and the expected paycheck with a Kalman filter \citep{kalman1960},
+  projects the detected pay and bill schedule, and simulates a Monte Carlo
+  cone;
+\item an \textbf{empirical forecast} that adds to today's balance the
+  account's own past changes over the same horizon (B-EQ).
+\end{itemize}
+This paper asks when each is better, on sparse, booked bank accounts.
 
-This paper evaluates such a forecaster under two constraints. The first is
-\emph{local-first}: a user's transactions stay on their own devices, so the
-model is fitted to one account at a time and nothing is pooled across users.
-That rules out the strongest generic approach, a global model trained on
-many accounts, which we nevertheless include as a reference point. The
-second is \emph{reproducibility}: the same feed and seed should give the
-same forecast, byte for byte, on each target the application builds.
+\paragraph{A horizon reversal.} On the held-out accounts of the Berka bank
+data, the state-space model chosen by our analysis plan, V2, has lower CRPS
+than B-EQ at \hA\ days. B-EQ has lower CRPS at \hB\ and \hC\ days, under
+either way of averaging scores (\S\ref{sec:reversal},
+Figure~\ref{fig:reversal}). The picture differs by history length. With
+under a year of history, the two are close, and V2's long-horizon intervals
+cover far better than B-EQ's.
 
-The forecaster is a three-state Kalman filter \citep{kalman1960} over the
-balance, the daily discretionary spending rate and the expected paycheck,
-with known paychecks and bills entering as control inputs. Its noise
-variances adapt in the manner of covariance matching
-\citep{mehra1970,myers1976}. Outlying spending is clipped by a gate and
-resampled in the forecast, and a CUSUM detector \citep{page1954} widens the
-state covariance after a regime change. A Monte Carlo simulation from the
-filtered state gives the cone (\S\ref{sec:method}).
+\paragraph{An explanation, tested on development data and then on held-out
+accounts (exploratory).} Projecting the detected schedule is the costly
+component:
+\begin{itemize}
+\item every schedule-based method we tried loses to B-EQ by a similar
+  margin, including the detected schedule plus exactly the empirical
+  residuals that B-EQ samples;
+\item the gap needs at least a year of history to appear;
+\item in simulation, irregular pay and bill schedules reproduce the
+  reversal, while sparse spending alone does not.
+\end{itemize}
+Aligning past windows to the calendar, and modelling sparse spending as
+discrete events, do not explain it (\S\ref{sec:explanation}). We did not
+measure schedule irregularity in Berka itself, so the explanation is a
+reading of these comparisons, not a direct observation.
 
-The evaluation followed a written analysis plan (\S\ref{sec:protocol}).
-The plan fixed the claims, the pass/fail thresholds, the baselines and the
-metrics. Its commit precedes every real-data result, but the earliest
-independent timestamp of it does not (\S\ref{sec:timeline}). When the
-original model failed on the development split, a revision rule written
-before any revision code chose among four candidate variants. The chosen
-variant was frozen, and GitHub received the freeze before the main
-held-out evaluation. That evaluation ran once, by a command that refuses a
-second run without a logged reason. A separately logged run followed, for
-ablations the first run had omitted, after the main results were known.
+\paragraph{Overdraft events (exploratory).} The probability of falling
+below zero within the horizon, which an overdraft warning needs, is badly
+over-predicted. No method beats the account's own historical frequency of
+this rare event, and every method is too pessimistic about dips
+(\S\ref{sec:overdraft}).
 
-\paragraph{Contributions, including what failed.}
-\begin{enumerate}
-\item \textbf{A documented, auditable real-data evaluation.} It covers
-  \R{ho/data/accounts_total} Berka accounts, split
-  \R{c/dev-percent}/\R{c/heldout-percent} by a hash of the account id. It
-  reports the commit timeline with GitHub's push times
-  (Table~\ref{tab:timeline}), every deviation and post-hoc analysis, and
-  a test that forecasts are unchanged when the input is truncated at the
-  forecast origin.
-\item \textbf{A negative result on CRPS.} On held-out accounts the selected
-  model, V2, has lower CRPS than the probabilistic schedule-aware
-  baseline. It has higher CRPS at \hB\ and \hC\ days than two baselines: an
-  empirical-quantile forecast from the account's own history, and a
-  gradient-boosted model pooled across accounts (\S\ref{sec:results}). The
-  planned CRPS claim therefore fails against both, under either way of
-  averaging the scores.
-\item \textbf{A partial result on calibration.} V2's \lC\% intervals meet
-  the planned band at every horizon. Its \lD\% interval does at \hB\ and
-  \hC\ days and is inconclusive at \hA. Its \lA\% intervals cover far too
-  much, so the planned calibration claim fails. V2 misses below its \lC\%
-  interval less often than nominal. A conformal recalibration of the
-  original model (V1) is the best-calibrated variant but lost the
-  selection on CRPS.
-\item \textbf{Regime detection measured two ways.} On real data, the
-  comparison with the detector removed is descriptive only, because its
-  ``after a change'' stratum is defined by the detector's own alarms. A
-  synthetic sweep with known change dates shows a large benefit after large
-  changes on model-matched data. On the realistic generator the effect on
-  CRPS is imprecise, and the detector costs CRPS when a downward change
-  goes undetected (\S\ref{sec:regime}).
-\item \textbf{Bit identity, falsified and then fixed.} The frozen engine
-  was not byte-identical across native code and WebAssembly. We give the
-  cause, a post-freeze fix and the tested matrix (\S\ref{sec:identity}).
-\end{enumerate}
+\paragraph{Calibration.} V2's \lC\% intervals meet the plan's band, and it
+misses below them less often than nominal. Its \lA\% intervals cover far
+too much, so the plan's calibration claim fails (\S\ref{sec:calibration}).
 
-The method is a composition of known parts, and we do not claim novelty
-for the parts. The question the paper answers is narrower. On sparse,
-booked bank accounts, does careful state-space modelling give lower CRPS
-than simple alternatives built from the same account's history? On Berka
-it does against a schedule-aware baseline, and it does not against an
-empirical distribution of the account's own balance changes.
+\paragraph{How the evidence was produced.} The evaluation followed a
+written analysis plan with falsifiable claims and fixed thresholds. When
+the original model failed on the development split, a revision rule
+written before any revision code chose V2. V2 was frozen, and GitHub
+received the freeze before the main held-out evaluation. That evaluation
+ran once, through a command that refuses a second run without a logged
+reason. Everything after it is labelled exploratory:
+\begin{itemize}
+\item a separately logged ablation run;
+\item post-hoc summaries;
+\item the analyses behind the explanation and the overdraft results,
+  which were specified in writing, developed on the development split,
+  and then run on held-out accounts in logged runs.
+\end{itemize}
+The plan's sharpness claim fails against B-EQ and against a model pooled
+across accounts; we say so in the abstract, as the plan required.

@@ -768,6 +768,8 @@ fn explore(
                     "paper/build/berka-dev/features.csv",
                     "--predict",
                     "paper/build/heldout/berka/features.csv",
+                    "--jobs",
+                    "3",
                     "--out",
                 ])
                 .arg(out)

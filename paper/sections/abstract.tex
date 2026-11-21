@@ -1,33 +1,38 @@
 \begin{abstract}
-We forecast a person's bank balance \hA, \hB\ and \hC\ days ahead with
-predictive distributions, using only that person's own transactions on
-their own devices. The forecaster tracks balance, spending rate and
-paycheck with a Kalman filter and simulates a Monte Carlo cone.
+A person's bank balance can be forecast from their own transactions with a
+state-space model, which tracks pay, bills and a spending rate, or with
+nothing more than the empirical distribution of the account's own past
+balance changes. We ask when each is better, on sparse booked accounts of
+the Berka bank data.
 
-We evaluated it against a documented analysis plan and a timestamped model
-freeze before the logged held-out evaluation. The plan fixed claims,
-thresholds, baselines and a revision rule. That the plan preceded the first
-development results rests on author-controlled commit times, while the
-freeze's precedence over the held-out run is confirmed by GitHub's push
-record. The original model failed its calibration claim on the development
-accounts of the Berka bank data. The planned rule selected a revised
-variant, V2, which models sparse discretionary spending as a compound
-Poisson process. The main held-out evaluation then ran once, through a
-guarded and logged command, on \R{ho/data/accounts_with_eligible_origin}
-accounts.
+\emph{The headline: a horizon reversal.} On held-out accounts, a Kalman-filter
+Monte Carlo forecaster with compound-Poisson spending (V2) has lower CRPS
+than that empirical forecast (B-EQ) at \hA\ days (skill
+\R{ho/pair/B-EQ/7/skill}). B-EQ has lower CRPS at \hB\ and \hC\ days (V2's
+skill \R{ho/pair/B-EQ/30/skill} and \R{ho/pair/B-EQ/90/skill}; pooled over
+origins, \R{ho/pair/B-EQ/30/pooled_skill} and
+\R{ho/pair/B-EQ/90/pooled_skill}). On accounts with under a year of history,
+V2's \lC\% interval at \hC\ days covers
+\R{ho/str/history-lt-12-months/V2/90/cov90}\% against B-EQ's
+\R{ho/str/history-lt-12-months/B-EQ/90/cov90}\%.
 
-On held-out accounts, V2 has lower CRPS than the probabilistic
-schedule-aware baseline (mean per-account skill \R{ho/pair/B-SA+/30/skill}
-at \hB\ days and \R{ho/pair/B-SA+/90/skill} at \hC\ days). It has higher
-CRPS at \hB\ and \hC\ days than an empirical-quantile forecast of the
-account's own past balance changes (\R{ho/pair/B-EQ/30/skill} and
-\R{ho/pair/B-EQ/90/skill}) and than a gradient-boosted model trained across
-accounts (\R{ho/pair/B-GLOBAL/30/skill} and \R{ho/pair/B-GLOBAL/90/skill}).
-Pooling the scores over all origins gives the same signs. V2's \lC\%
-intervals cover \R{ho/var/V2/7/cov90}--\R{ho/var/V2/30/cov90}\%, and it
-misses below them less often than nominal. Its \lA\% intervals are too
-wide (\R{ho/var/V2/7/cov50}--\R{ho/var/V2/90/cov50}\%), so the planned
-calibration claim fails at that level. On a single UK account
-(MoneyData), V2's \lC\% intervals cover only \R{md/main/V0/7/cov90},
-\R{md/main/V0/30/cov90} and \R{md/main/V0/90/cov90}\%.
+\emph{The explanation (exploratory).} Every method that projects the detected
+pay-and-bill schedule loses to B-EQ by a similar margin. That holds even
+when the schedule is combined with the same empirical residuals B-EQ uses.
+The gap is absent with under a year of history. In simulation, irregular
+schedules, not sparse spending, reproduce the reversal. Calendar alignment
+and sparse event counts do not explain it.
+
+\emph{Overdraft events (exploratory).} No method beats the account's own
+historical frequency for falling below zero (prevalence
+\R{xh/s5/u0/90/prevalence}\% at \hC\ days), and every method is too
+pessimistic about dips.
+
+\emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
+intervals cover too much, so the planned calibration claim fails.
+
+The evaluation followed a documented analysis plan and a timestamped model
+freeze before the logged held-out evaluation. That the plan preceded the
+first development results rests on author-controlled commit times.
+Analyses added after the held-out results are labelled exploratory.
 \end{abstract}
