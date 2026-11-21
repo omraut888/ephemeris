@@ -222,7 +222,7 @@ hours of compute (S4 took 134 s for 16 cells). Not run.
     then 509 s;
   - S11: 67 s, twice;
   - S12: 146 s;
-  - `test-full`: about 20 minutes.
+  - `test-full` was not rerun this round; its last full pass was round 2.
 - **Paper:** 29 pages, 0 LaTeX warnings, main text pp. 1–14 (statements
   p. 15). PDF: `paper/build/latex/main.pdf`.
 - **Disk:** `target/` 4.5 GB (no clean needed); `paper/build/` 3.4 GB
