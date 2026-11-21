@@ -777,3 +777,52 @@ The frozen results are not regenerated.
 
 Code: `ephemeris-eval explore income-trace`; summary `explore_summary.py
 s13`. Results: `paper/results/exploratory/s13-income/`.
+
+## S14 (round 4, item 2) Within-window dependence (development)
+
+**Hypothesis.** B-EQ wins at long horizons because each sampled past window
+keeps its scheduled flows and the discretionary flows that followed them
+together. Schedule-based methods recombine the two independently.
+
+**Notation**, on B-EQ's windows d: ΔB_d = S_hist,d + D_d, where S_hist,d is
+S11's retrospective decomposition and D_d = ΔB_d − S_hist,d is B-SR's
+adjusted residual. S_t is the current projection.
+
+**Forecasts** (all on the frozen development origins, h ∈ {7, 30, 90}):
+- **(a) EQ-shuf.** Samples B_t + S_hist,d + D_π(d) over the windows d, for
+  four random permutations π_1..π_4 of the windows (ChaCha8, seed
+  `seed_for(account, origin)` + r): 4n samples. Both components keep
+  exactly B-EQ's marginal distributions; only their within-window pairing
+  is broken.
+- **(b) As stated, an identity.** B-SR's residual D_d paired with the same
+  window's S_hist,d is B_t + D_d + S_hist,d = B_t + ΔB_d, which is B-EQ.
+  It is computed and reported as an identity check against F0, not as a
+  test.
+- **(b′) SR-match, the operational reverse.** B-SR with the dependence
+  restored by matching. Samples B_t + S_t + D_d over the K windows whose
+  S_hist,d is closest to S_t, with K = max(10, ⌈0.2·n⌉) and ties broken by
+  recency. A residual is then used only with a scheduled flow like the one
+  it came with.
+- **(b″) O-match.** The same with the oracle's S_real in place of S_t
+  (diagnostic only).
+
+**Reported:** pooled and account-mean skill with 95% account-bootstrap
+intervals at 7, 30 and 90 days, for:
+- EQ-shuf vs F0 (= B-EQ);
+- SR-match vs F1 (= B-SR) and vs F0;
+- O-match vs O and vs F0;
+- (b) vs F0 (an identity).
+
+Coverage and one-sided misses are reported too, overall and by S11's
+predictability tertile.
+
+**Predictions, stated before running:**
+- **D1.** EQ-shuf loses to B-EQ at 30 and 90 days under both aggregations
+  (if dependence is the mechanism).
+- **D2.** SR-match beats B-SR at 30 and 90 days under both aggregations.
+
+The strength-of-evidence rule is the one above.
+
+Code: added to `ephemeris-eval explore schedule`, whose F_w and oracle rows
+must stay identical. Summary: `explore_summary.py s14`. Results:
+`paper/results/exploratory/s14-dependence/`.
