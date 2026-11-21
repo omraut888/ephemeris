@@ -386,6 +386,416 @@ def plot_reliability(rel, out):
     fig.savefig(out / "reliability.pdf", metadata={"CreationDate": None, "ModDate": None})
     fig.savefig(out / "reliability.png", dpi=150)
 
+# ----------------------------------------------------------------- S9 ----
+
+def s9():
+    """The detector-ablation diagnostic (REVISION.md S9, round 3 A1)."""
+    d = EXP / "detector"
+    out = OUT / "s9-detector"
+    cfgs = ["V0", "V0-nodet", "V2", "V2-nodet"]
+    data = load([d / "rows.csv"], set(cfgs))
+    state = {(r["account"], r["origin"], r["config"]): r for r in csv.DictReader(open(d / "state.csv"))}
+
+    # Identity checks: CRPS strings must equal the stored rows.
+    ident = [["check", "compared", "identical", "max_abs_diff"]]
+
+    def check(name, ref_paths, ref_method, mine):
+        ref = load(ref_paths, {ref_method})
+        n = same = 0
+        worst = 0.0
+        for k, v in ref.items():
+            if k in data and mine in data[k]:
+                n += 1
+                a, b = data[k][mine]["crps"], v[ref_method]["crps"]
+                same += a == b
+                worst = max(worst, abs(float(a) - float(b)))
+        ident.append([name, n, same, f"{worst:.3g}"])
+
+    check("V2 = stored S6 V2", [EXP / "berka/rows.csv"], "V2", "V2")
+    check("V2-nodet = stored S6 V2-nodetector", [EXP / "berka/rows.csv"], "V2-nodetector", "V2-nodet")
+    check("V0 = frozen development V0", [B / "variants-dev/rows.csv"], "V0", "V0")
+    check("V0-nodet = frozen development abl:no-detector", [B / "berka-dev/rows.csv"], "abl:no-detector",
+          "V0-nodet")
+    # Branch activation and the tracker shared by V0 and V2.
+    keys = {(a, o) for (a, o, _) in state}
+    branch_diff = sum(state[(a, o, "V2")]["sparse_used"] != state[(a, o, "V2-nodet")]["sparse_used"]
+                      for a, o in keys)
+    v0_sparse = sum(state[(a, o, c)]["sparse_used"] == "1" for a, o in keys for c in ("V0", "V0-nodet"))
+    track_diff = sum(any(state[(a, o, "V0" + s)][c] != state[(a, o, "V2" + s)][c]
+                         for c in ("b", "c", "m", "alarms_income", "alarms_balance"))
+                     for a, o in keys for s in ("", "-nodet"))
+    v2_sparse = sum(state[(a, o, "V2")]["sparse_used"] == "1" for a, o in keys)
+    ident += [["origins", len(keys), "", ""],
+              ["V2 sparse branch used (origins)", len(keys), v2_sparse, ""],
+              ["sparse branch differs, V2 vs V2-nodet", len(keys), len(keys) - branch_diff, ""],
+              ["V0 or V0-nodet used the sparse branch", 2 * len(keys), v0_sparse, ""],
+              ["tracker state differs, V0 vs V2 (same detector setting)", 2 * len(keys), 2 * len(keys) - track_diff, ""]]
+    write(out / "identity.csv", ident)
+    show(ident)
+
+    def st(k, c="V2"):
+        return state[(k[0], k[1], c)]
+
+    strata = {
+        "": lambda k, v: True,
+        "-inc-alarm": lambda k, v: st(k)["income_detected"] == "1" and int(st(k)["alarms_income"]) > 0,
+        "-inc-noalarm": lambda k, v: st(k)["income_detected"] == "1" and int(st(k)["alarms_income"]) == 0,
+        "-noinc": lambda k, v: st(k)["income_detected"] == "0",
+        "-recent-alarm": lambda k, v: v["V2"]["alarm"] == "1",
+        "-no-recent-alarm": lambda k, v: v["V2"]["alarm"] == "0",
+    }
+    pairs = [("V2-nodet", "V2"), ("V0-nodet", "V0")]
+    for label, keep in strata.items():
+        panel(data, cfgs, pairs, out, keep=keep, label=label)
+
+    # Bias and paired absolute CRPS difference, and the state by stratum.
+    rows = [["stratum", "h", "forecasts", "accounts"] + [f"crps_{c}" for c in cfgs]
+            + [f"bias_{c}" for c in cfgs]]
+    srows = [["stratum", "origins", "median_abs_dm", "median_rel_m_err_V2", "median_rel_m_err_V2_nodet",
+              "median_gated_V2", "median_gated_V2_nodet", "mean_dc_V0", "corr_dc_dm"]]
+    for label, keep in strata.items():
+        name = label.lstrip("-") or "all"
+        for h in HS:
+            sub = {k: v for k, v in common(data, cfgs, h).items() if keep(k, v)}
+            if not sub:
+                continue
+            mean = lambda f: float(np.mean([f(v) for v in sub.values()]))  # noqa: E731
+            rows.append([name, h, len(sub), len({k[0] for k in sub})]
+                        + [fmt(mean(lambda v, c=c: float(v[c]["crps"]))) for c in cfgs]
+                        + [fmt(mean(lambda v, c=c: float(v[c]["median"]) - float(v[c]["truth"]))) for c in cfgs])
+        ks = [(a, o) for a, o in keys if keep((a, o, "90"), data.get((a, o, "90"), {"V2": {"alarm": "0"}}))]
+        if not ks:
+            continue
+        m = lambda c: np.array([float(state[(a, o, c)]["m"]) for a, o in ks])  # noqa: E731
+        last = np.array([float(state[(a, o, "V2")]["last_pay"]) for a, o in ks])
+        dm = m("V2-nodet") - m("V2")
+        dc = np.array([float(state[(a, o, "V0-nodet")]["c"]) - float(state[(a, o, "V0")]["c"]) for a, o in ks])
+        ok = np.isfinite(last) & (np.abs(last) > 0)
+        rel = lambda c: np.abs(m(c)[ok] - last[ok]) / np.abs(last[ok])  # noqa: E731
+        g = lambda c: np.array([int(state[(a, o, c)]["income_gated_365"]) for a, o in ks])  # noqa: E731
+        corr = np.corrcoef(dc, dm)[0, 1] if np.std(dc) > 0 and np.std(dm) > 0 else float("nan")
+        srows.append([name, len(ks), fmt(float(np.median(np.abs(dm))), 1),
+                      fmt(float(np.median(rel("V2"))), 3) if ok.any() else "",
+                      fmt(float(np.median(rel("V2-nodet"))), 3) if ok.any() else "",
+                      fmt(float(np.median(g("V2"))), 1), fmt(float(np.median(g("V2-nodet"))), 1),
+                      fmt(float(np.mean(dc)), 3), fmt(corr, 3)])
+    write(out / "crps-bias.csv", rows)
+    write(out / "state.csv", srows)
+    show(rows)
+    show(srows)
+
+    # The mechanism, in the stratum where the effect sits: income detected
+    # and an income alarm before the origin.
+    ia = [(a, o) for a, o in keys if state[(a, o, "V2")]["income_detected"] == "1"
+          and int(state[(a, o, "V2")]["alarms_income"]) > 0]
+    g = lambda c, x: np.array([float(state[(a, o, c)][x] or "nan") for a, o in ia])  # noqa: E731
+    last, pay1 = g("V2", "last_pay"), g("V2", "pay1")
+    first_age = g("V2", "first_income_alarm_age")
+    last_before = g("V2", "last_income_alarm_before_origin")
+    m_det, m_nod = g("V2", "m"), g("V2-nodet", "m")
+    # V0's lumps per 30 settled days, against the income V0-nodet's m̂ misses
+    # per pay cycle (last paycheck minus m̂).
+    lump_rate = lambda c: g(c, "lumps_sum") / np.maximum(g(c, "lump_days"), 1) * 30  # noqa: E731
+    missing = last - m_nod
+    q = lambda v: [fmt(x, 3) for x in np.nanquantile(v, [0.25, 0.5, 0.75])]  # noqa: E731
+    mech = [["measure", "q25", "median", "q75"],
+            ["first income alarm, days after the first day of history", *q(first_age)],
+            ["last income alarm, days before the origin", *q(last_before)],
+            ["share of origins whose first income alarm fired within 180 days of the first day", fmt(
+                float(np.mean(first_age <= 180)) if len(ia) else float("nan"), 3), "", ""],
+            ["first tagged paycheck / last paycheck", *q(pay1 / last)],
+            ["m-hat with the detector / last paycheck", *q(m_det / last)],
+            ["m-hat without the detector / last paycheck", *q(m_nod / last)],
+            ["m-hat without the detector / first paycheck", *q(m_nod / pay1)],
+            ["V0 lumps per 30 days / missing income (V0-nodet)", *q(lump_rate("V0-nodet") / missing)],
+            ["V0 lumps per 30 days / missing income (V0)", *q(lump_rate("V0") / missing)],
+            ["V0-nodet lumps, count", *q(g("V0-nodet", "lumps_n"))],
+            ["V0 lumps, count", *q(g("V0", "lumps_n"))]]
+    write(out / "mechanism.csv", mech)
+    show(mech)
+
+# ---------------------------------------------------------------- S11 ----
+
+def s11():
+    """The schedule-replacement contrast (REVISION.md S11, round 3 B1)."""
+    d = EXP / "schedule"
+    out = OUT / "s11-schedule"
+    ms = ["F0", "F0.5", "F1", "O"]
+    data = load([d / "rows.csv"], set(ms))
+    st = {(r["account"], r["origin"]): r for r in csv.DictReader(open(d / "state.csv"))}
+    ident = [["check", "compared", "identical", "max_abs_diff"]]
+
+    def check(name, paths, ref, mine):
+        refd = load(paths, {ref})
+        n = same = 0
+        worst = 0.0
+        for k, v in refd.items():
+            if k in data and mine in data[k]:
+                n += 1
+                a, b = data[k][mine]["crps"], v[ref]["crps"]
+                same += a == b
+                worst = max(worst, abs(float(a) - float(b)))
+        ident.append([name, n, same, f"{worst:.3g}"])
+
+    check("F0 = frozen development B-EQ", [B / "berka-dev/rows.csv"], "B-EQ", "F0")
+    check("F1 = stored S3 B-SR", [EXP / "berka/rows.csv"], "B-SR", "F1")
+    write(out / "identity.csv", ident)
+    show(ident)
+
+    # Predictability and strata.
+    def amount_err(r):
+        return float(r["abs_err"]) / float(r["abs_real"]) if float(r["abs_real"]) > 0 else float("nan")
+
+    def group(r):
+        if r["income"] == "0" and r["bills"] == "0":
+            return "no-schedule"
+        if int(r["checkpoints"]) < 3 or not np.isfinite(amount_err(r)):
+            return "short-history"
+        return "rated"
+
+    rated = np.array([amount_err(r) for r in st.values() if group(r) == "rated"])
+    cut = np.quantile(rated, [1 / 3, 2 / 3])
+
+    def stratum(r):
+        g = group(r)
+        if g != "rated":
+            return g
+        a = amount_err(r)
+        return "predictable" if a <= cut[0] else ("middle" if a <= cut[1] else "unpredictable")
+
+    lab = {k: stratum(r) for k, r in st.items()}
+    write(out / "cutpoints.csv", [["quantile", "amount_error"], ["1/3", fmt(cut[0])], ["2/3", fmt(cut[1])]])
+    desc = [["stratum", "origins", "accounts", "median_amount_error", "mean_date_error_days",
+             "missed_rate", "extra_rate"]]
+    for s in ("predictable", "middle", "unpredictable", "short-history", "no-schedule"):
+        rs = [r for k, r in st.items() if lab[k] == s]
+        if not rs:
+            continue
+        tot = lambda c: sum(float(r[c]) for r in rs)  # noqa: E731
+        ae = np.array([amount_err(r) for r in rs])
+        desc.append([s, len(rs), len({r["account"] for r in rs}),
+                     fmt(float(np.nanmedian(ae)), 3) if np.isfinite(ae).any() else "",
+                     fmt(tot("date_err_sum") / tot("matched"), 2) if tot("matched") else "",
+                     fmt(tot("missed") / tot("projected"), 3) if tot("projected") else "",
+                     fmt(tot("extra") / tot("realized"), 3) if tot("realized") else ""])
+    write(out / "strata.csv", desc)
+    show(desc)
+    pairs = [("F1", "F0"), ("F0.5", "F0"), ("O", "F0"), ("O", "F1")]
+    panel(data, ms, pairs, out)
+    for s in ("predictable", "middle", "unpredictable", "short-history", "no-schedule"):
+        _, c = panel(data, ms, pairs, out, keep=lambda k, v, s=s: lab.get((k[0], k[1])) == s, label=f"-{s}")
+        print(s)
+        show(c)
+
+# ---------------------------------------------------------------- S12 ----
+
+M64 = (1 << 64) - 1
+
+
+def splitmix64(x):
+    z = (x + 0x9E3779B97F4A7C15) & M64
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & M64
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & M64
+    return z ^ (z >> 31)
+
+
+def logit(p):
+    p = np.clip(p, 1e-4, 1 - 1e-4)
+    return np.log(p / (1 - p))
+
+
+def platt_fit(p, y, iters=50):
+    """Two-parameter logistic recalibration of logit(p), by Newton steps."""
+    x = logit(p)
+    a, b = 0.0, 1.0
+    for _ in range(iters):
+        q = 1 / (1 + np.exp(-np.clip(a + b * x, -500, 500)))
+        w = q * (1 - q) + 1e-12
+        g = np.array([np.sum(q - y), np.sum((q - y) * x)])
+        hm = np.array([[np.sum(w), np.sum(w * x)], [np.sum(w * x), np.sum(w * x * x)]])
+        step = np.linalg.solve(hm + 1e-9 * np.eye(2), g)
+        a, b = a - step[0], b - step[1]
+        if np.max(np.abs(step)) < 1e-10:
+            break
+    return a, b
+
+
+def platt_apply(ab, p):
+    return 1 / (1 + np.exp(-np.clip(ab[0] + ab[1] * logit(p), -500, 500)))
+
+
+def isotonic_fit(p, y):
+    """Pool-adjacent-violators on p sorted ascending: (thresholds, values)."""
+    o = np.argsort(p, kind="mergesort")
+    xs, ys = p[o], y[o].astype(float)
+    vals, wts, ends = [], [], []
+    for x, v in zip(xs, ys):
+        vals.append(v); wts.append(1.0); ends.append(x)
+        while len(vals) > 1 and vals[-2] > vals[-1]:
+            w = wts[-2] + wts[-1]
+            v2 = (vals[-2] * wts[-2] + vals[-1] * wts[-1]) / w
+            vals[-2:] = [v2]; wts[-2:] = [w]; ends[-2:] = [ends[-1]]
+    return np.array(ends), np.array(vals)
+
+
+def isotonic_apply(fit, p):
+    ends, vals = fit
+    i = np.searchsorted(ends, p, side="left")
+    return vals[np.clip(i, 0, len(vals) - 1)]
+
+
+def murphy(p, y, bins=10):
+    """Brier = REL - RES + UNC + W, with equal-width bins."""
+    n = len(p)
+    bs = float(np.mean((p - y) ** 2))
+    ob = float(np.mean(y))
+    k = np.minimum((p * bins).astype(int), bins - 1)
+    rel = res = 0.0
+    for j in range(bins):
+        s = k == j
+        if s.any():
+            rel += s.sum() * (p[s].mean() - y[s].mean()) ** 2
+            res += s.sum() * (y[s].mean() - ob) ** 2
+    rel, res, unc = rel / n, res / n, ob * (1 - ob)
+    return bs, rel, res, unc, bs - (rel - res + unc)
+
+
+def bss_boot(pm, pr, y, acct, rng):
+    """Brier skill of pm against pr, pooled, with an account bootstrap."""
+    ids, inv = np.unique(acct, return_inverse=True)
+    a = np.bincount(inv, weights=(pm - y) ** 2, minlength=len(ids))
+    r = np.bincount(inv, weights=(pr - y) ** 2, minlength=len(ids))
+    idx = rng.integers(0, len(ids), size=(RESAMPLES, len(ids)))
+    den = r[idx].sum(axis=1)
+    draw = np.where(den > 0, 1 - a[idx].sum(axis=1) / np.where(den > 0, den, 1), np.nan)
+    lo, hi = np.nanquantile(draw, [0.025, 0.975])
+    return (1 - a.sum() / r.sum()) if r.sum() > 0 else float("nan"), lo, hi
+
+
+def s12():
+    """The shortfall audit (REVISION.md S12, round 3 B2)."""
+    d = EXP / "shortfall"
+    out = OUT / "s12-shortfall"
+    ev = list(csv.DictReader(open(d / "events.csv")))
+    methods = ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM", "CLIM-D"]
+    # Identity: u0 and u10 equal the stored S5 events.
+    old = {(r["account"], r["origin"], r["h"], r["threshold"]): r
+           for r in csv.DictReader(open(EXP / "berka/events.csv"))}
+    n = same = 0
+    worst = 0.0
+    for r in ev:
+        o = old.get((r["account"], r["origin"], r["h"], r["threshold"]))
+        if o is None:
+            continue
+        n += 1
+        diffs = [abs(float(r[f"p_{m}"]) - float(o[f"p_{m}"])) for m in methods[:5]]
+        diffs.append(abs(float(r["event"]) - float(o["event"])))
+        worst = max(worst, max(diffs))
+        same += max(diffs) == 0.0
+    ident = [["check", "compared", "identical", "max_abs_diff"],
+             ["u0 and u10 = stored S5 events", n, same, f"{worst:.3g}"]]
+    write(out / "identity.csv", ident)
+    show(ident)
+    rng = np.random.default_rng(SEED)
+
+    def arr(rows, c):
+        return np.array([float(r[c]) for r in rows])
+
+    def score_block(rows, label, subset):
+        y = arr(rows, "event")
+        acct = np.array([r["account"] for r in rows])
+        out_rows = []
+        for m in methods + [x for x in ("V2-platt", "V2-iso") if f"p_{x}" in rows[0]]:
+            p = arr(rows, f"p_{m}")
+            bss, lo, hi = bss_boot(p, arr(rows, "p_CLIM"), y, acct, rng)
+            bs, rel, res, unc, w = murphy(p, y)
+            out_rows.append([label, subset, m, len(rows), len(set(acct)), fmt(y.mean(), 5), fmt(p.mean(), 5),
+                             fmt(bs, 5), fmt(bss), fmt(lo), fmt(hi), fmt(rel, 5), fmt(res, 5),
+                             fmt(unc, 5), fmt(w, 5)])
+        return out_rows
+
+    head = ["block", "subset", "method", "origins", "accounts", "prevalence", "mean_p", "brier",
+            "bss_vs_clim", "bss_lo", "bss_hi", "rel", "res", "unc", "within"]
+
+    # Item 6: recalibrate V2 (u0 and u10), cross-fitted over 5 account folds.
+    fold = {a: splitmix64(int(a)) % 5 for a in {r["account"] for r in ev}}
+    fits = [["threshold", "h", "platt_a", "platt_b"]]
+    for u in ("u0", "u10"):
+        for h in HS:
+            rows = [r for r in ev if r["threshold"] == u and r["h"] == h]
+            p, y = arr(rows, "p_V2"), arr(rows, "event")
+            f = np.array([fold[r["account"]] for r in rows])
+            pp, pi = np.zeros_like(p), np.zeros_like(p)
+            for k in range(5):
+                tr, te = f != k, f == k
+                pp[te] = platt_apply(platt_fit(p[tr], y[tr]), p[te])
+                pi[te] = isotonic_apply(isotonic_fit(p[tr], y[tr]), p[te])
+            for r, a, b in zip(rows, pp, pi):
+                r["p_V2-platt"], r["p_V2-iso"] = str(a), str(b)
+            ab = platt_fit(p, y)
+            fits.append([u, h, fmt(ab[0]), fmt(ab[1])])
+    write(out / "recalibration-fit.csv", fits)
+
+    res = [head]
+    counts = [["threshold", "h", "origins", "start_below", "events", "events_day0", "events_reported",
+               "flips_0to1", "flips_1to0", "events_start_at_or_above"]]
+    for u in ("u0", "u10", "m100", "p100", "m1000", "p1000"):
+        for h in HS:
+            rows = [r for r in ev if r["threshold"] == u and r["h"] == h]
+            e, e0, er = arr(rows, "event"), arr(rows, "event_day0"), arr(rows, "event_reported")
+            sb = arr(rows, "start_below")
+            counts.append([u, h, len(rows), int(sb.sum()), int(e.sum()), int(e0.sum()), int(er.sum()),
+                           int(((e == 0) & (er == 1)).sum()), int(((e == 1) & (er == 0)).sum()),
+                           int(e[sb == 0].sum())])
+            if u in ("u0", "u10"):
+                res += score_block(rows, f"{u}/{h}", "all")
+                above = [r for r in rows if r["start_below"] == "0"]
+                below = [r for r in rows if r["start_below"] == "1"]
+                res += score_block(above, f"{u}/{h}", "start at or above")
+                if len(below) >= 20 and len({r["event"] for r in below}) > 1:
+                    res += score_block(below, f"{u}/{h}", "start below")
+            elif u in ("m100", "p100", "m1000", "p1000"):
+                res += score_block(rows, f"{u}/{h}", "all")
+    write(out / "counts.csv", counts)
+    show(counts)
+
+    # Item 3: shallow events at u0.
+    by = {(r["account"], r["origin"], r["h"], r["threshold"]): r for r in ev}
+    shallow = [["h", "delta_czk", "u0_events", "share_min_above_minus_delta"]]
+    for h in HS:
+        u0 = [r for r in ev if r["threshold"] == "u0" and r["h"] == h and r["event"] == "1"]
+        for dn, dl in (("m100", 100), ("m1000", 1000)):
+            sh = sum(float(r["min_path"]) >= float(by[(r["account"], r["origin"], h, dn)]["u"]) for r in u0)
+            shallow.append([h, dl, len(u0), fmt(sh / len(u0), 3) if u0 else ""])
+    write(out / "shallow.csv", shallow)
+    show(shallow)
+
+    # Item 4: concentration.
+    accts = list(csv.DictReader(open(d / "accounts.csv")))
+    ever = sum(int(a["episodes"]) > 0 for a in accts)
+    u0_90 = [r for r in ev if r["threshold"] == "u0" and r["h"] == "90"]
+    per = defaultdict(int)
+    for r in u0_90:
+        per[r["account"]] += int(r["event"])
+    ranked = sorted(per.items(), key=lambda kv: -kv[1])
+    tot = sum(per.values())
+    top5 = {a for a, _ in ranked[:5]}
+    top1 = {a for a, _ in ranked[:max(1, int(np.ceil(0.01 * len(ranked))))]}
+    conc = [["key", "value"], ["accounts", len(accts)], ["episodes", sum(int(a["episodes"]) for a in accts)],
+            ["accounts_ever_below_zero", ever],
+            ["accounts_with_a_u0_event_at_90", sum(v > 0 for v in per.values())],
+            ["u0_events_at_90", tot], ["share_from_top5", fmt(sum(per[a] for a in top5) / tot, 3) if tot else ""],
+            ["top1pct_accounts", len(top1)],
+            ["share_from_top1pct", fmt(sum(per[a] for a in top1) / tot, 3) if tot else ""]]
+    write(out / "concentration.csv", conc)
+    show(conc)
+    for name, drop in (("without top 5", top5), ("without top 1%", top1)):
+        for h in HS:
+            rows = [r for r in ev if r["threshold"] == "u0" and r["h"] == h and r["account"] not in drop]
+            res += score_block(rows, f"u0/{h}", name)
+    write(out / "scores.csv", res)
+    show([r for r in res if r[2] in ("V2", "V2-platt", "B-EQp", "CLIM", "CLIM-D")][:60])
+
 
 # ----------------------------------------------------------------- S7 ----
 

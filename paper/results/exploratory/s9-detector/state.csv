@@ -1,0 +1,7 @@
+stratum,origins,median_abs_dm,median_rel_m_err_V2,median_rel_m_err_V2_nodet,median_gated_V2,median_gated_V2_nodet,mean_dc_V0,corr_dc_dm
+all,27855,0.0,0.000,0.000,0.0,0.0,-14.007,0.000
+inc-alarm,5663,4039.9,0.085,0.903,0.0,0.0,-17.045,-0.174
+inc-noalarm,8909,0.0,0.000,0.000,0.0,0.0,-10.236,
+noinc,13283,0.0,,,0.0,0.0,-15.241,
+recent-alarm,1257,0.0,0.000,0.000,0.0,0.0,-85.865,-0.008
+no-recent-alarm,26598,0.0,0.000,0.000,0.0,0.0,-10.611,0.009

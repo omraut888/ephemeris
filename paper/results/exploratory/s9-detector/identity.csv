@@ -1,0 +1,10 @@
+check,compared,identical,max_abs_diff
+V2 = stored S6 V2,83565,83565,0
+V2-nodet = stored S6 V2-nodetector,83565,83565,0
+V0 = frozen development V0,83565,83565,0
+V0-nodet = frozen development abl:no-detector,21195,21195,0
+origins,27855,,
+V2 sparse branch used (origins),27855,27855,
+"sparse branch differs, V2 vs V2-nodet",27855,27855,
+V0 or V0-nodet used the sparse branch,55710,0,
+"tracker state differs, V0 vs V2 (same detector setting)",55710,55710,
