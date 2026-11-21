@@ -515,3 +515,28 @@ Predictions:
 Code: `ephemeris-eval explore detector`. Summary:
 `paper/analysis/explore_summary.py s9`. Results:
 `paper/results/exploratory/s9-detector/`.
+
+### S9: additions after the first run (recorded before the rerun)
+
+The first run passed every identity check, and no bug criterion was met:
+- V2, V2-nodet, V0 and V0-nodet reproduce the stored rows exactly;
+- the branch is the same with and without the detector at every origin;
+- V0 and V2 share the tracker state exactly.
+
+The whole V2 effect sits in accounts with detected income and an income
+alarm, where m̂ without the detector is a median 10% of the last paycheck.
+Two paths need checking before the mechanism can be stated:
+1. **Initialization.** Whether the alarms that matter fire early in the
+   history, acting as the income state's initialization, not as later
+   regime changes.
+2. **V0's compensation.** Whether V0 loses less because the payday surplus
+   becomes balance-gate lumps, which V0's cone resamples and V2's sparse
+   branch does not.
+
+The rerun adds, per origin and configuration:
+- the day of the first and last income alarm, relative to the first day of
+  history and to the origin;
+- the first two tagged paychecks;
+- the number of recorded lumps, their sum and the days they cover.
+
+Nothing else changes, and the identity checks are repeated.
