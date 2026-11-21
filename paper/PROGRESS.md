@@ -2,8 +2,59 @@
 
 ## Resume here (updated after every step)
 
-**All steps finished (1–6).** Nothing is running or half-done. Nothing
-was pushed. Next action: the user's review of the open questions below.
+**Round 2 (the user's decisions on Q1–Q5): finished.** Nothing is
+running or half-done. Nothing was pushed. The PDF has 27 pages and 0
+warnings; the main text runs from p. 1 to the top of p. 14.
+
+## Round 2: the user's decisions on Q1–Q5 (2026-11-21)
+
+1. **History length (Q1).**
+   - Removed from the abstract and the conclusion.
+   - §5 now gives both aggregations by stratum, and states that the
+     planned account mean favours B-EQ at 30 and 90 days even with under a
+     year of history.
+   - §6 presents schedule projection (B-SR vs B-EQ) as the best-supported
+     explanation, and history length as weaker, aggregation-dependent
+     evidence. Its table shows pooled and account-mean skill on both splits.
+   - Figure 1's left panel adds the account mean (open markers, dashed).
+   - The introduction was brought in line (one sentence on the weaker
+     evidence).
+   - The limitation on estimands now says that within history strata the
+     signs differ.
+   - The "largest at 12–23 months" claim is narrowed to 90 days, where it
+     holds under both aggregations on both splits; at 30 days it does not.
+2. **Overdraft pessimism (Q2).** New exploratory quantity: calibration in the
+   large, the mean forecast probability minus the observed frequency,
+   pooled over origins, per method, threshold and horizon, with 95%
+   account-bootstrap intervals (2,000 resamples, seed 6). It is computed
+   from the stored development and exploratory held-out events
+   (`explore_summary.py [--heldout] s5c` → `s5-overdraft/citl.csv`), with
+   no new forecasts and no guard entry, since the guard governs runs that
+   produce forecasts.
+   - **Result:** V2, CP-noKF, B-EQp and B-SRp over-predict in every cell on
+     both splits, and every interval excludes 0. Below 0 at 90 days, V2
+     gives 19.9% against 1.3% observed on held-out (development: 21.3%
+     against 1.8%).
+   - **CLIM is the exception.** It under-predicts slightly below 0, and at
+     the tenth percentile at 90 days it over-predicts by about as much as
+     B-EQp. So the wording is now "every *forecast*", not "every method".
+   - **In the paper:** a new table (Table 4) and a rewritten paragraph in
+     §7; the abstract, introduction and conclusion use the new wording, and
+     the abstract quotes V2's 90-day number.
+3. **Page budget (Q3).** The V1 paragraph is kept. B-GLOBAL is now one
+   paragraph in §9: the pooled-data reference; removing calendar look-ahead
+   costs it about 0.03; it still has lower CRPS than B-EQ. The definitions,
+   the G-cut numbers, V2 vs G-cf, the calibration and the product note
+   moved to a new Appendix C. Net page effect: the main text still runs to
+   the top of p. 14, because the new overdraft table took the space saved.
+4. **E-mail (Q4):** kept as is.
+5. **one_seed (Q5).** `--skip one_seed` added to the ignored-tests stage of
+   `scripts/test-full.sh`, with a comment; the test itself is unchanged.
+   `scripts/test-full.sh` then ran end to end and exited 0:
+   - Rust, all stages: 313 tests passed (cargo with ignored tests including
+     the soak, WASM engine and sync, desktop, FFI), with clippy clean;
+   - Swift: 31 tests;
+   - web: 60 tests.
 
 ## Final summary
 
