@@ -2,27 +2,231 @@
 
 ## Resume here (updated after every step)
 
-**Round 3 (second referee report), in progress.**
-- **Done:**
-  - x86_64 identity (`e39d143`);
-  - A2 text corrections except §9's detector paragraph;
-  - S9 (A1) first run: all identity checks pass, so no bug;
-  - specifications for S11 (B1), S12 (B2) and Tier C, committed;
-  - runners for S11 and S12, committed.
-- **Running:** one background job runs S9 (rerun), S11 and S12 in turn on
-  development, into `paper/build/explore/{detector,schedule,shortfall}`;
-  the log is `scratchpad/round3.log`. It is safe to rerun; nothing tracked
-  is written.
-  - Note: the first S9 rerun used a stale binary (only clippy had been
-    run after the code change), so it lacked the new columns and was
-    discarded.
-- **Next:**
-  1. `explore_summary.py s9`, and commit the S9 results;
-  2. write §9 and the A1 report;
-  3. `cargo build --release`, then run `explore schedule` and `explore
-     shortfall` (development) and summarize them (s11 and s12 are still to
-     be written in `explore_summary.py`);
-  4. the checkpoint summary.
+**Round 3 is at its checkpoint (after Tier A and the development results of
+B1 and B2). Stopped and waiting for the user.**
+- Nothing is running, nothing is half-done, nothing was pushed.
+- The next actions need the user's decisions (below): the confirmatory
+  test, the held-out runs, and how B1/B2 enter the paper.
+
+## Round 3 checkpoint summary (2026-11-21)
+
+### A1: the detector ablation is genuine, not a bug
+
+On all 27,855 development origins:
+- V2, V2 without the detector, V0, and V0 without the detector reproduce
+  the stored forecasts exactly;
+- the branch V2 uses is the same with and without the detector at every
+  origin;
+- V0 and V2 share the filter state exactly.
+
+None of the four bug criteria in S9 is met.
+
+**Where the effect sits.** All of it is in accounts with detected income
+and an income alarm (5,663 origins, 263 accounts). There, removing the
+detector costs:
+- V2: pooled −2.94 at 90 days, account mean −2.98;
+- V0: pooled −0.32, account mean −0.69.
+
+Elsewhere V2's forecasts are unchanged.
+
+**The mechanism: initialization, not later regime changes.**
+- In Berka, the first income-tagged record is a median 3.8% of the later
+  paycheck.
+- The income alarm fires a median 44 days into the history (96.6% within
+  180 days) and moves m̂ to the pay level.
+- Without it, m̂ stays at a median 9.8% of the last paycheck, years later.
+- V2's cone, whose spending model ignores c, then treats most of the pay
+  as missing: the median bias at 90 days is −11,165 normalized units,
+  against −623 with the detector.
+
+V0 is biased too (−5,252 against +3,948). Neither its lumps nor ĉ explains
+why it is biased less, so that path is not identified.
+
+**Implication.** The frozen results are unaffected, since the detector is
+on in every frozen configuration. But the V2 ablation measures the
+detector's role in initializing the income state, and the engine's m prior
+relies on the detector for that. This is worth an engine note; the engine
+was not changed.
+
+### A2: text changes (all committed)
+
+- **§6:** B-SR described exactly (B_t + ΔB − S_hist + S_t; S_hist is a
+  retrospective decomposition). Every "same residual distribution" claim
+  removed.
+- **Caveat first.** The abstract, introduction, §6 and conclusion now open
+  the explanation with the caveat about unmeasured irregularity, and state
+  the specific B-SR result and the simulator result.
+- **§9:** the detector result corrected (same sign, larger), with the A1
+  mechanism; the ablation table now shows both aggregations; new Appendix
+  B.4.
+- **Overdraft:**
+  - "negative booked end-of-day balance" (days 1..h, day 0 excluded);
+  - "calibration in the large is poor for the four model-based forecasts;
+    climatology slightly under-predicts";
+  - "cautious upper estimate" removed.
+- **"Rejected explanations" removed.** Calendar and sparsity are
+  described as limited to the tested rule and range, and an origin-phase
+  paragraph is added.
+- **Correction found while doing this.** The appendix compared the
+  offset-0 S8 rerun (97 accounts, an identity check) with the full shifted
+  grids. It now uses the full frozen grid: 30-day pooled −0.12 (account
+  mean −0.24) against −0.05 / −0.04 (−0.14 / −0.12). The referee's
+  "−0.13" came from that flawed comparison.
+- **Pooled skill** is defined as a ratio of aggregated scores (equivalently
+  reference-weighted). The zero-denominator rule is stated; it applied to
+  one account (B-SA, 7 days).
+- **PIT.** "Flat is calibrated" is gone. The text now says what the
+  midpoint-PIT histogram can and cannot show (V2 at 7 days: 5.8% of PITs
+  exactly 1). Randomized PIT would need the stored quantiles, which the
+  frozen rows do not keep.
+- **B-GLOBAL:** "its advantage survives removal of calendar look-ahead";
+  pooled training is separated from on-device execution; both
+  aggregations.
+- **Table 6:** coverage, below and above now come from one count table
+  (new post-hoc `s10-rows-checks`), with the coverage column added and the
+  layout regrouped by horizon. The three add up to 100 before rounding
+  (±0.1 after). The §8 7-day sentence is fixed (nominal 5% each side;
+  86.3% coverage, 10.2% above).
+- **B-SR widths:** the units are CZK, not normalized (fixed).
+- **Timeline:** the specification commit, the development results, the
+  three guarded exploratory runs and the result commits are added. The
+  text notes that the specifications were first pushed together with their
+  results, so their precedence rests on commit times.
+- **AI disclosure** shortened.
+- **x86_64** (the separate request, `e39d143`): run #4 (id 44827652848,
+  `7ab6e12`, 2026-11-20) passed the golden feed and the 100 cases, natively
+  and in WASM; run #5 repeated it. Recorded in the identity appendix, the
+  timeline, the C1 row, the limitations and PLAN §11.
+- **Added from B2** (a dev-only caveat on an existing claim): the 7-day
+  B-EQp result is persistence (below).
+
+### B1 (S11): schedule replacement by predictability (development, exploratory)
+
+- **Identities.** F0 = B-EQ and F1 = B-SR, to within 2·10⁻¹⁰ (summation
+  order).
+- **Strata.** Every origin had a schedule and at least 3 checkpoints, so
+  there are three tertiles of amount error. The cut points are 0.143 and
+  0.413 (median error 0.4% / 23% / 82%; missed 1% / 7% / 24%; extra
+  0.1% / 1% / 12%).
+- **F1 vs F0**, pooled (account mean), at 30 / 90 days:
+
+  | Tertile | 30 d | 90 d |
+  |---|---|---|
+  | predictable | +0.045 (−0.24) | +0.061 (−0.28) |
+  | middle | −0.22 (−0.37) | −0.47 (−0.58) |
+  | unpredictable | −0.17 (−0.26) | −0.36 (−0.54) |
+
+  At 7 days, replacement helps overall: pooled +0.28.
+- **Key test: weak support only.** Replacement helps the predictable
+  tertile on the pooled score but hurts it on the account mean. It hurts
+  the other two under both. The gradient is not monotone: the middle
+  tertile is worse than the unpredictable one.
+- **The oracle (corrected definition, recorded before the rerun)** uses the
+  true future scheduled flows. It beats F1 at 7 and 30 days, but at 90 days
+  it still loses to B-EQ: pooled −0.20, account mean −0.43 overall, and in
+  the middle and unpredictable tertiles too.
+
+  So at long horizons the loss is not only projection error. Replacing a
+  window's scheduled flows breaks the coupling between those flows and the
+  rest of the window (spending that went with that pay). This weakens
+  "schedule irregularity" as *the* explanation; the paper's §6 should say
+  so once the user decides.
+- The first oracle (every record of the detected counterparties) was
+  wrong. It is kept in `s11-schedule/first-run-oracle/`, superseded.
+
+### B2 (S12): the shortfall audit (development, exploratory)
+
+- **Persistence dominates at short horizons.** 185 origins start below
+  zero.
+  - Of the 199 events at 7 days, only 17 start at or above zero; of 305 at
+    30 days, 122; of 499 at 90 days, 315.
+  - With day 0 included, the counts barely change (202 / 307 / 500).
+- **The 7-day "B-EQp beats CLIM" is persistence.** Among origins starting
+  at or above zero, B-EQp's Brier skill against CLIM is −1.10 [−2.09,
+  −0.65], and V2's is −4.97.
+- **First crossings** (start at or above zero): no raw forecast beats CLIM
+  at any horizon, and CLIM-D is no better than CLIM. V2 recalibrated,
+  cross-fitted out of fold:
+
+  | Recalibration | 30 d | 90 d |
+  |---|---|---|
+  | isotonic | +0.08 [0.02, 0.13] | +0.11 [0.04, 0.18] |
+  | Platt | +0.00 [−0.10, 0.08] | +0.09 [−0.01, 0.17] |
+
+  The gain is in reliability; V2's resolution is no better than
+  climatology's.
+- **Labels.** Reported against reconstructed balances flips 3–6 labels per
+  horizon. With the buffers, 1.5% of events end within 100 CZK of zero and
+  10–18% within 1,000 CZK. The conclusions are unchanged.
+- **Concentration.** 60 of 866 accounts ever go below zero (206 episodes).
+  The top 5 accounts give 25% of the 90-day events, and the top 1% (9
+  accounts) give 40%. Removing them changes no conclusion.
+- **Decomposition.** In every case V2's Brier score is dominated by the
+  reliability term (for example 0.082 of 0.093 at 90 days, first
+  crossings).
+
+### Proposed frozen confirmatory test of B1 (needs the user's approval)
+
+**A forward period on held-out accounts.**
+1. Fix everything from development, now: the predictability measure, the
+   tertile cut points (0.143, 0.413), F0/F1/the oracle, the estimands (both
+   reported; the primary chosen in advance), and the decision rule.
+2. Test on held-out origins dated on or after a cutoff. I propose
+   1997-07-01; the origin count per period should be checked, without
+   outcomes, before fixing it.
+3. Run once, through the guard, with a logged reason.
+
+**Pre-registered predictions** (what development supports, not the
+original hypothesis):
+- **P1:** the pooled skill of F1 vs F0 at 30 and 90 days is higher in the
+  predictable tertile than in the unpredictable one (the interaction, with
+  an account-bootstrap interval of the difference);
+- **P2:** the oracle loses to F0 at 90 days.
+
+The original hypothesis (help in the predictable tertile) fails on
+development under the account mean, so it should not be confirmed as
+stated.
+
+**Prior exposure, stated in the paper:** held-out B-SR vs B-EQ overall
+(−0.10 / −0.19), V2 vs B-EQ by history length, and S5–S7 have been seen.
+Nothing has been seen stratified by predictability, and nothing for the
+oracle or after the cutoff in isolation. (The cutoff's later origins are
+part of the held-out aggregates already seen.)
+
+**Alternative, a bank-district subgroup test.** Weaker: the districts were
+not held out from the aggregate results either, and they differ in size.
+
+### Tier C: plan only (REVISION.md)
+
+The factorial (factors varied one at a time and crossed, sparse branch
+forced on and off, 7 days added) plus the two calendar controls. About 1.5
+hours of compute (S4 took 134 s for 16 cells). Not run.
+
+### Needs the user's decision
+
+1. Approve the confirmatory test, its cutoff and its primary estimand
+   (any held-out run is guarded and needs approval).
+2. How the B1 result (the oracle) and the B2 audit (persistence; first
+   crossings) should change §6 and §7 and the abstract. Only the 7-day
+   caveat has been added so far. The overdraft section's main numbers
+   still mix persistence and first crossings, and the held-out split by
+   start state is not computed (it needs the stored held-out events only,
+   no new forecasts; I did not run it without asking).
+3. Whether to note the engine's reliance on the detector to initialize m
+   (an engine design issue; no engine change was made).
+
+### Runtime and disk
+
+- **Compute this round:**
+  - S9: 503 s, then a stale-binary rerun of 539 s (discarded; my error),
+    then 509 s;
+  - S11: 67 s, twice;
+  - S12: 146 s;
+  - `test-full`: about 20 minutes.
+- **Paper:** 29 pages, 0 LaTeX warnings, main text pp. 1–14 (statements
+  p. 15). PDF: `paper/build/latex/main.pdf`.
+- **Disk:** `target/` 4.5 GB (no clean needed); `paper/build/` 3.4 GB
+  (explore runs 643 MB, git-ignored); 18 GB free.
 
 ## Round 2: the user's decisions on Q1–Q5 (2026-11-21)
 
