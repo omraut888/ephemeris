@@ -207,6 +207,8 @@ def constants():
     levels = re.search(r"pub const INTERVALS: \[f64; 4\] = \[([^\]]+)\]", dist).group(1).split(",")
     for i, lv in enumerate(levels, 1):
         put(f"c/l{i}", integer(100 * float(lv)))
+    # Nominal miss rate on each side of the central 90% interval.
+    put("c/nominal-tail", f"{100 * (1 - float(levels[2])) / 2:g}")
     hz = c["berka_run/HORIZONS"].strip("[]").split(",")
     put("c/h1", hz[0].strip()); put("c/h2", hz[1].strip()); put("c/h3", hz[2].strip())
     # Pre-registered thresholds (PLAN §1, A2): ±5 points at 7 and 30 days, ±10 at 90.
@@ -312,20 +314,27 @@ def tables():
         + r"$) & 90 d (band $\pm" + VALUES["c/a2-tol-90"] + r"$)\\", r"\midrule",
         *lines, r"\bottomrule", r"\end{tabular}", ""]))
 
-    # 90% interval widths and one-sided misses (held-out).
-    tails = rowmap(RES / "heldout-posthoc/tails.csv", "method", "h")
+    # 90% interval widths, coverage and one-sided misses (held-out). The
+    # three shares come from the same counts (s10-rows-checks) and add up
+    # to 100 before rounding; each is rounded as everywhere else.
+    ct = rowmap(RES / "exploratory-heldout/s10-rows-checks/coverage-tails.csv", "method", "h")
+
+    def three(r):
+        return [pct(r[c]) for c in ("cov90", "miss_low", "miss_high")]
+
     lines = []
     for m in ["V0", "V1", "V2", "B-SA+", "B-EQ", "B-GLOBAL"]:
-        w = [integer(ho[(m, h)]["median_width90_czk"]) for h in hs]
-        lo_ = [f"{pct(tails[(m, h)]['miss_low'])}" for h in hs]
-        hi_ = [f"{pct(tails[(m, h)]['miss_high'])}" for h in hs]
+        cells = []
+        for h in hs:
+            cells += [integer(ho[(m, h)]["median_width90_czk"])] + three(ct[(m, h)])
         name = "\\textbf{" + m + "}" if m == "V2" else m
-        lines.append(f"{name} & " + " & ".join(w + lo_ + hi_) + r" \\")
+        lines.append(f"{name} & " + " & ".join(cells) + r" \\")
     write_table("widths-tails", "\n".join([
-        r"\begin{tabular}{l rrr rrr rrr}", r"\toprule",
-        r" & \multicolumn{3}{c}{90\% width (CZK, median account)} & \multicolumn{3}{c}{miss below (\%)} & \multicolumn{3}{c}{miss above (\%)}\\",
-        r"\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}",
-        r"Method & 7 & 30 & 90 & 7 & 30 & 90 & 7 & 30 & 90\\", r"\midrule",
+        r"\setlength{\tabcolsep}{3.5pt}",
+        r"\begin{tabular}{l rrrr rrrr rrrr}", r"\toprule",
+        r" & \multicolumn{4}{c}{7 days} & \multicolumn{4}{c}{30 days} & \multicolumn{4}{c}{90 days}\\",
+        r"\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}",
+        r"Method" + r" & width & in & below & above" * 3 + r"\\", r"\midrule",
         *lines, r"\bottomrule", r"\end{tabular}", ""]))
 
     st = rowmap(RES / "heldout/variants-strata.csv", "stratum", "method", "h")
@@ -620,6 +629,13 @@ def exploratory():
                     keyvalue(f"{tag}/{short}/{name}", f)
         if (d / "s5-overdraft/brier.csv").exists():
             table(f"{tag}/s5", d / "s5-overdraft/brier.csv", ["threshold", "h"])
+        s10 = d / "s10-rows-checks"
+        if s10.exists():
+            table(f"{tag}/s10/ct", s10 / "coverage-tails.csv", ["method", "h"])
+            table(f"{tag}/s10/pit", s10 / "pit-edges.csv", ["method", "h"])
+            table(f"{tag}/s10/zero", s10 / "zero-reference.csv", ["method", "h"])
+            put(f"{tag}/s10/zero-total", str(sum(int(r["accounts_zero"]) for r in
+                                               csv.DictReader(open(s10 / "zero-reference.csv")))))
         if (d / "s5-overdraft/citl.csv").exists():
             table(f"{tag}/s5c", d / "s5-overdraft/citl.csv", ["threshold", "h", "method"])
         if (d / "s4-grid/compare.csv").exists():

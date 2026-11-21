@@ -12,10 +12,22 @@ held-out accounts:
 \item \textbf{\R{a2/count/inconclusive} cell is inconclusive}: the \lD\%
   interval at \hA\ days, whose interval straddles the band's edge.
 \end{itemize}
-V2's PIT is hump-shaped at \hB\ and \hC\ days (Figure~\ref{fig:pit}): the
-cone is too wide in its middle. The original model V0 fails the other
-way: its \lC\% interval covers \R{ho/var/V0/90/cov90}\% at \hC\ days, and
-its PIT is U-shaped. The selection rule tested the \lC\% level only, which
+V2's PIT histogram is hump-shaped at \hB\ and \hC\ days
+(Figure~\ref{fig:pit}), consistent with its over-covering central
+intervals: the cone is too wide in its middle. The original model V0 fails
+the other way: its \lC\% interval covers \R{ho/var/V0/90/cov90}\% at \hC\
+days, and its histogram is U-shaped.
+
+\paragraph{What the PIT histograms can show.} Each forecast is stored as
+quantiles at fixed levels, and its PIT inverts the piecewise-linear
+quantile function. An outcome beyond the outermost stored quantile gets a
+PIT of exactly 0 or 1 (for V2 at \hA\ days, \R{xh/s10/pit/V2/7/share_pit1}\%
+of outcomes get 1). An outcome on a flat stretch, an atom of the forecast,
+gets the midpoint of the levels it spans rather than a randomized value.
+The histograms therefore show the direction of a dispersion error, which
+the coverage at every level (Table~\ref{tab:a2}) confirms. They cannot
+certify calibration: a uniform PIT is necessary, not sufficient, for it
+\citep{gneiting2007calibration}. The selection rule tested the \lC\% level only, which
 is why a variant that misses the \lA\% level was selected.
 
 \begin{table}[t]
@@ -31,19 +43,23 @@ computed post hoc; the rule is the plan's.}
 \end{table}
 
 \paragraph{Widths and one-sided misses.} Table~\ref{tab:widths} gives each
-method's \lC\% width and its misses below and above. V2 misses below its
-interval \R{ho/tail/V2/7/miss_low}, \R{ho/tail/V2/30/miss_low} and
-\R{ho/tail/V2/90/miss_low}\% of the time, against a nominal half of the
-misses: it is cautious on the downside. Its excess misses at \hA\ days
-are above the interval (\R{ho/tail/V2/7/miss_high}\%).
+method's \lC\% width, its coverage, and its misses below and above. The
+nominal rate is \R{c/nominal-tail}\% on each side. V2 misses below its
+interval \R{xh/s10/ct/V2/7/miss_low}, \R{xh/s10/ct/V2/30/miss_low} and
+\R{xh/s10/ct/V2/90/miss_low}\% of the time: it is cautious on the
+downside. At \hA\ days its interval covers \R{xh/s10/ct/V2/7/cov90}\%,
+and the shortfall is entirely above it: \R{xh/s10/ct/V2/7/miss_high}\% of
+outcomes exceed the upper end.
 
 \begin{table}[t]
 \centering\footnotesize
 \tab{widths-tails}
 \caption{Held-out \lC\% intervals: width as the median over accounts of the
-account's mean width (CZK), and pooled misses below and above the interval
-(\%). Same \R{ho/var/V2/30/forecasts} origins per horizon for every method.
-The misses were computed post hoc from the stored forecasts.}
+account's mean width (CZK); and, pooled over origins, the share of outcomes
+inside the interval, below it and above it (\%). The three shares come from
+the same counts and add up to 100 before rounding. Same
+\R{xh/s10/ct/V2/30/forecasts} origins per horizon for every method.
+Computed post hoc from the stored forecasts of the frozen evaluation.}
 \label{tab:widths}
 \end{table}
 
@@ -62,7 +78,10 @@ forecasts and were sorted into a monotone function.
 \centering
 \includegraphics[width=0.8\linewidth]{figures/pit-heldout.pdf}
 \caption{PIT histograms on held-out Berka (\R{ho/var/V2/30/forecasts}
-origins per panel). Flat is calibrated; U-shaped is too narrow (V0);
-hump-shaped is too wide (V2).}
+origins per panel). A U shape means too many outcomes in the tails (V0's
+intervals are too narrow); a hump means too few (V2's are too wide).
+Outcomes beyond the outermost stored quantile appear at 0 or 1, and atoms
+at the midpoint of their levels, so a flat histogram would be necessary,
+not sufficient, for calibration.}
 \label{fig:pit}
 \end{figure}
