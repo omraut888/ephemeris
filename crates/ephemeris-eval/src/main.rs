@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall"])]
         what: String,
         /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
         /// logged like the frozen evaluation, with a required reason.
@@ -882,6 +882,43 @@ fn explore(
             }
             write(&out.join("rows.csv"), &rows_csv(&rows))?;
             write(&out.join("state.csv"), &state)?;
+            write(
+                &out.join("data.csv"),
+                &format!("key,value\norigins,{n}\nitems,{}\n", items.len()),
+            )?;
+        }
+        "shortfall" => {
+            // S12 (REVISION.md, round 3 B2): development only.
+            let accts = split_accounts(data, Split::Dev)?;
+            let per: Vec<(&Account, Vec<i32>)> = accts
+                .iter()
+                .map(|a| (a, ephemeris_eval::variants::eligible_origins(a)))
+                .collect();
+            let items: Vec<(&Account, i32)> = per
+                .iter()
+                .flat_map(|(a, os)| os.iter().map(move |&o| (*a, o)))
+                .collect();
+            let res = parallel_map(&items, threads, "shortfall", |&(a, o)| {
+                ex::shortfall_origin(a, o)
+            });
+            let mut ev = format!("{}\n", ex::SHORTFALL_HEADER);
+            let mut n = 0;
+            for lines in res.into_iter().flatten() {
+                n += 1;
+                for l in lines {
+                    ev.push_str(&l);
+                    ev.push('\n');
+                }
+            }
+            let mut acc = String::from("account,origins,episodes,days_below\n");
+            for (a, os) in &per {
+                if let Some(l) = ex::shortfall_account(a, os) {
+                    acc.push_str(&l);
+                    acc.push('\n');
+                }
+            }
+            write(&out.join("events.csv"), &ev)?;
+            write(&out.join("accounts.csv"), &acc)?;
             write(
                 &out.join("data.csv"),
                 &format!("key,value\norigins,{n}\nitems,{}\n", items.len()),

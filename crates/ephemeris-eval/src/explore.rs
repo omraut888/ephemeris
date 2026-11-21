@@ -895,6 +895,142 @@ pub fn schedule_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, String)
     Some((rows, line))
 }
 
+// ----------------------------------------------------------------- S12 --
+
+/// The buffers around zero (CZK, raw), S12 item 3.
+pub const BUFFERS_CZK: [f64; 2] = [100.0, 1000.0];
+
+/// The bank's reported end-of-day balance (the day's last record, in file
+/// order), carried forward over days without records, for `first..=to`.
+fn reported_balance(acct: &Account, to: Day) -> Vec<f64> {
+    let recs = acct.records_through(to);
+    let first = acct.first_day();
+    let mut out = Vec::with_capacity((to - first + 1).max(0) as usize);
+    let mut b = recs.first().map_or(f64::NAN, |r| r.balance);
+    let mut i = 0;
+    for d in first..=to {
+        while i < recs.len() && recs[i].day == d {
+            b = recs[i].balance;
+            i += 1;
+        }
+        out.push(b);
+    }
+    out
+}
+
+/// CLIM-D: among the past windows, the `max(10, ⌈0.2 n⌉)` whose starting
+/// balance is closest to today's (ties: the more recent first), the share
+/// in which the balance went below `u`.
+pub fn clim_d(c: &Ctx, h: usize, u: f64) -> f64 {
+    let b = c.bal;
+    let mut ds: Vec<usize> = (c.lo()..=c.t - h).collect();
+    ds.sort_by(|&x, &y| {
+        (b[x] - b[c.t])
+            .abs()
+            .total_cmp(&(b[y] - b[c.t]).abs())
+            .then(y.cmp(&x))
+    });
+    let n = ds.len();
+    let k = 10.max((0.2 * n as f64).ceil() as usize).min(n);
+    let hit = ds[..k]
+        .iter()
+        .filter(|&&d| (1..=h).any(|j| b[d + j] < u))
+        .count();
+    hit as f64 / k as f64
+}
+
+pub const SHORTFALL_HEADER: &str = "account,origin,h,threshold,u,b0,start_below,event,event_day0,\
+event_reported,min_path,p_V2,p_CP-noKF,p_B-EQp,p_B-SRp,p_CLIM,p_CLIM-D";
+
+/// S12 at one origin: one line per horizon and threshold.
+pub fn shortfall_origin(acct: &Account, origin: Day) -> Option<Vec<String>> {
+    let first = acct.first_day();
+    let end = origin + HORIZONS[2];
+    let bal_raw = acct.daily_balance(end);
+    let rep_raw = reported_balance(acct, end);
+    let t = (origin - first) as usize;
+    let s = acct.scale_at(origin).filter(|&s| s > 0.0)?;
+    let k = REFERENCE_SCALE / s;
+    let bal: Vec<f64> = bal_raw.iter().map(|b| b * k).collect();
+    let rep: Vec<f64> = rep_raw.iter().map(|b| b * k).collect();
+    let recs = acct.records_through(origin);
+    let txns = transactions(recs, &tag(recs), k);
+    let schedule = detect_schedule_in(&txns, CALENDAR);
+    let c = Ctx {
+        bal: &bal,
+        first,
+        t,
+        txns: &txns,
+        schedule: &schedule,
+        seed: seed_for(acct.id, origin),
+    };
+    let [u0, u10] = thresholds(&c);
+    let mut us = vec![("u0", u0), ("u10", u10)];
+    for d in BUFFERS_CZK {
+        us.push((if d == 100.0 { "m100" } else { "m1000" }, -d * k));
+        us.push((if d == 100.0 { "p100" } else { "p1000" }, d * k));
+    }
+    let targets: Vec<f64> = us.iter().map(|&(_, u)| u).collect();
+    let v2 = v2_forecast(acct, &bal_raw, origin, V2_FROZEN, &targets)?;
+    let sc = sched(&c);
+    let paths = cp_paths(&c, &sc);
+    let mut out = Vec::new();
+    for (hi, &h) in HORIZONS.iter().enumerate() {
+        let hu = h as usize;
+        let min_path = bal[t + 1..=t + hu]
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        for (i, &(name, u)) in us.iter().enumerate() {
+            let event = min_path < u;
+            let event0 = event || bal[t] < u;
+            let event_rep = rep[t + 1..=t + hu].iter().any(|&x| x < u);
+            let [eq, sr, clim] = empirical_below(&c, &sc, hu, u);
+            out.push(format!(
+                "{},{},{h},{name},{u},{},{},{},{},{},{},{},{},{},{},{},{}",
+                acct.id,
+                Date(origin),
+                bal[t],
+                u8::from(bal[t] < u),
+                u8::from(event),
+                u8::from(event0),
+                u8::from(event_rep),
+                min_path,
+                v2.below[i][hi],
+                paths_below(&paths, hu, u),
+                eq,
+                sr,
+                clim,
+                clim_d(&c, hu, u)
+            ));
+        }
+    }
+    Some(out)
+}
+
+/// S12 item 4: episodes below zero over an account's evaluated period
+/// (its first eligible origin to its last plus 90 days).
+pub fn shortfall_account(acct: &Account, origins: &[Day]) -> Option<String> {
+    let (&lo, &hi) = (origins.first()?, origins.last()?);
+    let first = acct.first_day();
+    let end = hi + HORIZONS[2];
+    let bal = acct.daily_balance(end);
+    let (mut episodes, mut days, mut prev) = (0u32, 0u32, false);
+    for d in lo..=end {
+        let below = bal[(d - first) as usize] < 0.0;
+        days += u32::from(below);
+        episodes += u32::from(below && !prev);
+        prev = below;
+    }
+    Some(format!(
+        "{},{},{},{}",
+        acct.id,
+        origins.len(),
+        episodes,
+        days
+    ))
+}
+
 /// The drift through each day with records (S1): `(day, max so far)`.
 pub fn drift_through(acct: &Account) -> BTreeMap<Day, f64> {
     let mut out = BTreeMap::new();
