@@ -27,6 +27,11 @@ OUT = ROOT / "paper/results/exploratory"
 HS = ["7", "30", "90"]
 RESAMPLES, SEED = 2000, 6
 FROZEN_DEV = [B / "variants-dev/rows.csv", B / "berka-dev/rows.csv", B / "berka-dev/rows-lgbm.csv"]
+FROZEN_HELDOUT = [B / "heldout/variants/rows.csv", B / "heldout/berka/rows.csv", B / "heldout/rows-lgbm.csv"]
+# Switched by --heldout (the exploratory held-out runs, paper/PROGRESS.md step 1).
+FROZEN = FROZEN_DEV
+EXP = B / "explore"
+
 
 
 def load(paths, methods=None, rename=None):
@@ -208,9 +213,9 @@ def s2():
 
 def s3():
     out = OUT / "s3-reversal"
-    new = B / "explore/berka/rows.csv"
+    new = EXP / "berka/rows.csv"
     methods = ["V0", "V2", "B-SA+", "B-EQ", "B-EQc", "B-SR", "CP-noKF"]
-    frozen = load(FROZEN_DEV, {"V0", "V2", "B-SA+", "B-EQ"})
+    frozen = load(FROZEN, {"V0", "V2", "B-SA+", "B-EQ"})
     fresh = load([new], {"V2", "B-EQc", "B-SR", "CP-noKF"}, rename={"V2": "V2-check"})
     data = defaultdict(dict)
     for src in (frozen, fresh):
@@ -230,7 +235,7 @@ def s3():
     for name, f in strata.items():
         panel(data, ["V2", "B-EQ", "B-SA+"], [("V2", "B-EQ"), ("B-EQ", "B-SA+"), ("V2", "B-SA+")], out,
               keep=lambda k, v, f=f: f(int(v["V2"]["months"])), label=f"-history-{name}")
-    fb = {r["key"]: r["value"] for r in csv.DictReader(open(B / "explore/berka/data.csv"))}
+    fb = {r["key"]: r["value"] for r in csv.DictReader(open(EXP / "berka/data.csv"))}
     write(out / "data.csv", [["key", "value"]] + [[k, v] for k, v in fb.items()])
 
 
@@ -238,8 +243,8 @@ def s3():
 
 def s6():
     out = OUT / "s6-v2-ablations"
-    frozen = load(FROZEN_DEV, {"V0", "V2"})
-    fresh = load([B / "explore/berka/rows.csv"], {"V2-noadapt", "V2-nodetector", "V2-nofloor", "CP-noKF"})
+    frozen = load(FROZEN, {"V0", "V2"})
+    fresh = load([EXP / "berka/rows.csv"], {"V2-noadapt", "V2-nodetector", "V2-nofloor", "CP-noKF"})
     data = defaultdict(dict)
     for src in (frozen, fresh):
         for k, v in src.items():
@@ -279,7 +284,7 @@ def s4():
 
 def s5():
     out = OUT / "s5-overdraft"
-    ev = list(csv.DictReader(open(B / "explore/berka/events.csv")))
+    ev = list(csv.DictReader(open(EXP / "berka/events.csv")))
     methods = ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM"]
     rng = np.random.default_rng(SEED)
     head = ["threshold", "h", "forecasts", "accounts", "prevalence", "prevalence_account_mean"]
@@ -354,8 +359,8 @@ def plot_reliability(rel, out):
 
 def s7():
     out = OUT / "s7-bglobal"
-    frozen = load(FROZEN_DEV, {"V2", "B-SA+", "B-EQ", "B-GLOBAL"})
-    fresh = load([B / "explore/bglobal/rows-cf.csv", B / "explore/bglobal/rows-cut.csv"],
+    frozen = load(FROZEN, {"V2", "B-SA+", "B-EQ", "B-GLOBAL"})
+    fresh = load([EXP / "bglobal/rows-cf.csv", EXP / "bglobal/rows-cut.csv"],
                  {"B-GLOBAL-cf", "B-GLOBAL-cut"})
     data = defaultdict(dict)
     for src in (frozen, fresh):
@@ -385,5 +390,10 @@ def s8():
 
 
 if __name__ == "__main__":
-    for a in sys.argv[1:]:
+    args = sys.argv[1:]
+    if args and args[0] == "--heldout":
+        FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
+        args = args[1:]
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s6", "s7"}, "held-out: S3, S5, S6, S7 only"
+    for a in args:
         globals()[a.lower()]()

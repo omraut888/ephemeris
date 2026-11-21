@@ -254,6 +254,139 @@ def cone(png):
     save(fig, "cone-example", png)
 
 
+XH = RESULTS / "exploratory-heldout"
+XD = RESULTS / "exploratory"
+# History strata are ordinal: one hue, light to dark (sequential ramp).
+HIST = [("lt12", "under 12 months", "#86b6ef"), ("12to23", "12-23 months", "#3987e5"),
+        ("ge24", "24 months or more", "#184f95")]
+
+
+def reversal(png):
+    """Figure 1: V2 against B-EQ on held-out Berka, by horizon and history."""
+    d = XH / "s3-reversal"
+    if not (d / "compare.csv").exists():
+        print("reversal: held-out exploratory results missing; skipped")
+        return
+    hs = [7, 30, 90]
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6))
+    ax = axes[0]
+    ax.axhline(0, color=INK2, linewidth=0.8)
+    series = [("all", "all accounts", INK)] + HIST
+    for k, (key, label, color) in enumerate(series):
+        f = d / ("compare.csv" if key == "all" else f"compare-history-{key}.csv")
+        rows = {int(r["h"]): r for r in read(f) if r["comparison"] == "V2 vs B-EQ"}
+        xs = [i + (k - 1.5) * 0.08 for i in range(3)]
+        ys = [float(rows[h]["skill_pooled"]) for h in hs]
+        lo = [float(rows[h]["skill_pooled_lo"]) for h in hs]
+        hi = [float(rows[h]["skill_pooled_hi"]) for h in hs]
+        ax.errorbar(xs, ys, yerr=[[y - l for y, l in zip(ys, lo)], [u - y for y, u in zip(ys, hi)]],
+                    color=color, marker="o", ms=3.5, capsize=2, lw=1.4 if key == "all" else 1.0,
+                    label=label)
+    ax.set_xticks(range(3), [str(h) for h in hs])
+    ax.set_xlabel("horizon (days)")
+    ax.set_ylabel("CRPS skill of V2 vs B-EQ\n(pooled; > 0: V2 lower CRPS)")
+    ax.set_title("Paired CRPS skill", color=INK)
+    tidy(ax)
+    ax.legend(fontsize=6, loc="lower left")
+    st = {(r["method"], int(r["h"])): r for r in read(d / "stats.csv")}
+    ax = axes[1]
+    for m, style in (("V2", "-"), ("B-EQ", ":")):
+        ax.plot(range(3), [100 * float(st[(m, h)]["miss_low90"]) for h in hs], color=COLOR[m],
+                marker=STYLE[m]["marker"], linestyle="-", label=f"{m} below")
+        ax.plot(range(3), [100 * float(st[(m, h)]["miss_high90"]) for h in hs], color=COLOR[m],
+                marker=STYLE[m]["marker"], linestyle="--", mfc="none", label=f"{m} above")
+    ax.axhline(5, color=MUTED, linewidth=0.8, linestyle=":")
+    ax.text(2.05, 5, "nominal", fontsize=6, color=INK2, va="bottom", ha="right")
+    ax.set_xticks(range(3), [str(h) for h in hs])
+    ax.set_xlabel("horizon (days)")
+    ax.set_ylabel("misses of the 90% interval (%)")
+    ax.set_title("One-sided misses", color=INK)
+    ax.legend(fontsize=6, ncol=1, loc="upper left")
+    tidy(ax)
+    ax = axes[2]
+    for key, label, color in HIST:
+        s2 = {(r["method"], int(r["h"])): r for r in read(d / f"stats-history-{key}.csv")}
+        ax.plot(range(3), [float(s2[("V2", h)]["median_width90"]) / float(s2[("B-EQ", h)]["median_width90"])
+                           for h in hs], color=color, marker="o", ms=3.5, label=label)
+    ax.axhline(1, color=INK2, linewidth=0.8)
+    ax.set_xticks(range(3), [str(h) for h in hs])
+    ax.set_xlabel("horizon (days)")
+    ax.set_ylabel("V2 width / B-EQ width\n(median 90% interval)")
+    ax.set_title("Interval width", color=INK)
+    tidy(ax)
+    fig.suptitle("V2 against B-EQ, held-out Berka (exploratory analysis of the stored forecasts)",
+                 color=INK, fontsize=9)
+    fig.tight_layout()
+    save(fig, "reversal-heldout", png)
+
+
+def overdraft(png):
+    """Reliability of the overdraft-event probabilities, held-out."""
+    f = XH / "s5-overdraft/reliability.csv"
+    if not f.exists():
+        print("overdraft: held-out exploratory results missing; skipped")
+        return
+    rel = read(f)
+    colors = {"V2": COLOR["V2"], "CP-noKF": COLOR["V0"], "B-EQp": COLOR["B-EQ"], "B-SRp": COLOR["V1"],
+              "CLIM": MUTED}
+    marks = {"V2": "D", "CP-noKF": "o", "B-EQp": "^", "B-SRp": "s", "CLIM": "v"}
+    fig, axes = plt.subplots(2, 3, figsize=(7.0, 4.4), sharex=True, sharey=True)
+    for i, u in enumerate(("u0", "u10")):
+        for j, h in enumerate(("7", "30", "90")):
+            ax = axes[i, j]
+            ax.plot([0, 1], [0, 1], color=MUTED, lw=0.8, ls="--")
+            for m in colors:
+                pts = [(float(r["mean_p"]), float(r["observed"])) for r in rel
+                       if r["threshold"] == u and r["h"] == h and r["method"] == m and int(r["count"]) >= 20]
+                if pts:
+                    ax.plot(*zip(*pts), color=colors[m], marker=marks[m], ms=3, lw=1.1, label=m)
+            ax.set_title(f"{'below 0' if u == 'u0' else 'below own 10th percentile'}, {h} d", fontsize=7.5,
+                         color=INK)
+            tidy(ax, "both")
+            if i == 1:
+                ax.set_xlabel("forecast probability")
+            if j == 0:
+                ax.set_ylabel("observed frequency")
+    handles, labels = axes[1, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=5)
+    fig.suptitle("Overdraft-event reliability, held-out Berka (bins with at least 20 forecasts; exploratory)",
+                 color=INK, fontsize=9)
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    save(fig, "overdraft-heldout", png)
+
+
+def grid(png):
+    """The simulation grid: V2 vs B-EQ by sparsity and schedule regularity."""
+    f = XD / "s4-grid/compare.csv"
+    rows = [r for r in read(f) if r["comparison"] == "V2 vs B-EQ"]
+    import numpy as np
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    cmap = LinearSegmentedColormap.from_list("div", ["#eb6834", "#f3f2ee", "#2a78d6"])
+    fig, axes = plt.subplots(1, 2, figsize=(6.4, 3.0), constrained_layout=True)
+    sp = sorted({r["mean_count"] for r in rows}, key=lambda x: -float(x))
+    for ax, h in zip(axes, ("30", "90")):
+        m = np.zeros((4, 4))
+        for r in rows:
+            if r["h"] == h:
+                m[int(r["sparsity"]), int(r["regularity"])] = float(r["skill_pooled"])
+        im = ax.imshow(m, cmap=cmap, norm=TwoSlopeNorm(0, vmin=-1.7, vmax=0.6), aspect="auto")
+        for a in range(4):
+            for b in range(4):
+                ax.text(b, a, f"{m[a, b]:+.2f}", ha="center", va="center", fontsize=6.5,
+                        color=INK if abs(m[a, b]) < 0.9 else SURFACE)
+        ax.set_xticks(range(4), ["0\n(exact)", "1\n(default)", "2", "3\n(irregular)"])
+        ax.set_yticks(range(4), [f"{float(x):g}" for x in sp])
+        ax.set_xlabel("schedule regularity level")
+        ax.set_title(f"{h} days", color=INK)
+        for side in ("top", "right", "left", "bottom"):
+            ax.spines[side].set_visible(False)
+    axes[0].set_ylabel("purchases per day")
+    cb = fig.colorbar(im, ax=axes, fraction=0.04, pad=0.02)
+    cb.set_label("CRPS skill of V2 vs B-EQ (pooled)", fontsize=7)
+    fig.suptitle("Simulation: when does B-EQ beat V2? (50 seeds per cell; exploratory)", color=INK, fontsize=9)
+    save(fig, "grid-synthetic", png)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--png", type=pathlib.Path)
@@ -261,7 +394,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     if a.png:
         a.png.mkdir(parents=True, exist_ok=True)
-    for f in (pit, coverage, skill, detector, cone):
+    for f in (pit, coverage, skill, detector, cone, reversal, overdraft, grid):
         f(a.png)
         print(f"{f.__name__}: done")
 

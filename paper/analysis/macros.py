@@ -71,8 +71,12 @@ def fmt(col, v):
     c = col
     if c.endswith("_diff") or c.endswith("_diff_lo") or c.endswith("_diff_hi"):
         return points(v)
-    if c.startswith("miss"):
+    if c.startswith("miss") or c.startswith("prevalence"):
         return pct(v)
+    if c.startswith("brier"):
+        return f"{float(v):.3f}"
+    if c.startswith("bss"):
+        return signed(v)
     if c.startswith("cov") or c.startswith("coverage") or c.endswith("share") \
             or c.startswith("recovered") or c in ("pit_outer_share",):
         return pct(v)
@@ -581,6 +585,33 @@ def drift_recount():
     put("c/drift-high", integer(DRIFT_THRESHOLDS[2]))
 
 
+def exploratory():
+    """The exploratory results (development `xd/`, held-out `xh/`). A
+    held-out file that does not exist yet is skipped."""
+    import glob
+    for tag, d in (("xd", RES / "exploratory"), ("xh", RES / "exploratory-heldout")):
+        for sub, short in (("s3-reversal", "s3"), ("s6-v2-ablations", "s6"), ("s7-bglobal", "s7"),
+                           ("s8-phase", "s8")):
+            for f in sorted(glob.glob(str(d / sub / "*.csv"))):
+                name = pathlib.Path(f).stem
+                if name.startswith("compare"):
+                    table(f"{tag}/{short}{name[len('compare'):]}", f, ["comparison", "h"])
+                elif name.startswith("stats"):
+                    table(f"{tag}/{short}/stats{name[len('stats'):]}", f, ["method", "h"])
+                elif name in ("v2-identity", "data", "offset0-identity"):
+                    keyvalue(f"{tag}/{short}/{name}", f)
+        if (d / "s5-overdraft/brier.csv").exists():
+            table(f"{tag}/s5", d / "s5-overdraft/brier.csv", ["threshold", "h"])
+        if (d / "s4-grid/compare.csv").exists():
+            table(f"{tag}/s4", d / "s4-grid/compare.csv", ["sparsity", "regularity", "comparison", "h"])
+        if (d / "s1-eligibility/rules.csv").exists():
+            keyvalue(f"{tag}/s1", d / "s1-eligibility/rules.csv")
+            table(f"{tag}/s1/groups", d / "s1-eligibility/groups.csv", ["group", "measure"])
+        if (d / "s2-small/v1-crossings.csv").exists():
+            table(f"{tag}/s2/crossings", d / "s2-small/v1-crossings.csv", ["h"])
+            table(f"{tag}/s2/selection", d / "s2-small/selection-account-equal.csv", ["method"])
+
+
 def checksums():
     """The pinned SHA-256 of the raw files (paper/data.sha256)."""
     for line in (ROOT / "paper/data.sha256").read_text().splitlines():
@@ -628,6 +659,7 @@ def main():
                       ("md/data", "moneydata/data.csv"), ("fig/ex", "figures/example.csv")]:
         keyvalue(tag, RES / path)
     table("au/est", RES / "audit/estimands-heldout.csv", ["comparison", "stratum", "h"])
+    exploratory()
     keyvalue("au/prefix", RES / "audit/prefix-check-summary.csv")
     drift_recount()
     tables()

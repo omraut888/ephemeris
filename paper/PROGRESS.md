@@ -42,3 +42,13 @@ coverage 64–71%). The shipped V0 is too narrow there instead (about 27% at
 CP-noKF, B-EQp and B-SRp, not for V0. The README says exactly that rather
 than attributing V2's properties to the app. No app behaviour was
 changed.
+
+**D1.4 Memory pressure during run (b).** `lgbm_cf.py` in held-out mode
+started 8 worker processes. Each parsed both feature files into Python
+dictionaries (about 1 GB each at peak). Together with run (a), this filled
+swap (13.5 of 14 GB). Memory recovered once the workers were fitting.
+- I let it finish rather than restarting, because restarting would have
+  needed a second guarded log entry for no analytic gain.
+- The cost was wall time: run (a) slowed while both ran.
+- The fix for any future run: fewer workers, or a load that keeps only
+  arrays and shares them.
