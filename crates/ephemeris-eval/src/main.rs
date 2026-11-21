@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule"])]
         what: String,
         /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
         /// logged like the frozen evaluation, with a required reason.
@@ -849,6 +849,36 @@ fn explore(
                     state.push_str(&l);
                     state.push('\n');
                 }
+            }
+            write(&out.join("rows.csv"), &rows_csv(&rows))?;
+            write(&out.join("state.csv"), &state)?;
+            write(
+                &out.join("data.csv"),
+                &format!("key,value\norigins,{n}\nitems,{}\n", items.len()),
+            )?;
+        }
+        "schedule" => {
+            // S11 (REVISION.md, round 3 B1): development only.
+            let accts = split_accounts(data, Split::Dev)?;
+            let items: Vec<(&Account, i32)> = accts
+                .iter()
+                .flat_map(|a| {
+                    ephemeris_eval::variants::eligible_origins(a)
+                        .into_iter()
+                        .map(move |o| (a, o))
+                })
+                .collect();
+            let res = parallel_map(&items, threads, "schedule", |&(a, o)| {
+                ex::schedule_origin(a, o)
+            });
+            let mut rows = Vec::new();
+            let mut state = format!("{}\n", ex::SCHEDULE_STATE_HEADER);
+            let mut n = 0;
+            for (r, s) in res.into_iter().flatten() {
+                n += 1;
+                rows.extend(r);
+                state.push_str(&s);
+                state.push('\n');
             }
             write(&out.join("rows.csv"), &rows_csv(&rows))?;
             write(&out.join("state.csv"), &state)?;

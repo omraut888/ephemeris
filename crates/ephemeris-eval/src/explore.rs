@@ -107,7 +107,7 @@ pub fn sched(c: &Ctx) -> Sched {
 
 impl Sched {
     /// The schedule's flows dated in `(d, d+k]` (day indices).
-    fn between(&self, d: usize, k: usize) -> f64 {
+    pub fn between(&self, d: usize, k: usize) -> f64 {
         self.past[d + k + 1] - self.past[d + 1]
     }
 }
@@ -636,6 +636,263 @@ pub fn detector_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, Vec<Str
         ));
     }
     Some((rows, states))
+}
+
+// ----------------------------------------------------------------- S11 --
+
+/// One projected or realized scheduled flow, by counterparty.
+#[derive(Debug, Clone)]
+pub struct SchedEvent {
+    pub day: Day,
+    pub amount: f64,
+    pub cp: String,
+}
+
+/// The counterparties of the streams `schedule` detected in `recs`: the
+/// income counterparty (if income was detected) and each bill's.
+fn stream_counterparties(
+    recs: &[crate::berka::Record],
+    txns: &[Transaction],
+    schedule: &Schedule,
+) -> (Option<String>, Vec<Option<String>>) {
+    let income = schedule.income.as_ref().and_then(|_| {
+        recs.iter()
+            .zip(txns)
+            .rfind(|(_, x)| x.kind == FlowKind::Income)
+            .map(|(r, _)| r.counterparty())
+    });
+    let bills = schedule
+        .bills
+        .iter()
+        .map(|b| {
+            recs.iter()
+                .zip(txns)
+                .rfind(|(_, x)| x.stream == Some(b.stream))
+                .map(|(r, _)| r.counterparty())
+        })
+        .collect();
+    (income, bills)
+}
+
+/// The schedule's projected events in `(today, today + h]`, as
+/// `schedule_aware_delta` places them (overdue ones land tomorrow).
+fn projected_events(
+    recs: &[crate::berka::Record],
+    txns: &[Transaction],
+    schedule: &Schedule,
+    today: Day,
+    h: Day,
+) -> Vec<SchedEvent> {
+    let end = today + h;
+    let (income_cp, bill_cps) = stream_counterparties(recs, txns, schedule);
+    let mut out = Vec::new();
+    if let (Some(timing), Some(cp)) = (&schedule.income, income_cp) {
+        let pay = txns
+            .iter()
+            .filter(|x| x.kind == FlowKind::Income)
+            .max_by_key(|x| (x.day(), x.id))
+            .map_or(0.0, |x| x.amount);
+        for n in timing
+            .schedule
+            .nominal_dates(timing.last_paid_nominal + 1, end + 8)
+        {
+            let d = timing.pay_date(n).max(today + 1);
+            if d <= end {
+                out.push(SchedEvent {
+                    day: d,
+                    amount: pay,
+                    cp: cp.clone(),
+                });
+            }
+        }
+    }
+    for (bill, cp) in schedule.bills.iter().zip(bill_cps) {
+        let Some(cp) = cp else { continue };
+        let mut next = bill.next_due().max(today + 1);
+        while next <= end {
+            out.push(SchedEvent {
+                day: next,
+                amount: bill.amount,
+                cp: cp.clone(),
+            });
+            next = match bill.day_of_month {
+                Some(a) => a.next_after(next),
+                None => next + bill.period_days as Day,
+            };
+        }
+    }
+    out
+}
+
+/// Records in `(from, to]` whose counterparty is in `cps`, in units of `k`.
+fn realized_events(acct: &Account, from: Day, to: Day, cps: &[String], k: f64) -> Vec<SchedEvent> {
+    acct.records_through(to)
+        .iter()
+        .filter(|r| r.day > from)
+        .filter_map(|r| {
+            let cp = r.counterparty();
+            cps.contains(&cp).then_some(SchedEvent {
+                day: r.day,
+                amount: r.amount * k,
+                cp,
+            })
+        })
+        .collect()
+}
+
+/// Schedule predictability from history at the origin (S11).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Predictability {
+    pub checkpoints: u32,
+    pub abs_err: f64,
+    pub abs_real: f64,
+    pub date_err_sum: f64,
+    pub matched: u32,
+    pub projected: u32,
+    pub missed: u32,
+    pub realized: u32,
+    pub extra: u32,
+}
+
+const MATCH_DAYS: Day = 10;
+
+fn predictability(acct: &Account, origin: Day, k: f64) -> Predictability {
+    let first = acct.first_day();
+    let mut p = Predictability::default();
+    for j in 1..=6 {
+        let c = origin - 30 * j;
+        if c < first + 90 {
+            break;
+        }
+        let recs = acct.records_through(c);
+        let txns = transactions(recs, &tag(recs), k);
+        let schedule = detect_schedule_in(&txns, CALENDAR);
+        let (inc, bills) = stream_counterparties(recs, &txns, &schedule);
+        let cps: Vec<String> = inc.into_iter().chain(bills.into_iter().flatten()).collect();
+        let proj = projected_events(recs, &txns, &schedule, c, 30);
+        let real = realized_events(acct, c, c + 30, &cps, k);
+        p.checkpoints += 1;
+        let ps: f64 = proj.iter().map(|e| e.amount).sum();
+        let rs: f64 = real.iter().map(|e| e.amount).sum();
+        p.abs_err += (rs - ps).abs();
+        p.abs_real += rs.abs();
+        p.projected += proj.len() as u32;
+        p.realized += real.len() as u32;
+        for e in &proj {
+            let near = real
+                .iter()
+                .filter(|r| r.cp == e.cp)
+                .map(|r| (r.day - e.day).abs())
+                .min();
+            match near {
+                Some(dd) if dd <= MATCH_DAYS => {
+                    p.matched += 1;
+                    p.date_err_sum += f64::from(dd);
+                }
+                _ => p.missed += 1,
+            }
+        }
+        for r in &real {
+            let has = proj
+                .iter()
+                .any(|e| e.cp == r.cp && (e.day - r.day).abs() <= MATCH_DAYS);
+            p.extra += u32::from(!has);
+        }
+    }
+    p
+}
+
+pub const SCHEDULE_STATE_HEADER: &str = "account,origin,income,bills,checkpoints,abs_err,abs_real,\
+date_err_sum,matched,projected,missed,realized,extra";
+
+/// S11 at one origin: F_0, F_0.5, F_1 and the oracle, and the origin's
+/// predictability line.
+pub fn schedule_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, String)> {
+    let first = acct.first_day();
+    let end = origin + HORIZONS[2];
+    let bal_raw = acct.daily_balance(end);
+    let t = (origin - first) as usize;
+    let s = acct.scale_at(origin).filter(|&s| s > 0.0)?;
+    let k = REFERENCE_SCALE / s;
+    let bal: Vec<f64> = bal_raw.iter().map(|b| b * k).collect();
+    let recs = acct.records_through(origin);
+    let txns = transactions(recs, &tag(recs), k);
+    let schedule = detect_schedule_in(&txns, CALENDAR);
+    let c = Ctx {
+        bal: &bal,
+        first,
+        t,
+        txns: &txns,
+        schedule: &schedule,
+        seed: seed_for(acct.id, origin),
+    };
+    let sc = sched(&c);
+    let (inc, bills) = stream_counterparties(recs, &txns, &schedule);
+    let cps: Vec<String> = inc.into_iter().chain(bills.into_iter().flatten()).collect();
+    let months = (origin - first) / 30;
+    let mut rows = Vec::new();
+    for &h in &HORIZONS {
+        let hu = h as usize;
+        if c.t < hu || c.lo() > c.t - hu {
+            return None;
+        }
+        let s_real: f64 = realized_events(acct, origin, origin + h, &cps, k)
+            .iter()
+            .map(|e| e.amount)
+            .sum();
+        let truth = bal[t + hu];
+        let mk = |w: f64, oracle: bool| {
+            let xs = (c.lo()..=c.t - hu)
+                .map(|d| {
+                    let past = bal[d + hu] - bal[d];
+                    let hist = sc.between(d, hu);
+                    if oracle {
+                        bal[t] + past - hist + s_real
+                    } else {
+                        bal[t] + past + w * (sc.cum[hu] - hist)
+                    }
+                })
+                .collect();
+            Dist::sample(xs)
+        };
+        for (name, d) in [
+            ("F0", mk(0.0, false)),
+            ("F0.5", mk(0.5, false)),
+            ("F1", mk(1.0, false)),
+            ("O", mk(0.0, true)),
+        ] {
+            rows.push(Row {
+                account: acct.id,
+                origin: Date(origin).to_string(),
+                h,
+                method: name.to_string(),
+                k,
+                truth,
+                score: d.score(truth),
+                income_detected: schedule.income.is_some(),
+                months_history: months,
+                alarm_recent: false,
+            });
+        }
+    }
+    let p = predictability(acct, origin, k);
+    let line = format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        acct.id,
+        Date(origin),
+        u8::from(schedule.income.is_some()),
+        schedule.bills.len(),
+        p.checkpoints,
+        p.abs_err,
+        p.abs_real,
+        p.date_err_sum,
+        p.matched,
+        p.projected,
+        p.missed,
+        p.realized,
+        p.extra
+    );
+    Some((rows, line))
 }
 
 /// The drift through each day with records (S1): `(day, max so far)`.
