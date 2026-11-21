@@ -2,9 +2,14 @@
 
 ## Resume here (updated after every step)
 
-**Round 2 (the user's decisions on Q1–Q5): finished.** Nothing is
-running or half-done. Nothing was pushed. The PDF has 27 pages and 0
-warnings; the main text runs from p. 1 to the top of p. 14.
+**Round 3 (second referee report), in progress.**
+- Done: the x86_64 identity item (`e39d143`).
+- Current: Tier A1, the detector-ablation investigation (read-only
+  diagnostics on development; nothing written to the frozen results).
+- Half-done: nothing.
+- Next: A1, then A2 (text), then B1/B2 specifications in REVISION.md
+  (commit before running), then the development runs, the Tier C plan, and
+  the checkpoint summary.
 
 ## Round 2: the user's decisions on Q1–Q5 (2026-11-21)
 

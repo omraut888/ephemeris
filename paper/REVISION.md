@@ -439,3 +439,79 @@ and B-GLOBAL (the fits) are dropped to stay under 30 minutes.
   Three full offsets would have exceeded the 30-minute limit. It was
   stopped during offset 0 and rerun with offsets +10 and +20 in full, and
   the offset-0 identity check on the first 100 development accounts only.
+
+# Round 3: the second referee report (specifications fixed before each run)
+
+## S9 (round 3, A1) Why removing the detector costs V2 so much (development)
+
+**Question.** Removing the detector costs V2 an account-mean skill of
+−0.21 / −0.49 at 30 / 90 days, but V0 only −0.02 / −0.04 (held-out).
+V2's sparse branch replaces the daily spending draw that uses the
+filtered rate c. Is the difference a bug or a mechanism?
+
+**Origins.** The frozen development origins (27,855 in 866 accounts),
+restricted to those where all four configurations below forecast.
+
+**Configurations.** Same records, scale `k`, seed `seed_for(account,
+origin)` and 1,000 paths for each:
+- V0: the tracker and cone as frozen, `sparse_spending = None`;
+- V0-nodet: V0 with `spend_change = None` and `income_change = None`
+  (the frozen ablation's definition);
+- V2: as frozen (the sparse rule decides the branch);
+- V2-nodet: V2 with the same two detectors removed.
+
+**Identity checks**, which must pass before anything is read:
+- V2 and V2-nodet equal the stored S6 rows;
+- V0 equals the frozen development V0 rows;
+- V0-nodet equals the frozen development `abl:no-detector` rows, on the
+  ablation-sample accounts where those exist.
+
+**Recorded per origin and configuration:**
+- the branch actually used (sparse or not), and whether income was
+  detected;
+- the filtered state (b, c, m), the square roots of P's diagonal, and the
+  income and spend noise estimates (value, dof);
+- income observations gated in the 365 days before the origin, and income
+  and balance alarms (ever, and in the last 28 days);
+- for each horizon: CRPS, median, 90% width and the outcome.
+
+**Retrospective, diagnostic only:** the last observed paycheck before the
+origin, and the mean paycheck tagged in (origin, origin + 90] from the
+full record.
+
+**Reported:**
+- the mean paired CRPS difference (absolute, normalized units), pooled
+  skill and account-mean skill, each with 95% account-bootstrap intervals,
+  for V2-nodet vs V2 and V0-nodet vs V0;
+- the same split by income detected (yes / no) × any income alarm before
+  the origin in the configuration with the detector (yes / no), and by an
+  alarm in the last 28 days (the frozen stratum);
+- the bias (mean of median − outcome) per configuration and horizon;
+- |m̂_nodet − m̂| and |m̂ − last paycheck| by stratum;
+- the change in ĉ between V0 and V0-nodet.
+
+**What counts as a bug** (stop and report before fixing anything):
+1. branch activation differs between a configuration and its no-detector
+   version;
+2. seeds or origin support differ;
+3. the no-detector configuration differs from the frozen ablation's in
+   anything but the two detectors;
+4. a code path reads detector state when the detector is `None`.
+
+**Hypothesis, stated before running.** The income gate skips the update of
+m whenever a paycheck's normalized innovation exceeds the gate, and only an
+alarm (a jump in m's variance) lets m move to a new level. Without the
+detector, a lasting change in pay is gated at every paycheck, so m̂ stays
+stale. V0 can absorb the error through c, which the balance channel keeps
+updating; V2's sparse branch ignores c.
+
+Predictions:
+- V2's loss concentrates in accounts with detected income and an income
+  alarm before the origin;
+- m̂ differs between V2 and V2-nodet there, and is far from the last
+  paycheck in V2-nodet;
+- in V0-nodet, ĉ moves in the direction that offsets the stale m̂.
+
+Code: `ephemeris-eval explore detector`. Summary:
+`paper/analysis/explore_summary.py s9`. Results:
+`paper/results/exploratory/s9-detector/`.
