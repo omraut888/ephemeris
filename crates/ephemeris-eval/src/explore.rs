@@ -13,7 +13,8 @@ use ephemeris_core::calendar::civil_from_day;
 use ephemeris_core::forecast::{ForecastConfig, ForecastModel, forecast};
 use ephemeris_core::schedule::{Schedule, detect_schedule_in};
 use ephemeris_core::schema::Date;
-use ephemeris_core::tracker::{Tracker, TrackerConfig};
+use ephemeris_core::tracker::{StateEstimate, Tracker, TrackerConfig};
+use ephemeris_core::types::Channel;
 use ephemeris_core::{Day, FlowKind, Transaction};
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -245,18 +246,21 @@ pub fn thresholds(c: &Ctx) -> [f64; 2] {
 
 // ------------------------------------------------------------- Berka V2 --
 
-/// Switches for S6 (all on: V2 as frozen).
+/// Switches for S6 and S9 (all on: V2 as frozen). `sparse: false` is V0:
+/// the same tracker and cone without the sparse rule.
 #[derive(Debug, Clone, Copy)]
 pub struct V2Opts {
     pub adaptive: bool,
     pub detector: bool,
     pub floor: bool,
+    pub sparse: bool,
 }
 
 pub const V2_FROZEN: V2Opts = V2Opts {
     adaptive: true,
     detector: true,
     floor: true,
+    sparse: true,
 };
 
 /// V2 at an origin, as `variants::forecast_at` with the sparse rule, plus
@@ -269,6 +273,21 @@ pub struct V2Out {
     pub k: f64,
     pub income_detected: bool,
     pub alarm_recent: bool,
+    /// S9 diagnostics: the branch the cone used, the filtered estimate,
+    /// and the detector and gate activity in the ingest.
+    pub sparse_used: bool,
+    pub est: StateEstimate,
+    pub income_gated_365: u32,
+    pub alarms: AlarmCounts,
+}
+
+/// Alarms by channel, over the whole history and in the last 28 days.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AlarmCounts {
+    pub income: u32,
+    pub balance: u32,
+    pub income_28: u32,
+    pub balance_28: u32,
 }
 
 pub fn v2_forecast(
@@ -302,7 +321,11 @@ pub fn v2_forecast(
     let mut fcfg = ForecastConfig {
         n_paths: PATHS,
         levels: levels.clone(),
-        sparse_spending: sparse_spending(&txns, first, origin),
+        sparse_spending: if opts.sparse {
+            sparse_spending(&txns, first, origin)
+        } else {
+            None
+        },
         targets: targets.to_vec(),
         ..ForecastConfig::new(HORIZONS[2] as u32, seed_for(acct.id, origin))
     };
@@ -319,6 +342,30 @@ pub fn v2_forecast(
             ))
         })
         .collect::<Option<Vec<_>>>()?;
+    let mut alarms = AlarmCounts::default();
+    let mut income_gated_365 = 0;
+    for d in &ingest.days {
+        let recent = d.day > origin - 28;
+        for j in &d.jumps {
+            match j.channel {
+                Channel::Income => {
+                    alarms.income += 1;
+                    alarms.income_28 += u32::from(recent);
+                }
+                _ => {
+                    alarms.balance += 1;
+                    alarms.balance_28 += u32::from(recent);
+                }
+            }
+        }
+        if d.day > origin - L as Day {
+            income_gated_365 += d
+                .innovations
+                .iter()
+                .filter(|i| i.channel == Channel::Income && i.gated)
+                .count() as u32;
+        }
+    }
     let below = (0..targets.len())
         .map(|i| {
             let p = |h: Day| cone.prob_below_by(i, origin + h).unwrap_or(f64::NAN);
@@ -334,6 +381,10 @@ pub fn v2_forecast(
             .days
             .iter()
             .any(|d| d.day > origin - 28 && !d.jumps.is_empty()),
+        sparse_used: fcfg.sparse_spending.is_some(),
+        est: est.clone(),
+        income_gated_365,
+        alarms,
     })
 }
 
@@ -446,6 +497,125 @@ pub fn berka_origin(acct: &Account, origin: Day) -> Option<OriginOut> {
         }
     }
     Some(out)
+}
+
+// ------------------------------------------------------------------ S9 --
+
+pub const DETECTOR_STATE_HEADER: &str = "account,origin,config,sparse_used,income_detected,\
+b,c,m,sd_b,sd_c,sd_m,income_var,income_dof,spend_var,spend_dof,income_gated_365,\
+alarms_income,alarms_balance,alarms_income_28,alarms_balance_28,last_pay,future_pay_mean,\
+future_pays,k";
+
+/// S9 at one origin: V0, V0 without the detector, V2 and V2 without the
+/// detector, each with the score rows and one state line. `None` unless all
+/// four forecast (common support).
+pub fn detector_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, Vec<String>)> {
+    let first = acct.first_day();
+    let t = (origin - first) as usize;
+    let bal_raw = acct.daily_balance(origin + HORIZONS[2]);
+    let configs = [
+        (
+            "V0",
+            V2Opts {
+                sparse: false,
+                ..V2_FROZEN
+            },
+        ),
+        (
+            "V0-nodet",
+            V2Opts {
+                sparse: false,
+                detector: false,
+                ..V2_FROZEN
+            },
+        ),
+        ("V2", V2_FROZEN),
+        (
+            "V2-nodet",
+            V2Opts {
+                detector: false,
+                ..V2_FROZEN
+            },
+        ),
+    ];
+    let outs: Vec<(&str, V2Out)> = configs
+        .iter()
+        .map(|&(n, o)| Some((n, v2_forecast(acct, &bal_raw, origin, o, &[])?)))
+        .collect::<Option<_>>()?;
+    let k = outs[0].1.k;
+    // Paychecks (tagged income) before and after the origin. The later ones
+    // are tagged from the record through origin + 90: retrospective, for
+    // the diagnostic only.
+    let pays = |through: Day| {
+        let recs = acct.records_through(through);
+        transactions(recs, &tag(recs), k)
+            .into_iter()
+            .filter(|x| x.kind == FlowKind::Income)
+            .collect::<Vec<_>>()
+    };
+    let last_pay = pays(origin)
+        .iter()
+        .filter(|x| x.date <= origin)
+        .max_by_key(|x| x.date)
+        .map_or(f64::NAN, |x| x.amount);
+    let future: Vec<f64> = pays(origin + HORIZONS[2])
+        .iter()
+        .filter(|x| x.date > origin && x.date <= origin + HORIZONS[2])
+        .map(|x| x.amount)
+        .collect();
+    let future_mean = if future.is_empty() {
+        f64::NAN
+    } else {
+        future.iter().sum::<f64>() / future.len() as f64
+    };
+    let mut rows = Vec::new();
+    let mut states = Vec::new();
+    for (name, o) in &outs {
+        for (hi, &h) in HORIZONS.iter().enumerate() {
+            let truth = bal_raw[t + h as usize] * k;
+            rows.push(Row {
+                account: acct.id,
+                origin: Date(origin).to_string(),
+                h,
+                method: (*name).to_string(),
+                k,
+                truth,
+                score: o.dists[hi].score(truth),
+                income_detected: o.income_detected,
+                months_history: (origin - first) / 30,
+                alarm_recent: o.alarm_recent,
+            });
+        }
+        let e = &o.est;
+        let a = o.alarms;
+        states.push(format!(
+            "{},{},{name},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            acct.id,
+            Date(origin),
+            u8::from(o.sparse_used),
+            u8::from(o.income_detected),
+            e.x[0],
+            e.x[1],
+            e.x[2],
+            e.p[(0, 0)].sqrt(),
+            e.p[(1, 1)].sqrt(),
+            e.p[(2, 2)].sqrt(),
+            e.income_var.value,
+            e.income_var.dof,
+            e.spend_var.value,
+            e.spend_var.dof,
+            o.income_gated_365,
+            a.income,
+            a.balance,
+            a.income_28,
+            a.balance_28,
+            last_pay,
+            future_mean,
+            future.len(),
+            k
+        ));
+    }
+    Some((rows, states))
 }
 
 /// The drift through each day with records (S1): `(day, max so far)`.
