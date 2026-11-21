@@ -827,8 +827,8 @@ pub fn schedule_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, String)
         seed: seed_for(acct.id, origin),
     };
     let sc = sched(&c);
-    let (inc, bills) = stream_counterparties(recs, &txns, &schedule);
-    let cps: Vec<String> = inc.into_iter().chain(bills.into_iter().flatten()).collect();
+    let (inc_cp, bill_cps) = stream_counterparties(recs, &txns, &schedule);
+    let bill_cps: Vec<String> = bill_cps.into_iter().flatten().collect();
     let months = (origin - first) / 30;
     let mut rows = Vec::new();
     for &h in &HORIZONS {
@@ -836,9 +836,20 @@ pub fn schedule_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, String)
         if c.t < hu || c.lo() > c.t - hu {
             return None;
         }
-        let s_real: f64 = realized_events(acct, origin, origin + h, &cps, k)
+        // S_hist's rule applied to the tagging of the records through t+h
+        // (REVISION.md, S11 oracle correction).
+        let recs_f = acct.records_through(origin + h);
+        let tag_f = tag(recs_f);
+        let s_real: f64 = recs_f
             .iter()
-            .map(|e| e.amount)
+            .zip(&tag_f.kinds)
+            .filter(|(r, _)| r.day > origin)
+            .filter(|(r, kind)| {
+                let cp = r.counterparty();
+                (**kind == FlowKind::Income && inc_cp.as_ref() == Some(&cp))
+                    || (**kind == FlowKind::Scheduled && bill_cps.contains(&cp))
+            })
+            .map(|(r, _)| r.amount * k)
             .sum();
         let truth = bal[t + hu];
         let mk = |w: f64, oracle: bool| {
