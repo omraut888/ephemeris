@@ -16,13 +16,16 @@ the claim.
   the desktop application's IPC path, the web application's tests and the
   Swift package.
 \item \textbf{On x86\_64}, a GitHub Actions workflow on a Linux runner
-  checks native code (debug and release) and WebAssembly. It covered only
-  the golden feed, at commit \texttt{26ed672} before the fix, and passed.
-  It now also covers the generated cases. \TODO{Result of the extended
-  x86\_64 workflow run on the fixed engine, to be filled in after the
-  push.}
+  (Ubuntu 24.04) checks native code (debug and release) and WebAssembly
+  under Node. Before the fix it covered only the golden feed (commit
+  \texttt{26ed672}, passed). Extended to the generated cases, it passed on
+  the fixed engine in run~\#\R{tl/ci4/number} (commit
+  \texttt{\R{tl/ci4/commit}}, \R{tl/ci4/date}): the golden feed and all
+  \R{id/post/wasm32-under-node/cases} generated cases, natively in debug
+  and release and in WebAssembly, each matching the manifest written on
+  the Mac. The engine has not changed since the fix.
 \item \textbf{Not tested:} a physical phone, JavaScriptCore on a device,
-  and other compiler versions.
+  UniFFI on x86\_64, and other compiler versions.
 \end{itemize}
 
 \paragraph{Outcome.} For the frozen engine, the claim is falsified.
@@ -33,7 +36,8 @@ unit in the last place. The cause was a dependency feature that sent part
 of the sampler's math to the platform's library natively and to a
 pure-Rust library in WebAssembly (Appendix~\ref{app:identity}). After a
 post-freeze fix, all \R{id/post/wasm32-under-node/cases} cases agree on
-the tested matrix on the Mac (Table~\ref{tab:identity}), and the shipped
+the tested matrix on the Mac (Table~\ref{tab:identity}) and on x86\_64
+Linux, natively and in WebAssembly, and the shipped
 golden files did not change. The frozen results were not regenerated. V0
 and V2 rerun with the fixed engine on \R{d/pf-accounts} development
 accounts (\R{d/pf-forecasts} forecasts) are byte-identical to the frozen

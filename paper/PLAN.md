@@ -951,6 +951,24 @@ the generator.
   accounts (18,630 forecasts) are identical to the frozen rows
   (`paper/results/postfix/`). The frozen results are not regenerated.
 
+**x86_64 (recorded 2026-11-21).** The workflow, extended to the 100
+cases in `129e222`, passed on the fixed engine:
+- run #4 (GitHub run id 44827652848), at commit `7ab6e12`, created
+  2026-11-20 22:17 UTC;
+- on ubuntu-24.04, Rust 1.99.1, wasm-pack 0.15.0;
+- it covered the golden feed and the 100 generated cases, natively (debug
+  and release) and in WASM under Node, against the manifest written on the
+  Mac, plus the core tests.
+
+Run #5 (`838e020`, 2026-11-21) passed the same steps. The engine
+(`crates/ephemeris-core`, `crates/ephemeris-wasm` source) has not changed
+since `f98fed5`.
+
+Post-fix identity is therefore shown on an arm64 Mac (native debug and
+release, UniFFI, WASM under Node) and on x86_64 Linux (native, WASM). It
+is not shown on a physical phone (JavaScriptCore, iOS device) or with
+other compiler versions.
+
 The paper reports C1 as falsified for the frozen engine and fixed after the
 freeze, with these numbers.
 

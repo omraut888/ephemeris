@@ -49,6 +49,8 @@ EVENTS = [
     ("dfa0056", "Bit identity: C1 falsified for the frozen engine"),
     ("f98fed5", "Post-freeze fix of the sampling math"),
     ("1bec1e0", "Bit identity after the fix"),
+    ("129e222", "x86_64 workflow extended to the 100 identity cases"),
+    ("CI44827652848", "x86_64 workflow run #4 on the fixed engine: passed"),
 ]
 
 
@@ -78,9 +80,18 @@ def main():
             if l and not l.startswith("#")]
     rows = []
     for key, what in EVENTS:
+        if key.startswith("CI"):
+            # A GitHub Actions run: its creation time and commit come from
+            # GitHub, not from this machine.
+            r = json.loads(subprocess.run(
+                ["gh", "run", "view", key[2:], "-R", REPO, "--json", "number,headSha,createdAt,conclusion"],
+                check=True, capture_output=True, text=True).stdout)
+            assert r["conclusion"] == "success", r
+            rows.append([what, r["headSha"][:7], utc(r["createdAt"]), "", "GitHub Actions", f"ci{r['number']}"])
+            continue
         if key.startswith("RUN"):
             ts, commit = runs[int(key[3:]) - 1][:2]
-            rows.append([what, commit[:7], utc(ts), "", "guard log"])
+            rows.append([what, commit[:7], utc(ts), "", "guard log", key.lower()])
             continue
         full = git("rev-parse", key)
         committed = utc(git("show", "-s", "--format=%cI", full))
@@ -90,11 +101,11 @@ def main():
             if is_ancestor(full, after) and not known:
                 first = utc(ts)
                 break
-        rows.append([what, key, committed, first, "git; GitHub activity"])
+        rows.append([what, key, committed, first, "git; GitHub activity", key])
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["event", "commit", "time_utc", "first_pushed_utc", "source"])
+        w.writerow(["event", "commit", "time_utc", "first_pushed_utc", "source", "key"])
         w.writerows(rows)
     print(OUT.read_text())
 

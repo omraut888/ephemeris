@@ -437,15 +437,21 @@ def tables():
     lines = []
     for r in tl:
         commit = "\\texttt{" + r['commit'] + "}"
-        lines.append(f"{r['event']} & {commit} & {r['time_utc']} & {r['first_pushed_utc'] or '(run log)'}" + r" \\")
+        where = r['first_pushed_utc'] or ('(GitHub run)' if r['source'] == 'GitHub Actions' else '(run log)')
+        event = r['event'].replace("_", "\\_").replace("#", "\\#")
+        lines.append(f"{event} & {commit} & {r['time_utc']} & {where}" + r" \\")
     write_table("timeline", "\n".join([
         r"\begin{tabular}{p{0.50\linewidth} l l l}", r"\toprule",
         r"Event & Commit & Committed / run (UTC) & First on GitHub (UTC)\\", r"\midrule",
         *lines, r"\bottomrule", r"\end{tabular}", ""]))
     for r in tl:
-        key = r["commit"] if r["first_pushed_utc"] else ("run1" if "run 1" in r["event"] else "run2")
+        key = r["key"]
         put(f"tl/{key}/time", r["time_utc"])
         put(f"tl/{key}/pushed", r["first_pushed_utc"])
+        put(f"tl/{key}/commit", r["commit"])
+        put(f"tl/{key}/date", r["time_utc"][:10])
+        if key.startswith("ci"):
+            put(f"tl/{key}/number", key[2:])
 
 
 # --------------------------------------------------------------- derived --

@@ -44,7 +44,9 @@ B2 & Realistic generator: as B1 & \textbf{Holds} against every
   per-account baseline; \textbf{fails} against B-GLOBAL (no significant
   difference) \\
 C1 & Byte-identical reports on every target & \textbf{Falsified} for the
-  frozen engine; holds on the Mac's tested matrix after a post-freeze fix \\
+  frozen engine. After a post-freeze fix, holds on an arm64 Mac (native
+  debug and release, UniFFI, WASM under Node) and on x86\_64 Linux (native,
+  WASM); not shown on a phone or with other compilers \\
 D1 & Predicted sign of each ablation & Holds for lumps, spend floor and
   adaptive noise (coverage). Reversed for the detector, which by the
   plan's rule falsifies it; the alarm-defined strata make this descriptive
