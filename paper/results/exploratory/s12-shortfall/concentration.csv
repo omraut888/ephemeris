@@ -1,0 +1,9 @@
+key,value
+accounts,866
+episodes,206
+accounts_ever_below_zero,60
+accounts_with_a_u0_event_at_90,60
+u0_events_at_90,499
+share_from_top5,0.248
+top1pct_accounts,9
+share_from_top1pct,0.399
