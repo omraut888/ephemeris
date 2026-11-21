@@ -1045,7 +1045,7 @@ pub fn shortfall_account(acct: &Account, origins: &[Day]) -> Option<String> {
 // ----------------------------------------------------------------- S13 --
 
 pub const INCOME_TRACE_HEADER: &str = "account,origin,config,n_income,pay_first,pay_last,\
-gated_first12,gated_all,first_close,median_k_last12,final_s_over_pay2,final_m_over_pay,alarms_income";
+gated_first12,gated_all,first_close,median_k_last12,final_s_over_pay2,final_m_over_pay,alarms_income,first15";
 
 /// S13: the income channel's observations at an account's last eligible
 /// origin, with and without the detectors (V2's tracker; V0's is the same).
@@ -1108,8 +1108,20 @@ pub fn income_trace(acct: &Account) -> Option<Vec<String>> {
             ks[ks.len() / 2]
         };
         let last = amounts[n - 1];
+        // The first 15 observations: amount/last : gated : NIS.
+        let first15 = (0..n.min(15))
+            .map(|i| {
+                format!(
+                    "{:.3}:{}:{:.1}",
+                    amounts[i] / last,
+                    u8::from(inns[i].2),
+                    inns[i].0.powi(2) / inns[i].1
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(";");
         out.push(format!(
-            "{},{},{name},{n},{},{last},{gated12},{gated},{first_close},{med_k},{},{},{alarms}",
+            "{},{},{name},{n},{},{last},{gated12},{gated},{first_close},{med_k},{},{},{alarms},{first15}",
             acct.id,
             Date(origin),
             amounts[0],
