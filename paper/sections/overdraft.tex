@@ -2,10 +2,12 @@
 \label{sec:overdraft}
 
 An overdraft warning needs a different quantity from any interval: the
-probability that the balance falls below a threshold $u$ on some day
-within the horizon. We scored that event at two thresholds:
+probability that the booked end-of-day balance is below a threshold $u$ on
+at least one of days $1, \dots, h$ after the origin (the origin day itself
+is not counted). We scored that event at two thresholds:
 \begin{itemize}
-\item $u = 0$, the overdraft itself;
+\item $u = 0$: a \emph{negative booked end-of-day balance}. Whether the
+  bank treated it as an overdraft, or charged for it, is not in the data;
 \item $u$ = the account's own tenth percentile of daily balances over the
   past year, a dip that is common enough to measure well.
 \end{itemize}
@@ -55,7 +57,8 @@ climatology.} The event is rare: \R{xh/s5/u0/7/prevalence},
 \R{xh/s5/u0/30/prevalence} and \R{xh/s5/u0/90/prevalence}\% of origins at
 \hA, \hB\ and \hC\ days on held-out accounts.
 \begin{itemize}
-\item \textbf{At \hB\ and \hC\ days,} every forecast has a higher Brier
+\item \textbf{At \hB\ and \hC\ days,} each of the four model-based
+  forecasts has a higher Brier
   score than CLIM. V2's Brier skill against CLIM is \R{xh/s5/u0/30/bss_V2}
   and \R{xh/s5/u0/90/bss_V2}.
 \item \textbf{At \hA\ days,} only B-EQp beats CLIM: skill
@@ -101,10 +104,10 @@ development results are in \texttt{paper/results/exploratory*/s5-overdraft/citl.
 \label{tab:citl}
 \end{table}
 
-\paragraph{Every forecast is too pessimistic about dips.} Averaged over
-origins, each of the four forecasts gives the event a higher probability
-than its observed frequency, at both thresholds and every horizon, on
-both splits (Table~\ref{tab:citl}); every \R{c/ci-level}\%
+\paragraph{Calibration in the large is poor for the four model-based
+forecasts.} Averaged over origins, V2, CP-noKF, B-EQp and B-SRp each give
+the event a higher probability than its observed frequency, at both
+thresholds and every horizon, on both splits (Table~\ref{tab:citl}); every \R{c/ci-level}\%
 account-bootstrap interval of the difference excludes zero.
 \begin{itemize}
 \item \textbf{Below zero at \hC\ days,} V2's mean probability is
@@ -121,10 +124,8 @@ account-bootstrap interval of the difference excludes zero.
   where events are slightly more frequent than forecast. That matches V2's
   few misses below its intervals (\S\ref{sec:calibration}).
 \end{itemize}
-CLIM, the account's own past frequency, is not pessimistic below zero: it
-under-predicts slightly (\R{xh/s5c/u0/90/clim/diff} points at \hC\ days). A
-probability of going overdrawn from any of the four forecasts is a
-cautious upper estimate, not a calibrated one.
+CLIM, the account's own past frequency, slightly under-predicts a negative
+balance (\R{xh/s5c/u0/90/clim/diff} points at \hC\ days).
 
 \begin{figure}[t]
 \centering

@@ -13,19 +13,24 @@ skill \R{ho/pair/B-EQ/30/skill} and \R{ho/pair/B-EQ/90/skill}; pooled over
 origins, \R{ho/pair/B-EQ/30/pooled_skill} and
 \R{ho/pair/B-EQ/90/pooled_skill}).
 
-\emph{The explanation (exploratory).} Every method that projects the detected
-pay-and-bill schedule loses to B-EQ at \hB\ and \hC\ days. That holds even
-when the schedule is combined with the same empirical residuals B-EQ uses.
-In simulation, irregular schedules,
-not sparse spending, give B-EQ its long-horizon advantage. Calendar alignment
-and sparse event counts do not explain it.
+\emph{A partial explanation (exploratory).} We did not measure schedule
+irregularity in Berka, so this is a reading of comparisons made after the
+held-out results, not a demonstration. Replacing the scheduled flows in
+B-EQ's own past windows with the detected schedule's projection (B-SR)
+raises CRPS at \hB\ and \hC\ days (pooled skill
+\R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
+\R{xh/s3/B-SR-vs-B-EQ/90/skill_pooled} on held-out accounts). In our
+simulator, B-EQ beats V2 at those horizons only when pay and bill
+schedules are irregular, not when spending is merely sparse.
 
 \emph{Overdraft events (exploratory).} At \hB\ and \hC\ days no method
-beats the account's own historical frequency of falling below zero
-(prevalence \R{xh/s5/u0/90/prevalence}\% at \hC\ days), and V2 does not
-at any horizon. Every forecast over-predicts dips on average: below zero
-at \hC\ days, V2's mean probability is \R{xh/s5c/u0/90/V2/mean_p}\%
-against \R{xh/s5c/u0/90/V2/observed}\% observed.
+beats the account's own historical frequency of a negative booked
+end-of-day balance (prevalence \R{xh/s5/u0/90/prevalence}\% at \hC\ days),
+and V2 does not at any horizon. Calibration in the large is poor for the
+four model-based forecasts: for a negative balance within \hC\ days,
+V2's mean probability is \R{xh/s5c/u0/90/V2/mean_p}\% against
+\R{xh/s5c/u0/90/V2/observed}\% observed. Climatology slightly
+under-predicts it.
 
 \emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
 intervals cover too much, so the planned calibration claim fails.

@@ -22,30 +22,27 @@ than B-EQ at \hA\ days. B-EQ has lower CRPS at \hB\ and \hC\ days, under
 either way of averaging scores (\S\ref{sec:reversal},
 Figure~\ref{fig:reversal}).
 
-\paragraph{An explanation, tested on development data and then on held-out
-accounts (exploratory).} Projecting the detected schedule is the costly
-component:
+\paragraph{A partial explanation (exploratory).} We did not measure
+schedule irregularity in Berka, so what follows is a reading of
+comparisons, specified after the held-out results and tested on
+development data and then on held-out accounts:
 \begin{itemize}
-\item every schedule-based method we tried loses to B-EQ at \hB\ and
-  \hC\ days, including the detected schedule plus exactly the empirical
-  residuals that B-EQ samples;
-\item in simulation, irregular pay and bill schedules give B-EQ its
-  long-horizon advantage, while sparse spending alone does not.
+\item replacing the scheduled flows in B-EQ's own past windows with the
+  detected schedule's projection (B-SR) raises CRPS at \hB\ and \hC\ days;
+\item in our simulator, B-EQ beats V2 at those horizons only when pay and
+  bill schedules are irregular, not when spending is merely sparse.
 \end{itemize}
-Aligning past windows to the calendar, and modelling sparse spending as
-discrete events, do not explain it. History length is weaker evidence:
-the gap shrinks or reverses with under a year of history only when
-scores are pooled over origins, not under the planned account mean
-(\S\ref{sec:explanation}). We did not
-measure schedule irregularity in Berka itself, so the explanation is a
-reading of these comparisons, not a direct observation.
+The calendar-alignment rule and the sparse-event model we tested do not
+account for the gap. History length is weaker evidence: the gap shrinks or
+reverses with under a year of history only when scores are pooled over
+origins, not under the planned account mean (\S\ref{sec:explanation}).
 
-\paragraph{Overdraft events (exploratory).} The probability of falling
-below zero within the horizon, which an overdraft warning needs, is badly
-over-predicted. At \hB\ and \hC\ days no method beats
-the account's own historical frequency of this rare event, and V2 does
-not at any horizon. On average, every forecast gives dips a higher
-probability than their observed frequency (\S\ref{sec:overdraft}).
+\paragraph{Overdraft events (exploratory).} An overdraft warning needs the
+probability of a negative booked end-of-day balance within the horizon. At
+\hB\ and \hC\ days no method beats the account's own historical frequency
+of this rare event, and V2 does not at any horizon. Calibration in the
+large is poor for the four model-based forecasts, which all over-predict
+it; climatology slightly under-predicts it (\S\ref{sec:overdraft}).
 
 \paragraph{Calibration.} V2's \lC\% intervals meet the plan's band, and it
 misses below them less often than nominal. Its \lA\% intervals cover far

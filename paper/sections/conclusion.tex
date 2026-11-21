@@ -7,13 +7,15 @@ own past balance changes is a hard baseline for a state-space forecaster.
 \item \textbf{The state-space model wins at a week.} Its intervals are
   the more cautious about the downside.
 \item \textbf{The empirical forecast wins at a month and beyond.}
-\item \textbf{Projecting a detected schedule is the costly component.}
-  Our exploratory analyses point there, and in our simulation B-EQ wins at a
-  month and beyond only when schedules are irregular. We did not measure schedule
-  irregularity in the bank data itself.
-\item \textbf{Overdraft probabilities are over-predicted on average by
-  every forecast we tried,} and at a month or more none beats an
-  account's own historical frequency of falling below zero.
+\item \textbf{A partial, exploratory explanation.} We did not measure
+  schedule irregularity in the bank data. Replacing the scheduled flows in
+  B-EQ's past windows with the detected schedule's projection raises
+  CRPS at a month and beyond, and in our simulator B-EQ wins there only
+  when schedules are irregular.
+\item \textbf{The probability of a negative booked balance is
+  over-predicted on average by all four model-based forecasts,} and at a
+  month or more none beats the account's own historical frequency of the
+  event.
 \item \textbf{The planned calibration and sharpness claims fail in
   part,} and the paper says where (Table~\ref{tab:claims}).
 \end{itemize}
