@@ -109,8 +109,12 @@ second logged run, because the first run omitted them
 \begin{table}[t]
 \centering\scriptsize\setlength{\tabcolsep}{3.5pt}
 \tab{heldout-ablations}
-\caption{Held-out ablations against V0. Skill: the ablation's CRPS skill
-against V0 (positive: the ablation is better). $\Delta$cov90: the
+\caption{Held-out ablations against V0, from the separately logged ablation
+run, over the origins both made: \R{ho/abldata/eligible_origins} origins in
+\R{ho/abldata/accounts_with_eligible_origin} accounts per horizon (all
+origins). The alarm strata are subsets of these. Skill: the ablation's
+CRPS skill against V0, as the mean of per-account ratios (positive: the
+ablation is better). $\Delta$cov90: the
 ablation's \lC\% coverage minus V0's, in points. Columns are horizons
 (days). Intervals are in the result files.}
 \label{tab:ablations}

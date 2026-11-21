@@ -2,22 +2,23 @@
 
 ## Resume here (updated after every step)
 
-**Current step: 4 (build the PDF and fix warnings).**
+**Current step: 5 (self-review).**
 
 **Finished:**
-- steps 1 and 2;
-- step 3 drafted (all sections and appendices);
-- all exploratory held-out results committed (`5f30843`).
+- steps 1–2;
+- step 3 (the restructure);
+- step 4: the PDF builds at 26 pages, the main text about 12.5; 0
+  warnings, overfull boxes and undefined references; captions checked
+  (`cc77171` and later).
 
-**Half-done:** nothing running. Everything can be rerun safely.
+**Half-done:** nothing running.
 
 **Next actions:**
-1. `paper/.venv/bin/python -I paper/analysis/macros.py`, then
-   `scripts/paper.sh --pdf-only`.
-2. Fix undefined keys, overfull boxes and warnings.
-3. Check the page count; trim the method section if far over 12 pages of
-   main text.
-4. Then step 5 (self-review) and step 6 (`scripts/test-full.sh`).
+1. Step 5: scan the `.tex` sources for digits outside macros, and read
+   the PDF text for unsupported claims and inconsistencies. Write the
+   findings under "Step 5" below.
+2. Step 6: `scripts/test-full.sh`.
+3. The final summary.
 
 *(The final summary goes here at the end.)*
 
