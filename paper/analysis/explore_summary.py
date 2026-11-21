@@ -323,6 +323,38 @@ def s5():
     plot_reliability(rel, out)
 
 
+def s5c():
+    """Calibration in the large of the overdraft-event probabilities
+    (exploratory, added after the held-out S5 run): the mean forecast
+    probability against the observed event frequency, pooled over origins,
+    per method, threshold and horizon. Reads the stored S5 events only; the
+    difference gets a 95% account-bootstrap interval."""
+    out = OUT / "s5-overdraft"
+    ev = list(csv.DictReader(open(EXP / "berka/events.csv")))
+    methods = ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM"]
+    rng = np.random.default_rng(SEED)
+    res = [["threshold", "h", "method", "forecasts", "accounts", "observed", "mean_p",
+            "diff", "diff_lo", "diff_hi", "ratio"]]
+    for u in ("u0", "u10"):
+        for h in HS:
+            s = [r for r in ev if r["threshold"] == u and r["h"] == h]
+            y = np.array([float(r["event"]) for r in s])
+            ids, inv = np.unique([r["account"] for r in s], return_inverse=True)
+            n_a = np.bincount(inv).astype(float)
+            y_a = np.bincount(inv, weights=y)
+            idx = rng.integers(0, len(ids), size=(RESAMPLES, len(ids)))
+            for m in methods:
+                p = np.array([float(r[f"p_{m}"]) for r in s])
+                p_a = np.bincount(inv, weights=p)
+                draw = (p_a[idx].sum(axis=1) - y_a[idx].sum(axis=1)) / n_a[idx].sum(axis=1)
+                lo, hi = np.quantile(draw, [0.025, 0.975])
+                res.append([u, h, m, len(s), len(ids), fmt(y.mean(), 5), fmt(p.mean(), 5),
+                            fmt(p.mean() - y.mean(), 5), fmt(lo, 5), fmt(hi, 5),
+                            fmt(p.mean() / y.mean(), 2)])
+    write(out / "citl.csv", res)
+    show(res)
+
+
 def plot_reliability(rel, out):
     import matplotlib
     matplotlib.use("Agg")
@@ -394,6 +426,6 @@ if __name__ == "__main__":
     if args and args[0] == "--heldout":
         FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
         args = args[1:]
-        assert set(a.lower() for a in args) <= {"s3", "s5", "s6", "s7"}, "held-out: S3, S5, S6, S7 only"
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s6", "s7"}, "held-out: S3, S5, S5c, S6, S7 only"
     for a in args:
         globals()[a.lower()]()

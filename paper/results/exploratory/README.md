@@ -132,6 +132,15 @@ percentile (`u10`).
   at 7.
 - **Reliability** (`reliability.pdf`): every forecasting method
   over-predicts the events, for both thresholds and at every horizon.
+- **Calibration in the large** (`citl.csv`; added 2026-11-21, after the
+  held-out S5 run, from the stored events only): the mean forecast
+  probability minus the observed frequency, pooled over origins, with a 95%
+  account-bootstrap interval (2,000 resamples, seed 6). V2, CP-noKF,
+  B-EQp and B-SRp over-predict in all 24 cells, and every interval
+  excludes 0. Below 0 at 90 days V2's mean probability is 21.3% against
+  1.8% observed. CLIM under-predicts slightly below 0 and at u10 at
+  7 days, and over-predicts at u10 at 90 days, by about as much as B-EQp.
+  Script: `explore_summary.py s5c`.
 
 ## S6. Ablating V2 (`s6-v2-ablations/`)
 

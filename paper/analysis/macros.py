@@ -71,6 +71,14 @@ def fmt(col, v):
     c = col
     if c.endswith("_diff") or c.endswith("_diff_lo") or c.endswith("_diff_hi"):
         return points(v)
+    # Calibration in the large (s5-overdraft/citl.csv): percent and
+    # percentage points to two decimals, since below-0 events are rare.
+    if c in ("observed", "mean_p"):
+        return pct(v, 2)
+    if c in ("diff", "diff_lo", "diff_hi"):
+        return points(v, 2)
+    if c == "ratio":
+        return f"{float(v):.1f}"
     if c.startswith("miss") or c.startswith("prevalence") or c.startswith("share") or c == "values_moved_share":
         return pct(v)
     if c.startswith("brier"):
@@ -606,6 +614,8 @@ def exploratory():
                     keyvalue(f"{tag}/{short}/{name}", f)
         if (d / "s5-overdraft/brier.csv").exists():
             table(f"{tag}/s5", d / "s5-overdraft/brier.csv", ["threshold", "h"])
+        if (d / "s5-overdraft/citl.csv").exists():
+            table(f"{tag}/s5c", d / "s5-overdraft/citl.csv", ["threshold", "h", "method"])
         if (d / "s4-grid/compare.csv").exists():
             table(f"{tag}/s4", d / "s4-grid/compare.csv", ["sparsity", "regularity", "comparison", "h"])
         if (d / "s1-eligibility/rules.csv").exists():

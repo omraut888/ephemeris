@@ -27,3 +27,10 @@ and aggregations are the same as on development.
 **Prevalence warning (S5).** Falling below 0 within 7 days has a prevalence
 of 0.34% on held-out accounts. That is below the 0.5% the specification set
 for reliable results, so those cells are marked unreliable.
+
+**Calibration in the large (S5, `s5-overdraft/citl.csv`).** This was added
+on 2026-11-21, after the held-out S5 run. It is computed from the stored
+held-out events by `explore_summary.py --heldout s5c`, with no new forecasts
+and no guard entry. The definitions are the same as on development. V2,
+CP-noKF, B-EQp and B-SRp over-predict in every cell, and every interval
+excludes 0. CLIM is the exception, as on development.
