@@ -115,3 +115,16 @@ will be logged with its own reason, "rerun of the exploratory B-GLOBAL
 run: first attempt killed for memory exhaustion before writing any
 output". The guard log therefore shows two entries for it. The first one
 produced nothing.
+
+### Correction C1 (found in step 1)
+
+The development report and the README said that, for falling below 0, "no
+method beats the account's own historical frequency". That is wrong at 7
+days. B-EQp beats CLIM there on development (Brier skill +0.49 [0.28,
+0.62]) and on held-out (+0.26 [0.13, 0.36]). The held-out cell's prevalence
+is 0.34%, below the 0.5% the specification set for reliable results, so it
+is marked unreliable.
+- **Corrected in:** README, `exploratory/README.md`, and the abstract,
+  introduction, overdraft section and conclusion.
+- **The claim now reads:** no method beats CLIM at 30 or 90 days, and V2
+  never does.

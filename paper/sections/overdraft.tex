@@ -50,12 +50,20 @@ development results are in
 \label{tab:overdraft}
 \end{table}
 
-\paragraph{Below zero: no method beats the account's climatology.} The
-event is rare: \R{xh/s5/u0/7/prevalence}, \R{xh/s5/u0/30/prevalence} and
-\R{xh/s5/u0/90/prevalence}\% of origins at \hA, \hB\ and \hC\ days on
-held-out accounts. Every forecast has a higher Brier score than CLIM. V2's
-Brier skill against CLIM is \R{xh/s5/u0/30/bss_V2} at \hB\ days and
-\R{xh/s5/u0/90/bss_V2} at \hC.
+\paragraph{Below zero: at a month or more, no method beats the account's
+climatology.} The event is rare: \R{xh/s5/u0/7/prevalence},
+\R{xh/s5/u0/30/prevalence} and \R{xh/s5/u0/90/prevalence}\% of origins at
+\hA, \hB\ and \hC\ days on held-out accounts.
+\begin{itemize}
+\item \textbf{At \hB\ and \hC\ days,} every forecast has a higher Brier
+  score than CLIM. V2's Brier skill against CLIM is \R{xh/s5/u0/30/bss_V2}
+  and \R{xh/s5/u0/90/bss_V2}.
+\item \textbf{At \hA\ days,} only B-EQp beats CLIM: skill
+  \R{xh/s5/u0/7/bss_B-EQp} [\R{xh/s5/u0/7/bss_B-EQp_lo},
+  \R{xh/s5/u0/7/bss_B-EQp_hi}], and \R{xd/s5/u0/7/bss_B-EQp} on development.
+  The held-out prevalence of this cell is below the \R{c/prev-min}\% our
+  specification set for reliable results, so we mark it unreliable.
+\end{itemize}
 
 \paragraph{Below the account's own tenth percentile: every method beats
 climatology.} At \hB\ days the Brier skills against CLIM are:

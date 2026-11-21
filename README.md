@@ -112,10 +112,11 @@ are in docs/phase1-design.md and docs/sandbox-comparison.md.
 - **The "chance of dipping below $0" is badly over-predicted on real
   data.** On the Berka bank data (the paper's exploratory overdraft-event
   analysis, development split), going below $0 within 7–90 days is rare
-  (0.7–1.8% of forecasts). No method tested beats the account's own
-  historical frequency for it: the paper's V2 configuration, a
-  filter-free variant, and two empirical competitors. Every method was
-  too pessimistic about dips. The shipped default (V0) was not tested on
+  (0.3–1.8% of forecasts on held-out accounts). At 30 and 90 days, no
+  method tested beats the account's own historical frequency for it: the
+  paper's V2 configuration, a filter-free variant, and two empirical
+  competitors. At 7 days, only the empirical path forecast does. V2 never
+  does. Every method was too pessimistic about dips. The shipped default (V0) was not tested on
   this event. Treat the probability as a cautious upper estimate, not a
   calibrated one. Details: paper/results/exploratory/s5-overdraft/.
 - **The cone's centre is not calibrated on real data.** With the paper's

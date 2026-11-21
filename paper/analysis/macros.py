@@ -174,6 +174,8 @@ def constants():
     put("c/lgbm-rounds", c["lgbm/ROUNDS"])
     put("c/lookback", c["explore/L"])
     put("c/cal-half", c["explore/CAL_HALF_WIDTH"])
+    rev = (ROOT / "paper/REVISION.md").read_text()
+    put("c/prev-min", re.search(r"If a prevalence is below ([0-9.]+)%", rev).group(1))
     dist_src = (ROOT / "crates/ephemeris-eval/src/dist.rs").read_text()
     put("c/crps-grid", re.search(r"pub const CRPS_GRID: usize = (\d+);", dist_src).group(1))
     lv = re.search(r"^LEVELS = \[([0-9., ]+)\] \+ \[round\(0\.05 \* i, 2\) for i in range\(1, (\d+)\)\] \+ \[([0-9., ]+)\]",

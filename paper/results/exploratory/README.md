@@ -123,7 +123,10 @@ percentile (`u10`).
 | B-SRp | 0.020 | 0.057 | 0.139 | 0.188 |
 | CLIM | 0.007 | 0.014 | 0.192 | 0.250 |
 
-- **For u0, no method beats climatology.**
+- **For u0, no method beats climatology at 30 or 90 days.** At 7 days
+  B-EQp does (Brier skill +0.49 [0.28, 0.62]); the others do not. (An
+  earlier summary of this table said "no method" without the horizon
+  qualifier. That was a misreading, corrected 2026-11-21.)
 - **For u10, every method does**, by a Brier skill of 0.25–0.36 at 30 and
   90 days. B-EQp is best at 30 and 90 days; V2, CP-noKF and B-SRp are best
   at 7.
