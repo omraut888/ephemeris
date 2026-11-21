@@ -287,7 +287,7 @@ def reversal(png):
     ax.set_ylabel("CRPS skill of V2 vs B-EQ\n(pooled; > 0: V2 lower CRPS)")
     ax.set_title("Paired CRPS skill", color=INK)
     tidy(ax)
-    ax.legend(fontsize=6, loc="lower left")
+    ax.legend(fontsize=6, loc="upper right")
     st = {(r["method"], int(r["h"])): r for r in read(d / "stats.csv")}
     ax = axes[1]
     for m, style in (("V2", "-"), ("B-EQ", ":")):
