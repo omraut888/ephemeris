@@ -1,0 +1,1 @@
+Superseded: the first version of the income gate escape, which also fired with the detector on. On the first 100 development accounts it changed 479 of 3,105 forecasts at 30 and 90 days, with slightly higher mean CRPS (V2 at 90 days 3,406 to 3,421). The final fix applies the escape only with the income detector off (paper/PLAN.md §11).

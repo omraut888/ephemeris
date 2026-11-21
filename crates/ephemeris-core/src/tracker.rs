@@ -231,8 +231,13 @@ struct FilterState {
 /// first level: a small first income record makes later paychecks outliers,
 /// the gate skips their updates, and the income variance inflates until the
 /// gain on `m` is too small for it ever to catch up (paper §9, post-freeze
-/// fix). With the detector on, its alarm usually fires on the second gated
-/// paycheck first and the escape does not trigger.
+/// fix).
+///
+/// The escape applies only when the income detector is off. With it on, the
+/// detector's alarms already release `m`, and letting the escape fire too
+/// (for example on two gated bonus paychecks in a row) changed 15% of
+/// development forecasts at 30 and 90 days for slightly worse CRPS. With
+/// the detector on, the tracker is therefore exactly as frozen.
 pub const INCOME_GATE_ESCAPE: i32 = 2;
 
 impl FilterState {
@@ -362,7 +367,7 @@ impl FilterState {
                 });
             }
             let mut gated = inn.nis > gate;
-            if gated {
+            if gated && self.income_change.is_none() {
                 let side = if inn.nu > 0.0 { 1 } else { -1 };
                 let run = if self.income_gated_run.signum() == side {
                     self.income_gated_run + side
