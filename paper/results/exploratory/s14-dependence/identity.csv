@@ -1,0 +1,3 @@
+check,compared,identical,max_abs_diff
+F and O rows = S11 run,250695,250695,
+EQ-ident (b) = F0 (B-EQ),83565,,2.76e-10
