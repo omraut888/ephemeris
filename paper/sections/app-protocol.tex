@@ -73,6 +73,26 @@ tagged at each origin by the application's own tagger. The default US
 calendar is used, because the engine has no UK calendar.
 
 
+\subsection{The revision candidates}
+\label{sec:variants}
+The original model is V0. The candidates and the rule for choosing among
+them were committed before any revision code was written.
+\begin{itemize}
+\item \textbf{V1: online conformal recalibration} of V0 by adaptive
+  conformal inference \citep{gibbs2021aci}, per account and horizon. Each
+  of \R{c/aci-levels} central levels keeps its own recursion with step
+  $\gamma = \R{c/aci-gamma}$, capped at \R{c/aci-max}. The calibration
+  stream is V0's own forecasts from a grid of origins every
+  \R{c/aci-grid-step} days from day \R{c/aci-grid-start}, using only
+  outcomes known at the forecast origin.
+\item \textbf{V2: sparse spending} (\S\ref{sec:method}).
+\item \textbf{V3: empirical-Bayes priors} for $c$, $m$ and the two noise
+  variances, fitted to the other accounts. On development these come from
+  the other folds of \R{c/folds}; on held-out, from all development
+  accounts.
+\item \textbf{V4:} V2 and V3 combined, recalibrated as in V1.
+\end{itemize}
+
 \subsection{Origins, inputs and timing}
 Origins fall every
 \R{c/origin-step} days from day \R{c/warmup} of an account's history, while

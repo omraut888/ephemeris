@@ -22,52 +22,33 @@
 \item \textbf{Scoring resolution.} V1, V4 and B-GLOBAL are scored from
   quantile functions that are flat beyond \R{c/qf-lo}\% and \R{c/qf-hi}\%,
   coarser in the tails than the Monte Carlo cones.
-\item \textbf{The first week after a change is overconfident}
-  (\S\ref{sec:regime}), and downward changes in skewed spending are
-  rarely detected. On real data, the detector's effect could only be
-  described, not tested.
-\item \textbf{Irregular and one-off flows.} Without a detected income the
-  forecast has no income term. Large one-off transfers, as in the MoneyData
-  account, are outside the model.
-\item \textbf{The data.}
+\item \textbf{The model's reach.} The first week after a change is
+  overconfident, and downward changes in skewed spending are rarely
+  detected (\S\ref{sec:regime}). Without a detected income there is no
+  income term, and one-off transfers are outside the model. There is one
+  primary income stream and no day-of-week effect.
+\item \textbf{The data.} Berka is Czech, from \R{berka/first_year} to
+  \R{berka/last_year}, with sparse booked activity, mostly monthly pay, no
+  pending state, undocumented anonymization and unstated licence terms.
+  MoneyData is one account. Our claims are about sparse booked accounts,
+  not modern card-heavy ones.
+\item \textbf{Selection, look-ahead and units.}
   \begin{itemize}
-  \item Berka is Czech, in crowns, from \R{berka/first_year} to
-    \R{berka/last_year}, with sparse, booked activity. Its anonymization
-    may have transformed amounts in ways that are not documented, and its
-    licence terms are not stated.
-  \item MoneyData is one UK account.
-  \item Neither has a pending state, so the settled-checkpoint design is
-    validated on synthetic data only.
-  \item Paychecks are mostly monthly, so the weekly and biweekly paths are
-    untested on real data.
-  \item Our claims are therefore about sparse booked bank accounts, not
-    modern card-heavy accounts.
+  \item The drift exclusion uses full histories, though a past-only rule
+    selects the same origins on development (Appendix~\ref{app:tables}).
+  \item The original B-GLOBAL and the V3/V4 priors use data from all
+    dates.
+  \item The per-origin rescaling uses a constant from our generator, and
+    a different constant could change forecasts.
   \end{itemize}
-\item \textbf{Selection and look-ahead.} The drift exclusion uses each
-  account's full history. B-GLOBAL and the V3/V4 priors are trained on
-  data from all calendar dates.
-\item \textbf{Normalization.} Each account is rescaled at each origin by
-  its median monthly gross flow, against a constant taken from our
-  realistic generator. Because the filter is refitted with fixed-unit
-  priors, a different constant could change the forecasts.
-\item \textbf{Our generators.} The realistic generator and the model share
-  an author, so its departures from the model are the ones we thought of.
-  Method rankings on it did not carry over to Berka (the B-EQ reversal).
-\item \textbf{The protocol.}
-  \begin{itemize}
-  \item The plan predates the real-data runs by its commit time only.
-  \item The ablations, the paired intervals, the pooled skills, the tail
-    misses and the A2 verdicts per cell were computed after the main
-    held-out results were known.
-  \item The ablations were of V0, not V2.
-  \item B-GLOBAL's hyperparameters were fixed at common defaults, not
-    tuned.
-  \end{itemize}
-\item \textbf{Bit identity} is shown for the tested matrix in
-  \S\ref{sec:identity} only.
+\item \textbf{Our generators} share an author with the model. B-EQ's
+  ranking on them did not carry over to Berka.
+\item \textbf{The protocol.} The plan predates the real-data runs by its
+  commit time only. Every analysis after the main held-out run is
+  exploratory. The planned ablations were of V0, not V2. B-GLOBAL was not
+  tuned.
+\item \textbf{Bit identity} is shown for the tested matrix only
+  (Appendix~\ref{app:identity}).
 \item \textbf{No user study.} ``Calibrated'' is a statistical statement,
-  not a claim that people make better decisions with the cone.
-\item \textbf{The model's scope:} one primary income stream, no
-  day-of-week effects, depository accounts only, and lumps no larger than
-  the largest already seen.
+  not a claim about decisions.
 \end{enumerate}

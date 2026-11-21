@@ -2,52 +2,22 @@
 
 ## Resume here (updated after every step)
 
-**Current step: 1, waiting for run (a), with step 3 (restructure) mostly
-drafted.**
+**Current step: 4 (build the PDF and fix warnings).**
 
 **Finished:**
-- the guarded modes;
-- step 2 (README);
-- the new sections: abstract, introduction, protocol, reversal,
-  explanation, overdraft, calibration, components, conclusion and
-  limitations;
-- the appendices: `app-protocol`, `app-tables`, `app-regime`,
-  `app-identity`, `app-moneydata`, `app-repro`;
-- `main.tex` rewired with the new title.
+- steps 1 and 2;
+- step 3 drafted (all sections and appendices);
+- all exploratory held-out results committed (`5f30843`).
 
-The paper will **not compile** until the held-out exploratory summaries
-exist, because the `xh/...` macros are missing.
-
-**Half-done:**
-- **Run (a)** is running in the background (log:
-  `paper/build/explore-heldout-berka.log`). If it was interrupted (no
-  "exit" line), rerun it with
-  `--rerun-reason "rerun of exploratory run (a): first attempt interrupted"`,
-  after a clean `git status`. That is safe.
-- **Run (b)** has not run yet (killed for memory; see D1.5). Rebuild the
-  binary first.
+**Half-done:** nothing running. Everything can be rerun safely.
 
 **Next actions:**
-1. After (a):
-   `paper/.venv/bin/python -I paper/analysis/explore_summary.py --heldout S3 S5 S6`,
-   then commit `paper/results/exploratory-heldout/`.
-2. `cargo build --release -p ephemeris-eval`; commit, so the tree is clean.
-3. Run (b) with `--rerun-reason "rerun of the exploratory B-GLOBAL run:
-   first attempt killed for memory exhaustion before writing any output"`.
-4. Then `--heldout S7`.
-5. Then `python paper/figures/src/make_figures.py`, `macros.py` and
+1. `paper/.venv/bin/python -I paper/analysis/macros.py`, then
    `scripts/paper.sh --pdf-only`.
-
-**Claims to verify against the held-out numbers before the final build:**
-- In explanation.tex: "on both splits" for every row of the
-  explanation table; calendar alignment slightly worse; CP-noKF worse than
-  V2.
-- In overdraft.tex: every method's Brier score above CLIM below zero;
-  every method beating CLIM at the tenth percentile; the schedule-based
-  methods best at 7 days and B-EQp at 90; all reliability curves below
-  the diagonal.
-- In components.tex: fixed noise marginally better in both models; no
-  filter slightly worse; G-cf below B-EQ in CRPS.
+2. Fix undefined keys, overfull boxes and warnings.
+3. Check the page count; trim the method section if far over 12 pages of
+   main text.
+4. Then step 5 (self-review) and step 6 (`scripts/test-full.sh`).
 
 *(The final summary goes here at the end.)*
 

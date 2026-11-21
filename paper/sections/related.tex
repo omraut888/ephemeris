@@ -4,21 +4,13 @@
 \paragraph{Cash-flow and personal-finance forecasting.} Most published
 cash-flow forecasting concerns businesses and point forecasts; for example,
 \citet{weytjens2021cashflow} compare neural networks with ARIMA and Prophet
-on company cash flows. Work on individuals' balances is scarce, largely
-because bank microdata is not public. \citet{zhang2018lowwage} built
-forecasts for a budgeting app's low-wage users: a separate, small cohort
-whose accounts were collected through Plaid. They also used the PKDD'99
-data (Berka), which they note is not specific to low-wage workers. On
-Berka they kept accounts with several years of data and aggregated
-to weekly balances, because daily activity is sparse. They treated the
-true balances as unknown and started every account at zero. Their method
-matches the recent balance sequence against historical sequences pooled
-across users, and they score point forecasts by mean absolute error. Our
-results cannot be compared with theirs directly. We forecast daily
-balances with predictive distributions, from one account's own history,
-scored by CRPS and coverage, on a different selection of accounts.
-Berka's balance field, used to validate our running balances, is
-described in \S\ref{sec:protocol}. Deep probabilistic models such as DeepAR
+on company cash flows. Work on individuals' balances is scarce, because bank microdata is not
+public. \citet{zhang2018lowwage} forecast balances for a budgeting app's
+low-wage users, a separate cohort. They also used Berka, noting it is not
+specific to low-wage workers, with weekly balances started at zero. Their
+model matches recent balance sequences against sequences pooled across
+users and is scored by the mean absolute error of point forecasts, so our
+results are not directly comparable. Deep probabilistic models such as DeepAR
 \citep{salinas2020deepar} learn across many series and so need pooled data,
 which our local-first setting does not allow; our pooled baseline
 (B-GLOBAL, gradient-boosted quantile regression with LightGBM,
@@ -53,11 +45,8 @@ applies it per account and horizon to the Monte Carlo cone.
 
 \paragraph{Pre-registration.} Pre-registration separates hypothesis
 generation from testing \citep{nosek2018prereg}, and a NeurIPS workshop
-proposed it for machine learning \citep{pmlr148prereg}. We follow a lighter
-practice: an analysis plan with falsifiable claims and fixed thresholds,
-kept in a version-controlled repository; a development/held-out split; a
-rule for revision written before the revision; a freeze; and a held-out
-evaluation that is mechanically limited to one logged run. Unlike a
-registration with a third party, the repository's commit times are under
-the author's control until they are pushed, which we account for in
-\S\ref{sec:timeline}.
+proposed it for machine learning \citep{pmlr148prereg}. We follow a lighter practice: a
+versioned analysis plan, a split, a revision rule written before the
+revision, a freeze, and a held-out run limited to one logged execution.
+Unlike a third-party registration, its commit times are under the
+author's control until pushed (\S\ref{sec:timeline}).

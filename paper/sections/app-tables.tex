@@ -2,6 +2,14 @@
 \label{app:tables}
 
 \subsection{All methods on held-out Berka}
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figures/coverage-heldout.pdf}
+\caption{Empirical against nominal pooled coverage of central intervals at
+every level of a fine grid, held-out Berka (\R{ho/var/V2/30/forecasts}
+origins per horizon and method).}
+\label{fig:coverage}
+\end{figure}
 \begin{table}[h]
 \centering\footnotesize\setlength{\tabcolsep}{4pt}
 \tab{heldout-main}
@@ -120,9 +128,9 @@ three origins each). The numbers reproduce that test's output exactly.}
   crowns at its first possible origin.
 \item \textbf{Who the minimum-history rules remove.} Origins failing the
   minimum-records rule have daily balance volatility of
-  \R{xd/s1/groups/g3-failing-min-records-scale-defined/daily_sd_over_s/median}
+  \R{xd/s1/groups/g3-failing-min-records-scale-defined/daily-sd-over-s/median}
   of a month's flow, against
-  \R{xd/s1/groups/g3-eligible-origins/daily_sd_over_s/median} for eligible
+  \R{xd/s1/groups/g3-eligible-origins/daily-sd-over-s/median} for eligible
   origins. They are few.
 \item \textbf{The selection rule is robust.} Weighted by account instead of
   by origin, it still selects V2 (score \R{xd/s2/selection/V2/score_account_equal}

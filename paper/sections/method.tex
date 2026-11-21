@@ -1,125 +1,72 @@
-\section{Method}
+\section{The state-space forecaster}
 \label{sec:method}
 
-\subsection{State, inputs and observations}
-The state is $x_t = [b_t, c_t, m_t]^\top$: the balance, the discretionary
-spending rate per day, and the expected paycheck. On a daily grid,
+\paragraph{State and observations.} The state is
+$x_t = [b_t, c_t, m_t]^\top$: the balance, the discretionary spending rate
+per day, and the expected paycheck. On a daily grid,
 \begin{equation}
 x_{t+1} = A x_t + B u_t + w_t,\quad
 A = \begin{bmatrix}1&-1&0\\0&1&0\\0&0&1\end{bmatrix},\;
 B = \begin{bmatrix}1\\0\\0\end{bmatrix},\;
 w_t \sim \mathcal N\!\left(0, \operatorname{diag}(\sigma_s^2, q_c, q_m)\right).
 \end{equation}
-Paychecks and scheduled bills are \emph{known} flows: they enter the
-balance through $u_t$ at their actual amounts. A paycheck's amount is also
-an observation of $m$ with $H_{\text{inc}} = [0\;0\;1]$ and variance
-$R_{\text{inc}}$. The bank's balance is observed through
-$H_{\text{bal}} = [1\;0\;0]$. An adapter tags each record as income,
-scheduled, discretionary or an own-account transfer from the data alone.
-The primary income stream is the largest regular inflow, and a bill is a
-recurring outflow at a regular interval. Matched transfer pairs cancel.
-
-Bank feeds contain pending records that later post at a different amount
-or date. The tracker therefore keeps a \emph{settled checkpoint}, through
-the day before the earliest pending record, and replays the provisional
-tail on every sync. The tail never adapts the noise estimates. None of the
-real data sets here has a pending state, so this machinery is exercised
-only on synthetic data.
-
-\subsection{Adaptive noise, the gate and lumps}
-Each noise channel (the balance channel $\sigma_s^2$ and the income channel
-$R_{\text{inc}}$) has one unknown variance. Every innovation $\nu$ gives a
-one-sample estimate, for example $\hat v = \nu^2 - h P^- h^\top$ for the
-income channel. It is unbiased only if the innovation model is correct and
-before the gate, the weighting and the clamp below are applied; after them
-it is a heuristic estimate. These are folded into an exponentially forgetting weighted
-mean,
-\begin{equation}
-n \leftarrow \lambda n + w,\qquad v \leftarrow \operatorname{clamp}\!\left(v + w\,(\hat v - v)/n\right),
-\end{equation}
-in the spirit of covariance matching \citep{mehra1970,myers1976}. The
-weight $w = (v/S)^2$ discounts samples taken while the state is still
-uncertain (innovation variance $S \gg v$). The discounted count $n$ is an
-effective number of samples, not a derived degrees-of-freedom parameter.
-
-Spending is heavy-tailed: a rent deposit or a car repair is not Gaussian
-noise. When a balance observation's normalized innovation exceeds a gate,
-the excess is treated as an unexplained \emph{lump} flow, added to $b$
-before the update, and the clipped remainder updates the filter normally.
-The lumps are recorded, and the forecast later resamples them.
-
-\subsection{Regime changes}
-When the model holds, the normalized innovations $e = \nu/\sqrt S$ are white
-with unit variance. A step in spending or pay biases them. A two-sided CUSUM
-\citep{page1954},
-\begin{equation}
-g^+ \leftarrow \max(0, g^+ + e - \kappa),\qquad
-g^- \leftarrow \max(0, g^- - e - \kappa),\qquad \text{alarm when } g > h,
-\end{equation}
-runs on the gate-clipped innovations of each channel. On an alarm, the
-run's mean shift $\hat\Delta$ becomes a zero-mean jump of variance
-$\hat\Delta^2$ in $c$ (capped at a multiple of $\hat\sigma_s^2$) or in $m$.
-The matching noise estimate forgets back to its prior count, so the filter
-relearns the new level quickly.
-
-\subsection{The Monte Carlo cone}
-Each path starts from $x_0 \sim \mathcal N(\hat x, P)$ and draws its own
-$\sigma_s^2$ and $R_{\text{inc}}$ from scaled inverse-$\chi^2$ distributions
-whose degrees of freedom are set to the effective counts $n$. That choice
-is a heuristic, not a posterior: it makes a thin history spread the cone.
-Each simulated day applies
-\begin{equation}
-b \mathrel{+}= -c + \varepsilon + \ell + \text{income} + \text{bills},\qquad
-c \mathrel{+}= \eta_c,\qquad m \mathrel{+}= \eta_m,
-\end{equation}
-with $\varepsilon \sim \mathcal N(0,\sigma_s^2)$. A lump $\ell$ occurs at
-the smoothed empirical rate of absorbed lumps, with its size resampled from
-them and mixed with a prior; this puts back the tail the gate trimmed.
-Paychecks land on the detected schedule plus a sampled offset, moved to
-the previous business day of the feed's holiday calendar, with amount
-$m + \mathcal N(0, R_{\text{inc}})$. Bills recur on their day of the month
-or at their period plus a sampled drift.
-
-\paragraph{Spend floor.} The filter's $c$ is Gaussian and can sit below
-zero, which would have a path earn money every day. With a floor (by default, zero), $c_0$ is drawn from its Gaussian truncated below at the floor by
-inverse CDF, and the random walk reflects at the floor. The draw factors
-$P$ in the order $(c, b, m)$, so the correlation between $b$ and $c$ is
-kept.
-
-\paragraph{Determinism.} Each path uses its own counter-based ChaCha8
-stream, so a path's trajectory does not depend on the number of paths or
-the loop order. Transcendental functions are meant to come from the
-pure-Rust \texttt{libm} \citep{libm_crate}. \S\ref{sec:identity} reports
-where that intention failed. We use \R{c/paths} paths and report quantiles
-on a midpoint grid, from which CRPS is computed.
-
-\subsection{The revision candidates}
-\label{sec:variants}
-The original model is V0. Its failure on the development split
-(\S\ref{sec:protocol}) triggered a revision. The candidates and the rule
-for choosing among them were committed before any revision code was
-written.
 \begin{itemize}
-\item \textbf{V1: online conformal recalibration} of V0 by adaptive
-  conformal inference \citep{gibbs2021aci}, per account and horizon. Each
-  of \R{c/aci-levels} central levels keeps its own recursion with step
-  $\gamma = \R{c/aci-gamma}$, capped at \R{c/aci-max}. The calibration
-  stream is V0's own forecasts from a grid of origins every
-  \R{c/aci-grid-step} days from day \R{c/aci-grid-start}, using only
-  outcomes known at the forecast origin.
-\item \textbf{V2: sparse spending.} For an account whose median number of
-  discretionary records per complete month, over the \R{c/sparse-window}
-  days before the origin, is below \R{c/sparse-max}, discretionary flows
-  are a compound Poisson process. Each path draws a rate
-  $\lambda \sim \mathrm{Gamma}(n + \tfrac12, \text{rate} = D)$, the
-  Jeffreys posterior for $n$ events in $D$ days. Each day then has
-  $N \sim \mathrm{Poisson}(\lambda)$ events whose signed amounts are
-  resampled from the window. This replaces $-c + \varepsilon$ and the lump
-  draws. The engine has the option off by default; it is selected per
-  account by the rule above.
-\item \textbf{V3: empirical-Bayes priors} for $c$, $m$ and the two noise
-  variances, fitted to the other accounts. On development these come from
-  the other folds of \R{c/folds}; on held-out, from all development
-  accounts.
-\item \textbf{V4:} V2 and V3 combined, recalibrated as in V1.
+\item \textbf{Known flows.} Paychecks and scheduled bills enter $b$
+  through $u_t$ at their actual amounts. A paycheck's amount is also an
+  observation of $m$, with variance $R_{\text{inc}}$.
+\item \textbf{The balance} is observed through $[1\;0\;0]$.
+\item \textbf{Tagging.} An adapter tags each record from the data alone.
+  The primary income stream is the largest regular inflow; a bill is a
+  recurring outflow at a regular interval.
+\item \textbf{Pending records.} A settled checkpoint with a replayed
+  provisional tail handles them. None of our real data has them.
 \end{itemize}
+
+\paragraph{Adaptive noise, the gate and lumps.} Each innovation $\nu$ gives
+a one-sample estimate of its channel's variance, for example
+$\nu^2 - hP^-h^\top$ for the income channel. It is unbiased only under the
+correct innovation model, before the gate, weighting and clamp; after them
+it is a heuristic. The estimates are folded into an exponentially
+forgetting weighted mean, $n \leftarrow \lambda n + w$,
+$v \leftarrow \operatorname{clamp}(v + w(\hat v - v)/n)$, in the spirit of
+covariance matching \citep{mehra1970,myers1976}. The weight $w = (v/S)^2$
+discounts samples taken while the state is uncertain. A balance innovation
+beyond a gate is treated as an unexplained \emph{lump} flow; the forecast
+resamples the recorded lumps.
+
+\paragraph{Regime changes.} A two-sided CUSUM \citep{page1954},
+$g^\pm \leftarrow \max(0, g^\pm \pm e - \kappa)$ with an alarm when
+$g > h$, runs on the normalized, gate-clipped innovations $e$. On an alarm,
+the run's mean shift $\hat\Delta$ becomes a zero-mean jump of variance
+$\hat\Delta^2$ in $c$ or $m$, and the noise estimate forgets back to its
+prior count.
+
+\paragraph{The Monte Carlo cone.} Each of \R{c/paths} paths starts from
+$x_0 \sim \mathcal N(\hat x, P)$. It draws its noise variances from scaled
+inverse-$\chi^2$ distributions whose degrees of freedom are the effective
+counts $n$: a heuristic, not a posterior. Each simulated day applies
+$b \mathrel{+}= -c + \varepsilon + \ell + \text{income} + \text{bills}$,
+with $c$ and $m$ as random walks. Lumps $\ell$ are resampled at their
+empirical rate. Paychecks land on the detected schedule with a sampled
+offset. Bills recur on their day of the month or with a sampled drift. The
+initial spend rate is truncated at zero, so that no path earns money every
+day. Each path uses its own counter-based random stream, so a forecast is
+reproducible from its seed (Appendix~\ref{app:identity}).
+
+\paragraph{V2: compound-Poisson spending.} For an account whose median
+number of discretionary records per complete month, over the
+\R{c/sparse-window} days before the origin, is below \R{c/sparse-max},
+discretionary flows are a compound Poisson process instead of
+$-c + \varepsilon$ and the lumps:
+\begin{itemize}
+\item each path draws a rate
+  $\lambda \sim \mathrm{Gamma}(n + \tfrac12, \text{rate} = D)$, the Jeffreys
+  posterior for $n$ events in $D$ days;
+\item each day then has $N \sim \mathrm{Poisson}(\lambda)$ events, whose
+  signed amounts are resampled from the window.
+\end{itemize}
+On Berka the rule fired at every held-out origin
+(\R{ho/vdata/origins_sparse_v2} of \R{ho/vdata/origins}). The option is
+off in the engine's default configuration. The original model, V0, is the
+same forecaster without it. The other revision candidates are described in
+Appendix~\ref{sec:variants}.
