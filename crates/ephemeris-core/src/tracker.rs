@@ -218,7 +218,22 @@ struct FilterState {
     balance_change: Option<ChangeDetector>,
     income_change: Option<ChangeDetector>,
     max_spend_jump: f64,
+    /// Consecutive gated income observations, signed by their innovation
+    /// (the gate escape, [`INCOME_GATE_ESCAPE`]).
+    income_gated_run: i32,
 }
+
+/// After this many consecutive income observations gated on the same side,
+/// the gate treats them as a new pay level: `m` gets a jump of variance ν²
+/// and the income noise estimate forgets, as on a detector alarm.
+///
+/// Without it, the paycheck estimate depends on the detector to leave its
+/// first level: a small first income record makes later paychecks outliers,
+/// the gate skips their updates, and the income variance inflates until the
+/// gain on `m` is too small for it ever to catch up (paper §9, post-freeze
+/// fix). With the detector on, its alarm usually fires on the second gated
+/// paycheck first and the escape does not trigger.
+pub const INCOME_GATE_ESCAPE: i32 = 2;
 
 impl FilterState {
     fn new(cfg: &TrackerConfig, opening: f64) -> Result<Self, EngineError> {
@@ -243,6 +258,7 @@ impl FilterState {
             balance_change: cfg.spend_change.map(ChangeDetector::new).transpose()?,
             income_change: cfg.income_change.map(ChangeDetector::new).transpose()?,
             max_spend_jump: cfg.max_spend_jump,
+            income_gated_run: 0,
         })
     }
 
@@ -345,7 +361,27 @@ impl FilterState {
                     run_len: alarm.run_len,
                 });
             }
-            let gated = inn.nis > gate;
+            let mut gated = inn.nis > gate;
+            if gated {
+                let side = if inn.nu > 0.0 { 1 } else { -1 };
+                let run = if self.income_gated_run.signum() == side {
+                    self.income_gated_run + side
+                } else {
+                    side
+                };
+                if run.abs() >= INCOME_GATE_ESCAPE {
+                    // A new pay level, not an outlier (see INCOME_GATE_ESCAPE).
+                    self.filter.add_jump(IDX_M, inn.nu.powi(2))?;
+                    self.income.forget();
+                    inn = self.filter.innovation(Channel::Income, r, amount)?;
+                    gated = inn.nis > gate;
+                    self.income_gated_run = 0;
+                } else {
+                    self.income_gated_run = run;
+                }
+            } else {
+                self.income_gated_run = 0;
+            }
             if !gated {
                 self.filter.update(Channel::Income, r, amount)?;
             }
@@ -673,11 +709,76 @@ mod tests {
         assert!(jumps[0].shift < -150.0, "{:?}", jumps[0]);
         assert!((m - 1600.0).abs() < 30.0, "m = {m}");
 
-        // Without the detector the short paychecks are gated until R̂_inc's
-        // clipped samples widen the gate, and m is still far off at the end.
+        // Without the detector the gate escape does the same: the first
+        // short paycheck is gated, the second, gated on the same side,
+        // starts a new pay level (INCOME_GATE_ESCAPE). Before the
+        // post-freeze fix, both stayed gated and m ended above 1900.
         let (m, income) = run(None);
-        assert!(income[10].1 && income[11].1);
-        assert!(m > 1900.0, "m = {m}");
+        assert!(income[10].1, "first short paycheck: gated");
+        assert!(!income[11].1, "second: escaped and accepted");
+        assert!((m - 1600.0).abs() < 30.0, "m = {m}");
+    }
+
+    /// A small first income record (as in many Berka accounts), then a
+    /// monthly pay of 8000. With no detector, m must still reach the pay
+    /// level: by hand, the first record sets m ≈ 300 with P_mm ≈ R = 10⁴,
+    /// the next paycheck is gated (NIS ≈ 7700²/2·10⁴ ≫ 10.83), and the
+    /// second gated one on the same side escapes.
+    #[test]
+    fn small_first_paycheck_does_not_lock_m_without_the_detector() {
+        let mut txns = vec![posted(0, START, 300.0, FlowKind::Income)];
+        let mut balance = 1300.0;
+        for k in 1..13 {
+            txns.push(posted(k, START + 30 * k as Day, 8000.0, FlowKind::Income));
+            balance += 8000.0;
+        }
+        let mut tcfg = TrackerConfig::new(START);
+        tcfg.income_change = None;
+        tcfg.spend_change = None;
+        let mut t = Tracker::new(tcfg).unwrap();
+        let report = t.ingest(&txns, balance, START + 360).unwrap();
+        let gated: Vec<bool> = report
+            .days
+            .iter()
+            .flat_map(|d| &d.innovations)
+            .filter(|i| i.channel == Channel::Income)
+            .map(|i| i.gated)
+            .collect();
+        assert_eq!(gated[..3], [false, true, false]);
+        assert!(gated[3..].iter().all(|g| !g));
+        let m = t.estimate().unwrap().x[IDX_M];
+        assert!((m - 8000.0).abs() < 80.0, "m = {m}");
+    }
+
+    /// Outliers on alternating sides are one-offs, not a new level: no
+    /// escape, and m stays at the regular pay.
+    #[test]
+    fn alternating_outliers_do_not_escape_the_gate() {
+        let mut txns = Vec::new();
+        let mut balance = 1000.0;
+        for k in 0..12u64 {
+            let amount = match k {
+                8 => 6000.0,
+                9 => 200.0,
+                _ => 2000.0,
+            };
+            txns.push(posted(k, START + 14 * k as Day, amount, FlowKind::Income));
+            balance += amount;
+        }
+        let mut tcfg = TrackerConfig::new(START);
+        tcfg.income_change = None;
+        let mut t = Tracker::new(tcfg).unwrap();
+        let report = t.ingest(&txns, balance, START + 14 * 11).unwrap();
+        let gated: Vec<bool> = report
+            .days
+            .iter()
+            .flat_map(|d| &d.innovations)
+            .filter(|i| i.channel == Channel::Income)
+            .map(|i| i.gated)
+            .collect();
+        assert!(gated[8] && gated[9], "{gated:?}");
+        let m = t.estimate().unwrap().x[IDX_M];
+        assert!((m - 2000.0).abs() < 20.0, "m = {m}");
     }
 
     /// 60 quiet days at 50/day, then 150/day: the balance detector fires
