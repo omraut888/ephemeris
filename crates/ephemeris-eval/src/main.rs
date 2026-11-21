@@ -171,6 +171,10 @@ enum Cmd {
         held_out: bool,
         #[arg(long)]
         rerun_reason: Option<String>,
+        /// `schedule` only: keep origins on or after this date (YYYY-MM-DD).
+        /// Required with `--held-out` (the round 4 confirmatory test).
+        #[arg(long)]
+        from: Option<String>,
         #[arg(long, default_value = "data/berka")]
         data: PathBuf,
         #[arg(long)]
@@ -268,7 +272,8 @@ fn main() -> ExitCode {
             threads,
             held_out,
             rerun_reason,
-        } => explore(&what, &data, &out, threads, held_out, rerun_reason),
+            from,
+        } => explore(&what, &data, &out, threads, held_out, rerun_reason, from),
         Cmd::ScoreQuantiles {
             features,
             quantiles,
@@ -677,11 +682,31 @@ fn explore(
     threads: usize,
     held_out: bool,
     rerun_reason: Option<String>,
+    from: Option<String>,
 ) -> Result<(), String> {
     use ephemeris_eval::explore as ex;
+    let from: Option<ephemeris_core::Day> = match &from {
+        None => None,
+        Some(s) => {
+            let p: Vec<&str> = s.split('-').collect();
+            let num = |i: usize| p.get(i).and_then(|x| x.parse::<u32>().ok());
+            match (p.len(), num(0), num(1), num(2)) {
+                (3, Some(y), Some(m), Some(d)) => {
+                    Some(ephemeris_core::calendar::day_from_civil(y as i32, m, d))
+                }
+                _ => return Err(format!("--from {s}: expected YYYY-MM-DD")),
+            }
+        }
+    };
+    if from.is_some() && what != "schedule" {
+        return Err("--from applies to `schedule` only".into());
+    }
     if held_out {
-        if !["berka", "bglobal", "startbal"].contains(&what) {
+        if !["berka", "bglobal", "startbal", "schedule"].contains(&what) {
             return Err(format!("`{what}` has no held-out mode"));
+        }
+        if what == "schedule" && from.is_none() {
+            return Err("the held-out `schedule` run is the forward-period test: --from".into());
         }
         if rerun_reason.is_none() {
             return Err("an exploratory held-out run needs --rerun-reason".into());
@@ -858,13 +883,16 @@ fn explore(
             )?;
         }
         "schedule" => {
-            // S11 (REVISION.md, round 3 B1): development only.
-            let accts = split_accounts(data, Split::Dev)?;
+            // S11/S14 on development; with --held-out and --from, the round 4
+            // forward-period confirmatory test (REVISION.md S15), guarded.
+            let accts = split_accounts(data, split)?;
+            let lo = from.unwrap_or(ephemeris_core::Day::MIN);
             let items: Vec<(&Account, i32)> = accts
                 .iter()
                 .flat_map(|a| {
                     ephemeris_eval::variants::eligible_origins(a)
                         .into_iter()
+                        .filter(move |&o| o >= lo)
                         .map(move |o| (a, o))
                 })
                 .collect();
