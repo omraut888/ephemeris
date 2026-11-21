@@ -288,6 +288,9 @@ pub struct AlarmCounts {
     pub balance: u32,
     pub income_28: u32,
     pub balance_28: u32,
+    /// Days of the first and last income alarm.
+    pub first_income: Option<Day>,
+    pub last_income: Option<Day>,
 }
 
 pub fn v2_forecast(
@@ -351,6 +354,8 @@ pub fn v2_forecast(
                 Channel::Income => {
                     alarms.income += 1;
                     alarms.income_28 += u32::from(recent);
+                    alarms.first_income.get_or_insert(d.day);
+                    alarms.last_income = Some(d.day);
                 }
                 _ => {
                     alarms.balance += 1;
@@ -504,7 +509,8 @@ pub fn berka_origin(acct: &Account, origin: Day) -> Option<OriginOut> {
 pub const DETECTOR_STATE_HEADER: &str = "account,origin,config,sparse_used,income_detected,\
 b,c,m,sd_b,sd_c,sd_m,income_var,income_dof,spend_var,spend_dof,income_gated_365,\
 alarms_income,alarms_balance,alarms_income_28,alarms_balance_28,last_pay,future_pay_mean,\
-future_pays,k";
+future_pays,k,\
+first_income_alarm_age,last_income_alarm_before_origin,pay1,pay2,lumps_n,lumps_sum,lump_days";
 
 /// S9 at one origin: V0, V0 without the detector, V2 and V2 without the
 /// detector, each with the score rows and one state line. `None` unless all
@@ -563,6 +569,13 @@ pub fn detector_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, Vec<Str
         .filter(|x| x.date > origin && x.date <= origin + HORIZONS[2])
         .map(|x| x.amount)
         .collect();
+    let early: Vec<f64> = pays(origin)
+        .iter()
+        .filter(|x| x.date <= origin)
+        .take(2)
+        .map(|x| x.amount)
+        .collect();
+    let opt = |d: Option<Day>| d.map_or(String::new(), |d| d.to_string());
     let future_mean = if future.is_empty() {
         f64::NAN
     } else {
@@ -589,7 +602,7 @@ pub fn detector_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, Vec<Str
         let e = &o.est;
         let a = o.alarms;
         states.push(format!(
-            "{},{},{name},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{name},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             acct.id,
             Date(origin),
             u8::from(o.sparse_used),
@@ -612,7 +625,14 @@ pub fn detector_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, Vec<Str
             last_pay,
             future_mean,
             future.len(),
-            k
+            k,
+            opt(a.first_income.map(|d| d - first)),
+            opt(a.last_income.map(|d| origin - d)),
+            early.first().copied().unwrap_or(f64::NAN),
+            early.get(1).copied().unwrap_or(f64::NAN),
+            e.lumps.amounts.len(),
+            e.lumps.amounts.iter().sum::<f64>(),
+            e.lumps.days
         ));
     }
     Some((rows, states))
