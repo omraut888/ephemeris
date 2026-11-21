@@ -1042,6 +1042,84 @@ pub fn shortfall_account(acct: &Account, origins: &[Day]) -> Option<String> {
     ))
 }
 
+// ----------------------------------------------------------------- S13 --
+
+pub const INCOME_TRACE_HEADER: &str = "account,origin,config,n_income,pay_first,pay_last,\
+gated_first12,gated_all,first_close,median_k_last12,final_s_over_pay2,final_m_over_pay,alarms_income";
+
+/// S13: the income channel's observations at an account's last eligible
+/// origin, with and without the detectors (V2's tracker; V0's is the same).
+pub fn income_trace(acct: &Account) -> Option<Vec<String>> {
+    let origin = *crate::variants::eligible_origins(acct).last()?;
+    let first = acct.first_day();
+    let s = acct.scale_at(origin).filter(|&s| s > 0.0)?;
+    let k = REFERENCE_SCALE / s;
+    let t = (origin - first) as usize;
+    let bal_raw = acct.daily_balance(origin);
+    let recs = acct.records_through(origin);
+    let txns = transactions(recs, &tag(recs), k);
+    let amounts: Vec<f64> = txns
+        .iter()
+        .filter(|x| x.kind == FlowKind::Income)
+        .map(|x| x.amount)
+        .collect();
+    let mut out = Vec::new();
+    for (name, detector) in [("det", true), ("nodet", false)] {
+        let mut cfg = TrackerConfig::new(first);
+        cfg.observe.holidays = CALENDAR;
+        if !detector {
+            cfg.spend_change = None;
+            cfg.income_change = None;
+        }
+        let mut tracker = Tracker::new(cfg).ok()?;
+        let ingest = tracker.ingest(&txns, bal_raw[t] * k, origin).ok()?;
+        let est = tracker.estimate()?;
+        let inns: Vec<(f64, f64, bool)> = ingest
+            .days
+            .iter()
+            .flat_map(|d| d.innovations.iter())
+            .filter(|i| i.channel == Channel::Income)
+            .map(|i| (i.innovation.nu, i.innovation.s, i.gated))
+            .collect();
+        let alarms = ingest
+            .days
+            .iter()
+            .flat_map(|d| d.jumps.iter())
+            .filter(|j| j.channel == Channel::Income)
+            .count();
+        if inns.len() != amounts.len() || inns.is_empty() {
+            continue;
+        }
+        let n = inns.len();
+        let m_pred: Vec<f64> = amounts.iter().zip(&inns).map(|(a, i)| a - i.0).collect();
+        let gated12 = inns.iter().take(12).filter(|i| i.2).count();
+        let gated = inns.iter().filter(|i| i.2).count();
+        let first_close = (1..n)
+            .find(|&i| (m_pred[i] - amounts[i]).abs() < 0.2 * amounts[i].abs())
+            .map_or(String::new(), |i| i.to_string());
+        let mut ks: Vec<f64> = (n.saturating_sub(13)..n - 1)
+            .filter(|&i| inns[i].0 != 0.0)
+            .map(|i| (m_pred[i + 1] - m_pred[i]) / inns[i].0)
+            .collect();
+        ks.sort_by(f64::total_cmp);
+        let med_k = if ks.is_empty() {
+            f64::NAN
+        } else {
+            ks[ks.len() / 2]
+        };
+        let last = amounts[n - 1];
+        out.push(format!(
+            "{},{},{name},{n},{},{last},{gated12},{gated},{first_close},{med_k},{},{},{alarms}",
+            acct.id,
+            Date(origin),
+            amounts[0],
+            inns[n - 1].1 / (last * last),
+            est.x[2] / last
+        ));
+    }
+    Some(out)
+}
+
 /// The drift through each day with records (S1): `(day, max so far)`.
 pub fn drift_through(acct: &Account) -> BTreeMap<Day, f64> {
     let mut out = BTreeMap::new();

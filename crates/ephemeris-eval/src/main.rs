@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall", "income-trace"])]
         what: String,
         /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
         /// logged like the frozen evaluation, with a required reason.
@@ -923,6 +923,17 @@ fn explore(
                 &out.join("data.csv"),
                 &format!("key,value\norigins,{n}\nitems,{}\n", items.len()),
             )?;
+        }
+        "income-trace" => {
+            // S13 (REVISION.md, round 4 item 1): development only.
+            let accts = split_accounts(data, Split::Dev)?;
+            let res = parallel_map(&accts, threads, "income-trace", ex::income_trace);
+            let mut s = format!("{}\n", ex::INCOME_TRACE_HEADER);
+            for l in res.into_iter().flatten().flatten() {
+                s.push_str(&l);
+                s.push('\n');
+            }
+            write(&out.join("trace.csv"), &s)?;
         }
         "phase" => {
             let accts = dev_accounts(data, true)?;
