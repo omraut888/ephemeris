@@ -866,11 +866,50 @@ pub fn schedule_origin(acct: &Account, origin: Day) -> Option<(Vec<Row>, String)
                 .collect();
             Dist::sample(xs)
         };
+        // S14: within-window dependence.
+        let ds: Vec<usize> = (c.lo()..=c.t - hu).collect();
+        let hist: Vec<f64> = ds.iter().map(|&d| sc.between(d, hu)).collect();
+        let resid: Vec<f64> = ds
+            .iter()
+            .zip(&hist)
+            .map(|(&d, &s)| bal[d + hu] - bal[d] - s)
+            .collect();
+        let n = ds.len();
+        let mut shuf = Vec::with_capacity(4 * n);
+        for r in 0..4u64 {
+            let mut rng = ChaCha8Rng::seed_from_u64(c.seed.wrapping_add(r));
+            let mut perm: Vec<usize> = (0..n).collect();
+            for i in (1..n).rev() {
+                perm.swap(i, rng.random_range(0..=i));
+            }
+            shuf.extend((0..n).map(|i| bal[t] + hist[i] + resid[perm[i]]));
+        }
+        let ident: Vec<f64> = (0..n).map(|i| bal[t] + resid[i] + hist[i]).collect();
+        let matched = |target: f64| {
+            let mut idx: Vec<usize> = (0..n).collect();
+            idx.sort_by(|&x, &y| {
+                (hist[x] - target)
+                    .abs()
+                    .total_cmp(&(hist[y] - target).abs())
+                    .then(y.cmp(&x))
+            });
+            let k = 10.max((0.2 * n as f64).ceil() as usize).min(n);
+            Dist::sample(
+                idx[..k]
+                    .iter()
+                    .map(|&i| bal[t] + target + resid[i])
+                    .collect(),
+            )
+        };
         for (name, d) in [
             ("F0", mk(0.0, false)),
             ("F0.5", mk(0.5, false)),
             ("F1", mk(1.0, false)),
             ("O", mk(0.0, true)),
+            ("EQ-shuf", Dist::sample(shuf)),
+            ("EQ-ident", Dist::sample(ident)),
+            ("SR-match", matched(sc.cum[hu])),
+            ("O-match", matched(s_real)),
         ] {
             rows.push(Row {
                 account: acct.id,
