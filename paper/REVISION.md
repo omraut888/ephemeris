@@ -707,3 +707,25 @@ setting and the added 7-day scores change that little. The two calendar
 controls reuse B-EQ's windows on Berka development data, about 15 minutes.
 Total, with summaries: about 1.5 hours. (Recorded on 2026-11-21; S4's
 runtime is from its log.)
+
+### S11: oracle definition corrected after the first run (recorded before the rerun)
+
+The first run's oracle lost even to F1 at 90 days (pooled skill O vs F1
+−0.16), which a correct oracle should not do. The cause is the definition:
+- S_hist takes only income-tagged records (inflows of the income
+  counterparty) and the records of detected bill streams;
+- S_real as specified took **every** record of those counterparties,
+  including outflows to the income counterparty and records of a bill's
+  counterparty that are not part of the stream.
+
+The two were therefore not the same quantity.
+
+**Corrected:** S_real is the sum over (t, t+h] of the records that the
+tagging of the records through t+h marks as income, when income was
+detected at t and the record's counterparty is the income counterparty at
+t, or as scheduled with a counterparty among the detected bills'. This is
+the rule that defines S_hist, applied to the later tagging.
+
+F_w and the predictability measures are unchanged, and only the oracle's
+rows are expected to change. The first run's oracle results are kept in
+`s11-schedule/first-run-oracle/`, labelled superseded.
