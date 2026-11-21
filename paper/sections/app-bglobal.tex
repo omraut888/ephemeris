@@ -1,0 +1,43 @@
+\section{B-GLOBAL without calendar look-ahead (exploratory)}
+\label{app:bglobal}
+The original B-GLOBAL was trained on development origins of all dates, so
+for early held-out origins it saw outcomes from their future. We retrained
+it two ways, on development data only, with the frozen features,
+hyperparameters and levels:
+\begin{itemize}
+\item \textbf{G-cf (calendar-forward):} for each quarter, a model trained
+  on development rows whose outcome precedes the quarter's start, predicting
+  the held-out origins in that quarter;
+\item \textbf{G-cut:} one model per horizon, trained on development rows
+  whose outcome precedes a single cutoff, predicting held-out origins on or
+  after it (\R{xh/s7-cut/V2-vs-B-SA+/30/forecasts} origins at \hB\ days).
+\end{itemize}
+On held-out accounts, account-mean skill at \hB\ and \hC\ days:
+\begin{itemize}
+\item \textbf{Against the original B-GLOBAL:} G-cf
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean} (development:
+  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/30/skill_mean} and
+  \R{xd/s7-cf/B-GLOBAL-cf-vs-B-GLOBAL/90/skill_mean}); G-cut
+  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL/30/skill_mean} and
+  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-GLOBAL/90/skill_mean}.
+\item \textbf{Against B-EQ:} G-cf
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/30/skill_mean} and
+  \R{xh/s7-cf/B-GLOBAL-cf-vs-B-EQ/90/skill_mean}; G-cut
+  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ/30/skill_mean} and
+  \R{xh/s7-cut/B-GLOBAL-cut-vs-B-EQ/90/skill_mean}.
+\item \textbf{V2 against G-cf:}
+  \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/skill_mean} and
+  \R{xh/s7-cf/V2-vs-B-GLOBAL-cf/90/skill_mean}.
+\end{itemize}
+\textbf{Its calibration is weaker.} G-cf's \lC\% interval covers
+\R{xh/s7/stats-cf/B-GLOBAL-cf/30/cov90} and
+\R{xh/s7/stats-cf/B-GLOBAL-cf/90/cov90}\% at \hB\ and \hC\ days, against
+V2's \R{xh/s7/stats-cf/V2/30/cov90} and \R{xh/s7/stats-cf/V2/90/cov90}\% on
+the same origins (\R{xh/s7-cf/V2-vs-B-GLOBAL-cf/30/forecasts} per horizon).
+Intervals for every comparison are in
+\texttt{paper/results/exploratory-heldout/s7-bglobal/}.
+
+A model trained across other people's accounts and shipped frozen to a
+device would keep most of this advantage. Whether that is acceptable is a
+product question this paper does not settle.
