@@ -1,6 +1,42 @@
 # Progress log (autonomous session, started 2026-11-21)
 
-*(The summary goes here at the end.)*
+## Resume here (updated after every step)
+
+**Current step: 1 (exploratory held-out runs), with step 3 (paper
+restructure) drafted in parallel.**
+
+**Finished:**
+- the guarded held-out modes (commit `3b433c0`);
+- step 2, the README known gaps (`b5419b0`);
+- the compact protocol section and its appendix (`2ffb6bb`);
+- new figure code (`3360515`);
+- abstract, introduction and reversal sections drafted, not yet built.
+
+**Half-done:**
+- **Run (a)**, the held-out reversal, overdraft and ablation pass, is
+  running in the background. It writes to `paper/build/explore-heldout/berka/`
+  and logs to `paper/build/explore-heldout-berka.log`.
+  - Its guard entry is already committed in
+    `paper/results/heldout-runs.log`.
+  - If it was interrupted (no "exit" line in its log), rerun it with
+    `--rerun-reason "rerun of exploratory run (a): first attempt
+    interrupted"`, after `git status` is clean. It is safe to rerun: the
+    output directory is simply overwritten.
+- **Run (b)**, held-out B-GLOBAL, was killed for memory (D1.5) with no
+  output. It still needs to run after (a) finishes.
+- **The binary is not rebuilt** since `lgbm_cf.py` got the lean loader. Run
+  `cargo build --release -p ephemeris-eval` first.
+
+**Next action:**
+1. When run (a)'s log has an "exit" line:
+   `paper/.venv/bin/python -I paper/analysis/explore_summary.py --heldout S3 S5 S6`.
+2. Commit `paper/results/exploratory-heldout/`.
+3. Rebuild the binary.
+4. Run (b):
+   `target/release/ephemeris-eval explore bglobal --held-out --rerun-reason "rerun of the exploratory B-GLOBAL run: first attempt killed for memory exhaustion before writing any output" --out paper/build/explore-heldout/bglobal`.
+5. Then `explore_summary.py --heldout S7`, and compare with development.
+
+*(The final summary goes here at the end.)*
 
 ## Step log
 
