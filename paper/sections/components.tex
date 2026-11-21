@@ -6,22 +6,23 @@ The plan's ablations removed components from V0, because they were
 written before V2 existed. They were run on held-out accounts in a second,
 separately logged run, after the main results were known
 (Table~\ref{tab:ablations}, Appendix~\ref{app:tables}). The V2 ablations
-were added later, on both splits. Skill below is the variant's account-mean
-skill against its full model at \hB\ and \hC\ days (positive: removing the
-component lowers CRPS).
+were added later, on both splits (development results in
+\texttt{paper/results/exploratory/s6-v2-ablations/}). Below: each variant's
+skill against its full model on held-out accounts, account mean with the
+pooled skill in brackets (positive: removing the component lowers CRPS).
 
 \begin{center}\scriptsize
 \begin{tabular}{l ll ll}
 \toprule
- & \multicolumn{2}{c}{in V0 (held-out)} & \multicolumn{2}{c}{in V2 (held-out; development in brackets)}\\
+ & \multicolumn{2}{c}{in V0} & \multicolumn{2}{c}{in V2}\\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
 Component removed & \hB\ d & \hC\ d & \hB\ d & \hC\ d\\
 \midrule
-adaptive noise & \R{ho/ablp/all/abl-fixed-noise/30/skill@3} & \R{ho/ablp/all/abl-fixed-noise/90/skill@3} & \R{xh/s6/V2-noadapt-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-noadapt-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-noadapt-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-noadapt-vs-V2/90/skill_mean@3})}\\
-regime detector & \R{ho/ablp/all/abl-no-detector/30/skill@3} & \R{ho/ablp/all/abl-no-detector/90/skill@3} & \R{xh/s6/V2-nodetector-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-nodetector-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-nodetector-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-nodetector-vs-V2/90/skill_mean@3})}\\
-spend floor & \R{ho/ablp/all/abl-no-floor/30/skill@3} & \R{ho/ablp/all/abl-no-floor/90/skill@3} & \R{xh/s6/V2-nofloor-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V2-nofloor-vs-V2/30/skill_mean@3})} & \R{xh/s6/V2-nofloor-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V2-nofloor-vs-V2/90/skill_mean@3})}\\
-lumps / sparse spending & \R{ho/ablp/all/abl-no-lumps/30/skill@3} & \R{ho/ablp/all/abl-no-lumps/90/skill@3} & \R{xh/s6/V0-vs-V2/30/skill_mean@3} {\tiny(\R{xd/s6/V0-vs-V2/30/skill_mean@3})} & \R{xh/s6/V0-vs-V2/90/skill_mean@3} {\tiny(\R{xd/s6/V0-vs-V2/90/skill_mean@3})}\\
-the filter & -- & -- & \R{xh/s6/cp-nokf-vs-v2/30/skill_mean@3} {\tiny(\R{xd/s6/cp-nokf-vs-v2/30/skill_mean@3})} & \R{xh/s6/cp-nokf-vs-v2/90/skill_mean@3} {\tiny(\R{xd/s6/cp-nokf-vs-v2/90/skill_mean@3})}\\
+adaptive noise & \R{ho/ablp/all/abl-fixed-noise/30/skill@3} {\tiny(\R{ho/ablp/all/abl-fixed-noise/30/pooled_skill@3})} & \R{ho/ablp/all/abl-fixed-noise/90/skill@3} {\tiny(\R{ho/ablp/all/abl-fixed-noise/90/pooled_skill@3})} & \R{xh/s6/V2-noadapt-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-noadapt-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-noadapt-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-noadapt-vs-V2/90/skill_pooled@3})}\\
+regime detector & \R{ho/ablp/all/abl-no-detector/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-detector/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-detector/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-detector/90/pooled_skill@3})} & \R{xh/s6/V2-nodetector-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-nodetector-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-nodetector-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-nodetector-vs-V2/90/skill_pooled@3})}\\
+spend floor & \R{ho/ablp/all/abl-no-floor/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-floor/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-floor/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-floor/90/pooled_skill@3})} & \R{xh/s6/V2-nofloor-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-nofloor-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-nofloor-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-nofloor-vs-V2/90/skill_pooled@3})}\\
+lumps / sparse spending & \R{ho/ablp/all/abl-no-lumps/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-lumps/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-lumps/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-lumps/90/pooled_skill@3})} & \R{xh/s6/V0-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V0-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V0-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V0-vs-V2/90/skill_pooled@3})}\\
+the filter & -- & -- & \R{xh/s6/cp-nokf-vs-v2/30/skill_mean@3} {\tiny(\R{xh/s6/cp-nokf-vs-v2/30/skill_pooled@3})} & \R{xh/s6/cp-nokf-vs-v2/90/skill_mean@3} {\tiny(\R{xh/s6/cp-nokf-vs-v2/90/skill_pooled@3})}\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -30,9 +31,21 @@ the filter & -- & -- & \R{xh/s6/cp-nokf-vs-v2/30/skill_mean@3} {\tiny(\R{xd/s6/c
 V0's ablations and \R{xh/s6/V2-nodetector-vs-V2/30/forecasts} for V2's.
 
 \begin{itemize}
-\item \textbf{Inside V2, the detector matters most:} removing it raises
-  CRPS sharply. That reverses the descriptive real-data result for V0
-  (Appendix~\ref{app:regime}).
+\item \textbf{Removing the detector hurts both models, V2 far more.} The
+  sign is the same as for V0; the magnitude is not. A diagnostic on
+  development accounts (exploratory; Appendix~\ref{app:detector}) traces
+  it. The whole V2 effect sits in accounts with detected income and an
+  income alarm; elsewhere removing the detector leaves V2's forecasts
+  unchanged. In Berka, the first income-tagged record is typically a
+  small fraction of the later pay (median \R{xd/s9/mech/pay1-over-last/median}\%),
+  and the income alarm, a median \R{xd/s9/mech/first-alarm-age/median} days
+  into the history, is what moves the expected paycheck $m$ to the pay
+  level. Without it, $\hat m$ stays at a median
+  \R{xd/s9/mech/m-nodet-over-last/median}\% of the last paycheck, and V2's
+  cone, whose spending model ignores the spend rate, projects most of the
+  pay as missing. The V2 ablation therefore measures the detector's role
+  in initializing the income state, not its response to later regime
+  changes.
 \item \textbf{The spend floor has no effect in V2}, whose spending model
   does not use the rate the floor acts on.
 \item \textbf{Fixed noise priors are marginally better} in both models.

@@ -147,3 +147,48 @@ three origins each). The numbers reproduce that test's output exactly.}
   first \R{xd/s8-offset0/V2-vs-B-EQ/30/accounts} development accounts only,
   was an identity check and is not a comparison.
 \end{itemize}
+
+\subsection{The detector ablation in V2 (exploratory, development)}
+\label{app:detector}
+Removing the detector costs V2 far more than V0 (\S\ref{sec:components}).
+We checked for a bug before reading anything else (specification S9,
+\texttt{paper/REVISION.md}). On all \R{xd/s9/V2-nodet-vs-V2/30/forecasts} development origins
+(\R{xd/s9/V2-nodet-vs-V2/30/accounts} accounts):
+\begin{itemize}
+\item the four configurations (V0 and V2, each with and without the
+  detector) reproduce the stored forecasts exactly;
+\item the branch V2 uses (sparse spending) is the same with and without the
+  detector at every origin;
+\item V0 and V2 share the same filter state at every origin.
+\end{itemize}
+The effect is genuine. By stratum, pooled skill of the variant without the
+detector against its full model, account mean in brackets (origins per
+horizon in brackets after each stratum):
+
+\begin{center}\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{l ll ll}
+\toprule
+ & \multicolumn{2}{c}{V2 without detector} & \multicolumn{2}{c}{V0 without detector}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Stratum & \hB\ d & \hC\ d & \hB\ d & \hC\ d\\
+\midrule
+income detected, income alarm (\R{xd/s9-inc-alarm/V2-nodet-vs-V2/30/forecasts}) & \pq{xd/s9-inc-alarm/V2-nodet-vs-V2}{30} & \pq{xd/s9-inc-alarm/V2-nodet-vs-V2}{90} & \pq{xd/s9-inc-alarm/V0-nodet-vs-V0}{30} & \pq{xd/s9-inc-alarm/V0-nodet-vs-V0}{90}\\
+income detected, no income alarm (\R{xd/s9-inc-noalarm/V2-nodet-vs-V2/30/forecasts}) & \pq{xd/s9-inc-noalarm/V2-nodet-vs-V2}{30} & \pq{xd/s9-inc-noalarm/V2-nodet-vs-V2}{90} & \pq{xd/s9-inc-noalarm/V0-nodet-vs-V0}{30} & \pq{xd/s9-inc-noalarm/V0-nodet-vs-V0}{90}\\
+no income detected (\R{xd/s9-noinc/V2-nodet-vs-V2/30/forecasts}) & \pq{xd/s9-noinc/V2-nodet-vs-V2}{30} & \pq{xd/s9-noinc/V2-nodet-vs-V2}{90} & \pq{xd/s9-noinc/V0-nodet-vs-V0}{30} & \pq{xd/s9-noinc/V0-nodet-vs-V0}{90}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In the first stratum the forecast median at \hC\ days is biased by
+\R{xd/s9/cb/inc-alarm/90/bias_V2-nodet} (normalized units) without the
+detector, against \R{xd/s9/cb/inc-alarm/90/bias_V2} with it; V0's bias is
+\R{xd/s9/cb/inc-alarm/90/bias_V0-nodet} and \R{xd/s9/cb/inc-alarm/90/bias_V0}.
+The income alarms there fire early (median \R{xd/s9/mech/first-alarm-age/median}
+days into the history; \R{xd/s9/mech/share-first-alarm-180/q25}\% of
+origins have their first one within 180 days), because the first
+income-tagged record is a median \R{xd/s9/mech/pay1-over-last/median}\% of
+the later pay. With the detector, $\hat m$ is a median
+\R{xd/s9/mech/m-det-over-last/median}\% of the last paycheck; without it,
+\R{xd/s9/mech/m-nodet-over-last/median}\%. V0 is biased less; neither its
+recorded lumps nor its spend-rate estimate accounts for the difference, so
+the path by which V0 partly compensates is not identified.

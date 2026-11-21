@@ -73,6 +73,9 @@ def fmt(col, v):
         return points(v)
     # Calibration in the large (s5-overdraft/citl.csv): percent and
     # percentage points to two decimals, since below-0 events are rare.
+    if c.startswith("crps_") or c.startswith("bias_"):
+        s = integer(abs(float(v)))
+        return ("\\textminus{}" + s) if float(v) < 0 else s
     if c in ("observed", "mean_p"):
         return pct(v, 2)
     if c in ("diff", "diff_lo", "diff_hi"):
@@ -618,7 +621,7 @@ def exploratory():
     import glob
     for tag, d in (("xd", RES / "exploratory"), ("xh", RES / "exploratory-heldout")):
         for sub, short in (("s3-reversal", "s3"), ("s6-v2-ablations", "s6"), ("s7-bglobal", "s7"),
-                           ("s8-phase", "s8")):
+                           ("s8-phase", "s8"), ("s9-detector", "s9"), ("s11-schedule", "s11")):
             for f in sorted(glob.glob(str(d / sub / "*.csv"))):
                 name = pathlib.Path(f).stem
                 if name.startswith("compare"):
@@ -629,6 +632,24 @@ def exploratory():
                     keyvalue(f"{tag}/{short}/{name}", f)
         if (d / "s5-overdraft/brier.csv").exists():
             table(f"{tag}/s5", d / "s5-overdraft/brier.csv", ["threshold", "h"])
+        s9 = d / "s9-detector"
+        if (s9 / "mechanism.csv").exists():
+            for r in csv.DictReader(open(s9 / "mechanism.csv")):
+                for q in ("q25", "median", "q75"):
+                    if not r[q]:
+                        continue
+                    v = float(r[q])
+                    if r["key"].endswith(("age", "before")):
+                        put(f"{tag}/s9/mech/{r['key']}/{q}", integer(v))
+                    elif r["key"].startswith("lumps-n"):
+                        put(f"{tag}/s9/mech/{r['key']}/{q}", integer(v))
+                    else:
+                        put(f"{tag}/s9/mech/{r['key']}/{q}", pct(v))
+            table(f"{tag}/s9/cb", s9 / "crps-bias.csv", ["stratum", "h"])
+        s12 = d / "s12-shortfall"
+        if (s12 / "scores.csv").exists():
+            table(f"{tag}/s12/sc", s12 / "scores.csv", ["block", "subset", "method"])
+            table(f"{tag}/s12/n", s12 / "counts.csv", ["threshold", "h"])
         s10 = d / "s10-rows-checks"
         if s10.exists():
             table(f"{tag}/s10/ct", s10 / "coverage-tails.csv", ["method", "h"])

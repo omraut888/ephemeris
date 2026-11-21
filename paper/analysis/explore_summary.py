@@ -498,19 +498,19 @@ def s9():
     lump_rate = lambda c: g(c, "lumps_sum") / np.maximum(g(c, "lump_days"), 1) * 30  # noqa: E731
     missing = last - m_nod
     q = lambda v: [fmt(x, 3) for x in np.nanquantile(v, [0.25, 0.5, 0.75])]  # noqa: E731
-    mech = [["measure", "q25", "median", "q75"],
-            ["first income alarm, days after the first day of history", *q(first_age)],
-            ["last income alarm, days before the origin", *q(last_before)],
-            ["share of origins whose first income alarm fired within 180 days of the first day", fmt(
+    mech = [["key", "measure", "q25", "median", "q75"],
+            ["first-alarm-age", "first income alarm, days after the first day of history", *q(first_age)],
+            ["last-alarm-before", "last income alarm, days before the origin", *q(last_before)],
+            ["share-first-alarm-180", "share of origins whose first income alarm fired within 180 days of the first day", fmt(
                 float(np.mean(first_age <= 180)) if len(ia) else float("nan"), 3), "", ""],
-            ["first tagged paycheck / last paycheck", *q(pay1 / last)],
-            ["m-hat with the detector / last paycheck", *q(m_det / last)],
-            ["m-hat without the detector / last paycheck", *q(m_nod / last)],
-            ["m-hat without the detector / first paycheck", *q(m_nod / pay1)],
-            ["V0 lumps per 30 days / missing income (V0-nodet)", *q(lump_rate("V0-nodet") / missing)],
-            ["V0 lumps per 30 days / missing income (V0)", *q(lump_rate("V0") / missing)],
-            ["V0-nodet lumps, count", *q(g("V0-nodet", "lumps_n"))],
-            ["V0 lumps, count", *q(g("V0", "lumps_n"))]]
+            ["pay1-over-last", "first tagged paycheck / last paycheck", *q(pay1 / last)],
+            ["m-det-over-last", "m-hat with the detector / last paycheck", *q(m_det / last)],
+            ["m-nodet-over-last", "m-hat without the detector / last paycheck", *q(m_nod / last)],
+            ["m-nodet-over-pay1", "m-hat without the detector / first paycheck", *q(m_nod / pay1)],
+            ["lumps-v0nodet", "V0 lumps per 30 days / missing income (V0-nodet)", *q(lump_rate("V0-nodet") / missing)],
+            ["lumps-v0", "V0 lumps per 30 days / missing income (V0)", *q(lump_rate("V0") / missing)],
+            ["lumps-n-v0nodet", "V0-nodet lumps, count", *q(g("V0-nodet", "lumps_n"))],
+            ["lumps-n-v0", "V0 lumps, count", *q(g("V0", "lumps_n"))]]
     write(out / "mechanism.csv", mech)
     show(mech)
 

@@ -65,7 +65,15 @@ climatology.} The event is rare: \R{xh/s5/u0/7/prevalence},
   \R{xh/s5/u0/7/bss_B-EQp} [\R{xh/s5/u0/7/bss_B-EQp_lo},
   \R{xh/s5/u0/7/bss_B-EQp_hi}], and \R{xd/s5/u0/7/bss_B-EQp} on development.
   The held-out prevalence of this cell is below the \R{c/prev-min}\% our
-  specification set for reliable results, so we mark it unreliable.
+  specification set for reliable results, so we mark it unreliable. An
+  audit on development accounts (exploratory, specification S12) explains
+  it: of the \R{xd/s12/n/u0/7/events} events at \hA\ days,
+  only \R{xd/s12/n/u0/7/events_start_at_or_above} start at or above zero;
+  the rest continue a balance that is already negative. Among origins
+  starting at or above zero, B-EQp's Brier skill against CLIM is
+  \R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_vs_clim}
+  [\R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_lo},
+  \R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_hi}].
 \end{itemize}
 
 \paragraph{Below the account's own tenth percentile: every method beats

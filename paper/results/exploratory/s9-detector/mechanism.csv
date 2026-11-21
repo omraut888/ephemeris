@@ -1,12 +1,12 @@
-measure,q25,median,q75
-"first income alarm, days after the first day of history",30.000,44.000,56.000
-"last income alarm, days before the origin",445.000,727.000,1101.000
-share of origins whose first income alarm fired within 180 days of the first day,0.966,,
-first tagged paycheck / last paycheck,0.022,0.038,0.056
-m-hat with the detector / last paycheck,1.011,1.071,1.089
-m-hat without the detector / last paycheck,0.070,0.098,0.141
-m-hat without the detector / first paycheck,1.676,2.398,3.684
-V0 lumps per 30 days / missing income (V0-nodet),-0.976,-0.796,-0.639
-V0 lumps per 30 days / missing income (V0),-0.952,-0.771,-0.618
-"V0-nodet lumps, count",36.000,54.000,77.000
-"V0 lumps, count",36.000,53.000,74.000
+key,measure,q25,median,q75
+first-alarm-age,"first income alarm, days after the first day of history",30.000,44.000,56.000
+last-alarm-before,"last income alarm, days before the origin",445.000,727.000,1101.000
+share-first-alarm-180,share of origins whose first income alarm fired within 180 days of the first day,0.966,,
+pay1-over-last,first tagged paycheck / last paycheck,0.022,0.038,0.056
+m-det-over-last,m-hat with the detector / last paycheck,1.011,1.071,1.089
+m-nodet-over-last,m-hat without the detector / last paycheck,0.070,0.098,0.141
+m-nodet-over-pay1,m-hat without the detector / first paycheck,1.676,2.398,3.684
+lumps-v0nodet,V0 lumps per 30 days / missing income (V0-nodet),-0.976,-0.796,-0.639
+lumps-v0,V0 lumps per 30 days / missing income (V0),-0.952,-0.771,-0.618
+lumps-n-v0nodet,"V0-nodet lumps, count",36.000,54.000,77.000
+lumps-n-v0,"V0 lumps, count",36.000,53.000,74.000
