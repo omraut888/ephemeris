@@ -540,3 +540,170 @@ The rerun adds, per origin and configuration:
 - the number of recorded lumps, their sum and the days they cover.
 
 Nothing else changes, and the identity checks are repeated.
+
+## S11 (round 3, B1) The schedule-replacement contrast (development)
+
+**Origins and windows.** The frozen development origins. At origin t and
+horizon h, the windows are B-EQ's: every d with lo ≤ d ≤ t − h, where
+lo = max(first day, t − 365).
+
+**Forecasts.** Each is an empirical distribution over the windows, equal
+mass per window:
+- **F_w,** for w ∈ {0, 0.5, 1}: samples B_t + ΔB_d + w·(S_t − S_hist,d).
+  - ΔB_d = B_{d+h} − B_d.
+  - S_t: the projection over (t, t+h] of the schedule detected at t (as in
+    B-SR: `schedule_aware_delta`).
+  - S_hist,d: the **realized** flows dated in (d, d+h] of the streams that
+    the schedule detected at t contains: income-tagged records if income
+    was detected, and the records of each detected bill stream. Tagging is
+    on the records through t. This is a retrospective decomposition with
+    the origin's schedule, not a projection made at date d. (A projection
+    made at d would need a schedule detection on every past day; it is out
+    of scope here and named as a limitation.)
+  - F_0 is B-EQ and F_1 is B-SR. Both identities are checked against the
+    stored S3 rows.
+- **Oracle O (diagnostic only; uses the future):** samples
+  B_t + ΔB_d − S_hist,d + S_real, where S_real is the realized flows dated
+  in (t, t+h] of the same streams. The streams are identified by
+  counterparty (operation, k_symbol, bank, account), not by stream id,
+  because ids are positions in a sorted list and change as records are
+  added. Income records are those tagged income on the records through
+  t+h whose counterparty is the income counterparty at t.
+
+**Schedule predictability at the origin (history only).** Checkpoints
+c_j = t − 30j, for j = 1..6, with c_j ≥ first day + 90. At each checkpoint:
+- tag the records through c_j and detect the schedule;
+- list the projected events in (c_j, c_j + 30] (paydays with the last
+  paycheck's amount; bill due dates with their amounts);
+- list the realized events: records in (c_j, c_j + 30] whose counterparty
+  is one of the detected streams' counterparties.
+
+Measures, pooled over the checkpoints:
+- **amount error** A = Σ_j |R_j − P_j| / Σ_j |R_j|, where R_j and P_j are
+  the realized and projected net flows (undefined if Σ_j |R_j| = 0);
+- **date error:** the mean |days| from each projected event to the
+  nearest realized event of the same stream within ±10 days;
+- **missed:** projected events with no realized event of the stream
+  within ±10 days, per projected event;
+- **extra:** realized events with no projected event of the stream within
+  ±10 days, per realized event.
+
+**Strata:**
+- **No schedule:** the schedule detected at t has no income and no bills.
+- **Short history:** fewer than 3 checkpoints, or A undefined.
+- **Tertiles of A** among the rest. The cut points are fixed from the
+  development distribution and recorded for later use.
+
+The miss and extra rates are reported by tertile as descriptions, not
+used for stratification.
+
+**Reported:**
+- for F_1 vs F_0, F_0.5 vs F_0 and O vs F_0: pooled and account-mean
+  skill with 95% account-bootstrap intervals, coverage, and one-sided 90%
+  misses, overall and per stratum;
+- the counts of origins and accounts per stratum.
+
+**The key test (development, exploratory).** Schedule replacement (F_1 vs
+F_0) has positive skill in the most predictable tertile and negative skill
+in the least predictable, under the strength-of-evidence rule above. If
+the oracle helps where F_1 hurts, the loss is in the projection, not in
+the replacement idea.
+
+Code: `ephemeris-eval explore schedule`. Summary: `explore_summary.py s11`.
+Results: `paper/results/exploratory/s11-schedule/`.
+
+## S12 (round 3, B2) The shortfall audit (development)
+
+**The event, precisely.** E(u, h) = 1 if the booked end-of-day balance is
+below u on at least one of days t+1, …, t+h. Day t (the origin) is not
+included. Balances are the reconstructed series (opening balance plus
+signed amounts), as everywhere in the paper.
+
+**Audit items:**
+1. **Already below.** Count the origins with B_t < u, per threshold.
+   Report every metric separately for origins starting below the threshold
+   and for those at or above it. In the second group the event is a first
+   crossing. As a check, also report E with day t included.
+2. **Reported against reconstructed labels.** The reported series is the
+   bank's balance on the day's last record (file order), carried forward
+   over days without records. Count the origins whose u = 0 label differs
+   between the two series, per horizon, and give the prevalence under each.
+3. **A buffer around zero.** Thresholds u = −δ and u = +δ for δ ∈ {100,
+   1,000} CZK (raw), next to u = 0. Report prevalence, Brier scores, and
+   the share of u = 0 events whose minimum is in (−δ, 0).
+4. **Concentration.**
+   - Episodes: maximal runs of consecutive days below 0, over each account's
+     evaluated period.
+   - Accounts that ever cross, and events per account.
+   - Prevalence and Brier skill against CLIM after removing (a) the 5
+     accounts with the most u = 0 events at 90 days and (b) the top 1% of
+     accounts by that count.
+5. **A conditioned climatology, CLIM-D (past-only).** Among the account's
+   own past windows (B-EQ's), take the K windows whose starting balance B_d
+   is closest to B_t, with K = max(10, ⌈0.2·n⌉) and ties broken by recency.
+   CLIM-D is the share of them in which the balance went below u during
+   (d, d+h].
+6. **V2 recalibrated.** Logistic recalibration of logit(clip(p, 10⁻⁴,
+   1 − 10⁻⁴)), with two parameters per threshold and horizon, cross-fitted
+   over 5 account folds (fold = splitmix64(account) mod 5) and evaluated
+   out of fold. An isotonic recalibration, cross-fitted the same way, is a
+   second variant. The full-development fit is recorded for any later
+   confirmatory use; it is not applied to held-out data here.
+7. **A calibration–resolution decomposition.** The Murphy decomposition with
+   ten equal-width bins: Brier = REL − RES + UNC + a within-bin term,
+   reported so that the parts add up to the Brier score. For every method,
+   threshold and horizon; for all origins and for origins starting at or
+   above the threshold.
+
+**Methods scored:** V2, CP-noKF, B-EQp, B-SRp, CLIM (as in S5), CLIM-D,
+and V2 recalibrated. Every probability is recomputed for the new
+thresholds. At u = 0 and the tenth percentile they must equal the stored
+S5 events (an identity check).
+
+**Intervals:** 95% account-bootstrap intervals, 2,000 resamples, seed 6.
+
+Code: `ephemeris-eval explore shortfall`. Summary:
+`explore_summary.py s12`. Results:
+`paper/results/exploratory/s12-shortfall/`.
+
+# Tier C (plan only; not run)
+
+## C1 The simulation factorial
+
+**Factors**, each at the four S4 levels, varied **one at a time** with the
+others at level 0 (exact), and also crossed in a 4×4×4 design at the two
+extreme sparsity levels:
+- pay-date jitter;
+- paycheck amount noise;
+- bill drift.
+
+**Sparse branch:** forced on and forced off in every cell (bypassing the
+sparse rule), so the branch effect is separated from the regularity effect.
+
+**Horizons:** 7, 30 and 90 days.
+
+**Reported per cell:**
+- the generator parameters;
+- the rate at which the sparse rule would fire, as a branch-activation
+  rate;
+- V2 vs B-EQ pooled and account-mean skill, with 2,000-resample seed
+  bootstrap intervals;
+- the same for CP-noKF.
+
+**Controls:**
+- **A sample-size-matched calendar control:** B-EQ restricted to a random
+  subset of windows of the same size as B-EQc's, to separate alignment
+  from losing windows.
+- **Alignment to the next expected paycheck:** B-EQ windows that start the
+  same number of days before a paycheck as the origin is before the next
+  expected one.
+
+**Size and time.** One-at-a-time: 3 factors × 4 levels × 4 sparsity × 2
+branch settings = 96 cells. Crossed: 64 × 2 sparsity × 2 branch settings =
+256 cells. In total 352 cells, each with 50 seeds and 800 origins as in S4: about
+280,000 origins at 3 horizons. S4 ran its 16 cells in 134 s on 7 threads (`paper/build/explore/run.log`), about
+8.4 s per cell, so the 352 cells take about 50 minutes; the sparse-branch
+setting and the added 7-day scores change that little. The two calendar
+controls reuse B-EQ's windows on Berka development data, about 15 minutes.
+Total, with summaries: about 1.5 hours. (Recorded on 2026-11-21; S4's
+runtime is from its log.)
