@@ -925,6 +925,74 @@ def s5split():
     print("origins without a start balance:", missing)
     show([r for r in res if r[3] in ("V2", "B-EQp", "CLIM") and r[0] == "u0"])
 
+# ---------------------------------------------------------------- S15 ----
+
+def s15():
+    """The forward-period confirmatory test (REVISION.md S15). Held-out only:
+    run with --heldout after the single guarded run."""
+    d = B / "confirmatory-forward"
+    out = ROOT / "paper/results/confirmatory-forward"
+    cut = (0.1428, 0.4127)
+    ms = ["F0", "F1", "O", "EQ-shuf"]
+    data = load([d / "rows.csv"], set(ms))
+    st = {}
+    for r in csv.DictReader(open(d / "state.csv")):
+        a = float(r["abs_err"]) / float(r["abs_real"]) if float(r["abs_real"]) > 0 else float("nan")
+        ok = np.isfinite(a) and int(r["checkpoints"]) >= 3
+        st[(r["account"], r["origin"])] = ("P" if a <= cut[0] else ("M" if a <= cut[1] else "U")) if ok else "X"
+    rng = np.random.default_rng(SEED)
+    res = [["prediction", "comparison", "h", "stratum", "origins", "accounts", "skill_mean", "skill_mean_lo",
+            "skill_mean_hi", "skill_pooled", "skill_pooled_lo", "skill_pooled_hi", "predicted_sign", "verdict"]]
+
+    def sums(h, m, ref, keep):
+        num, den = defaultdict(float), defaultdict(float)
+        n = 0
+        for k, v in data.items():
+            if k[2] == h and m in v and ref in v and keep(k):
+                num[k[0]] += float(v[m]["crps"])
+                den[k[0]] += float(v[ref]["crps"])
+                n += 1
+        return num, den, n
+
+    def row(pred, m, ref, h, label, keep, sign):
+        num, den, n = sums(h, m, ref, keep)
+        a = sorted(num)
+        r = boot_ratio(np.array([num[x] for x in a]), np.array([den[x] for x in a]), rng)
+        lo, hi = r[1], r[2]
+        ok = hi < 0 if sign < 0 else lo > 0
+        res.append([pred, f"{m} vs {ref}", h, label, n, len(a), *(fmt(x) for x in r),
+                    "<0" if sign < 0 else ">0", "confirmed" if ok else "not confirmed"])
+
+    row("P2", "O", "F0", "90", "all", lambda k: True, -1)
+    for h in ("30", "90"):
+        row("P3", "EQ-shuf", "F0", h, "all", lambda k: True, -1)
+    # P1: the difference between tertiles, accounts resampled jointly.
+    for h in ("30", "90"):
+        tert = {}
+        for t in "PU":
+            num, den, n = sums(h, "F1", "F0", lambda k, t=t: st.get((k[0], k[1])) == t)
+            tert[t] = (num, den, n)
+        accts = sorted(set(tert["P"][0]) | set(tert["U"][0]))
+        idx = rng.integers(0, len(accts), size=(RESAMPLES, len(accts)))
+        est = {}
+        for t in "PU":
+            num = np.array([tert[t][0].get(a, 0.0) for a in accts])
+            den = np.array([tert[t][1].get(a, 0.0) for a in accts])
+            has = den > 0
+            per = np.where(has, 1 - num / np.where(has, den, 1), np.nan)
+            est[t] = (np.nanmean(per), 1 - num.sum() / den.sum(), np.nanmean(per[idx], axis=1),
+                      1 - num[idx].sum(axis=1) / den[idx].sum(axis=1))
+        dm = est["P"][0] - est["U"][0]
+        dp = est["P"][1] - est["U"][1]
+        qm = np.nanquantile(est["P"][2] - est["U"][2], [0.025, 0.975])
+        qp = np.nanquantile(est["P"][3] - est["U"][3], [0.025, 0.975])
+        res.append(["P1 (secondary)", "F1 vs F0, predictable minus unpredictable", h, "P minus U",
+                    tert["P"][2] + tert["U"][2], len(accts), fmt(dm), fmt(qm[0]), fmt(qm[1]), fmt(dp), fmt(qp[0]),
+                    fmt(qp[1]), ">0", "confirmed" if qm[0] > 0 else "not confirmed"])
+    write(out / "predictions.csv", res)
+    show(res)
+    panel(data, ms, [("F1", "F0"), ("O", "F0"), ("EQ-shuf", "F0")], out)
+
 
 # ----------------------------------------------------------------- S7 ----
 
@@ -965,6 +1033,6 @@ if __name__ == "__main__":
     if args and args[0] == "--heldout":
         FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
         args = args[1:]
-        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7"}, "held-out: S3, S5, S5c, S6, S7 only"
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7", "s15"}, "held-out: S3, S5, S5c, S6, S7 only"
     for a in args:
         globals()[a.lower()]()

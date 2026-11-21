@@ -826,3 +826,87 @@ The strength-of-evidence rule is the one above.
 Code: added to `ephemeris-eval explore schedule`, whose F_w and oracle rows
 must stay identical. Summary: `explore_summary.py s14`. Results:
 `paper/results/exploratory/s14-dependence/`.
+
+## S15 (round 4, item 3) The forward-period confirmatory test (held-out; NOT RUN)
+
+Fixed on 2026-11-21, after the development results of S11 and S14 and before
+any held-out run of these methods.
+
+**Data.** Held-out accounts (the frozen split and drift exclusion), at
+their eligible origins dated **on or after 1997-07-01**: 49,762 origins per
+horizon in 3,512 accounts. These were counted from the stored held-out
+rows' origin dates only, without outcomes.
+
+**Run.** Once, through the guard, with the reason "round 4 forward-period
+confirmatory test (REVISION.md S15)":
+
+    target/release/ephemeris-eval explore schedule --held-out --from 1997-07-01 \
+        --out paper/build/confirmatory-forward \
+        --rerun-reason "round 4 forward-period confirmatory test (REVISION.md S15)"
+
+The code is the schedule runner at `ee45141` or later, with no change to
+F0, F1, O, EQ-shuf or the predictability measure. The summary is
+`explore_summary.py s15 --heldout`, to be written and committed before the
+run. Results go to `paper/results/confirmatory-forward/`.
+
+**Methods** (as defined in S11 and S14, unchanged): F0 (= B-EQ), F1
+(= B-SR), O (the corrected oracle) and EQ-shuf.
+
+**Predictability tertiles** use the development cut points as stored,
+amount error ≤ 0.1428 (predictable) and > 0.4127 (unpredictable), computed
+from each origin's own history (S11). The cut points are not re-estimated.
+
+**Estimands.**
+- **Primary:** the account-mean CRPS skill (the plan's original estimand),
+  with a 95% interval from 2,000 bootstrap resamples of accounts (seed 6).
+- **Secondary:** the pooled skill, with the same intervals.
+
+Both are reported for every prediction, with counts.
+
+**Predictions** (fixed from the development results; dev estimates in
+brackets, account mean then pooled):
+- **P2 (primary).** The oracle O loses to B-EQ at 90 days: the
+  account-mean skill of O against F0 is < 0. (Development: −0.43
+  [−0.48, −0.38]; pooled −0.20.)
+- **P3 (primary).** Breaking the within-window pairing costs B-EQ a little:
+  the account-mean skill of EQ-shuf against F0 is < 0 at both 30 and 90
+  days. (Development: −0.012 [−0.015, −0.009] and −0.013 [−0.017, −0.010];
+  pooled −0.003 and −0.006.)
+
+  Stated as it came out of development, the effect is small, a few
+  percent of B-SR's loss. P3 tests its sign, not its size, and confirming
+  it would not show that dependence explains the reversal.
+- **P1 (secondary).** B-SR's skill against B-EQ is higher in the
+  predictable tertile than in the unpredictable one: the account-mean
+  skill of F1 vs F0 in the predictable tertile minus that in the
+  unpredictable tertile is > 0 at 30 and 90 days. The interval of the
+  difference resamples accounts jointly across the two tertiles.
+  (Development: +0.011 [−0.072, +0.096] at 30 days, not significant;
+  +0.25 [+0.15, +0.36] at 90; pooled +0.22 and +0.42, both significant.
+  Development therefore supports P1 at 30 days only on the pooled score.)
+
+**Decision rule.** A prediction is **confirmed** if the primary estimand's
+95% interval lies wholly on the predicted side at every horizon it names,
+and **not confirmed** otherwise. The pooled result is reported beside it,
+and any disagreement in sign between the two is stated. There is no
+multiplicity adjustment: there are three predictions, two of them primary,
+and this is stated. Nothing is re-run or re-specified after the results
+are seen; any further analysis is labelled exploratory.
+
+**Prior exposure, stated in the paper.**
+- Before this specification, the held-out results seen were:
+  - the frozen evaluation (V0–V4 and the baselines; every table in the
+    paper);
+  - the post-hoc pairwise intervals, tails and A2 verdicts;
+  - the exploratory held-out runs of S3 (B-EQc, B-SR, CP-noKF and V2
+    against B-EQ, overall and by history length), S5, S6 and S7.
+- Every held-out origin after the cutoff is part of those aggregates. In
+  particular, held-out B-SR vs B-EQ over all origins (pooled −0.10 / −0.19
+  at 30 / 90 days) is known.
+- Not seen: any held-out result split by schedule predictability, for the
+  oracle, or for EQ-shuf, and any held-out result restricted to origins
+  after the cutoff.
+- The cutoff was chosen by the user from the calendar, not from results;
+  the origin count after it was checked from dates only.
+- The predictions were formed on the development split, whose accounts
+  are disjoint from the held-out ones.
