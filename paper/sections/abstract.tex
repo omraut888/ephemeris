@@ -12,24 +12,26 @@ at \hB\ and \hC\ days. On held-out accounts V2's account-mean skill against
 B-EQ is \R{ho/pair/B-EQ/7/skill}, \R{ho/pair/B-EQ/30/skill} and
 \R{ho/pair/B-EQ/90/skill} at \hA, \hB\ and \hC\ days (pooled over origins,
 \R{ho/pair/B-EQ/7/pooled_skill}, \R{ho/pair/B-EQ/30/pooled_skill} and
-\R{ho/pair/B-EQ/90/pooled_skill}).
+\R{ho/pair/B-EQ/90/pooled_skill}). V2 also has higher CRPS than a
+gradient-boosted model pooled across accounts (B-GLOBAL) at \hB\ and \hC\
+days.
 
 \emph{Tests of schedule replacement (exploratory).} Replacing the scheduled
 flows in B-EQ's own past windows with the detected schedule's projection
-(B-SR) raises CRPS at \hB\ and \hC\ days. At \hC\ days, supplying the
-realized scheduled flows instead of the projection still fails to rescue
-it. On later Berka origins, in a prespecified follow-up on previously
-evaluated data, substituting realized future flows from detected streams
-did not recover B-SR's \hC-day loss (the oracle's account-mean skill
-against B-SR: \R{xh/s17/o-vs-f1/all/90/skill_mean@3}). Shuffling historical
-flow--residual pairs incurred a much smaller penalty than schedule
-replacement. These contrasts leave the source of the remaining loss
-unresolved.
+(B-SR) raises CRPS at \hB\ and \hC\ days. Supplying realized future flows
+from detected streams improved schedule replacement at \hB\ days. At \hC\
+days, the oracle variant still scored worse than the empirical forecast
+under both aggregations (account-mean skill
+\R{cf/pred/p2/90/skill_mean@3}, pooled \R{cf/pred/p2/90/skill_pooled@3}, on
+later Berka origins in a prespecified follow-up on previously evaluated
+data). Shuffling historical flow--residual pairs incurred a much smaller
+penalty than schedule replacement. These contrasts leave the source of the
+remaining loss unresolved.
 
 \emph{Shortfalls (exploratory, secondary).} For new negative
-booked-balance crossings, no forecast beats the account's own historical
-frequency at any horizon, and the four model-based forecasts over-predict
-them.
+booked-balance crossings, the four unrecalibrated forecasts we tested all
+lost to the account's own historical frequency at every horizon, and all
+over-predict them.
 
 \emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
 intervals cover too much, so the planned calibration claim fails.

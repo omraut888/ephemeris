@@ -94,9 +94,10 @@ Balance Forecasting on Sparse Bank Accounts** (Om Raut).
 
 On sparse accounts of the Berka bank data, the state-space forecaster has
 lower CRPS than the account's own past balance changes at seven days, while
-the empirical forecast wins at 30 and 90 days. At 90 days, supplying the
-scheduled flows that actually happened still fails to rescue the
-schedule-replacement forecast, and the source of the remaining loss is
+the empirical forecast wins at 30 and 90 days. Supplying realized future
+flows from detected streams improved schedule replacement at 30 days. At 90
+days, the oracle variant still scored worse than the empirical forecast
+under both aggregations, and the source of the remaining loss is
 unresolved.
 
 The paper, its analysis plan and every committed result are in

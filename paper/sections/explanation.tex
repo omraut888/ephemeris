@@ -22,10 +22,9 @@ and \hC\ days on both splits, as do the other schedule-based forecasts
 \R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
 \R{xh/s3/B-SR-vs-B-EQ/90/skill_pooled} (account mean
 \R{xh/s3/B-SR-vs-B-EQ/30/skill_mean} and
-\R{xh/s3/B-SR-vs-B-EQ/90/skill_mean}). Its \lC\% intervals are about as
-narrow as B-EQ's (median \R{xh/s3/stats/B-SR/90/median_width90} against
-\R{xh/s3/stats/B-EQ/90/median_width90} CZK at \hC\ days), so the loss is
-not a matter of width.
+\R{xh/s3/B-SR-vs-B-EQ/90/skill_mean}). Its median \lC\% interval width at \hC\ days is
+\R{xh/s3/stats/B-SR/90/median_width90} CZK, against B-EQ's
+\R{xh/s3/stats/B-EQ/90/median_width90}.
 
 \begin{table}[t]
 \centering\scriptsize\setlength{\tabcolsep}{4pt}
@@ -55,8 +54,9 @@ Intervals are in the result files (\texttt{paper/results/exploratory*}).}
 \label{tab:explain}
 \end{table}
 
-\paragraph{Two diagnostics of one construction.} Both modify B-SR's
-samples, one term at a time (Table~\ref{tab:mechanism}, development).
+\paragraph{Three diagnostics of one construction.} The shuffle modifies
+B-EQ, while the oracle and matching modify B-SR, each changing one term
+of the samples (Table~\ref{tab:mechanism}, development).
 \begin{itemize}
 \item \textbf{The oracle} replaces the projection $S_t$ with the flows the
   detected streams actually produced over the horizon. It changes only the
@@ -100,13 +100,16 @@ tested once, in a logged run, on held-out origins dated on or after
 \R{cf/pred/p2/90/accounts} accounts). This is a prespecified follow-up on
 previously evaluated data, not a confirmatory test; its provenance is in
 \S\ref{sec:protocol}. A prediction holds if its account-mean 95\% interval
-lies wholly on the predicted side; all four did (Table~\ref{tab:s15}).
+lies wholly on the predicted side; all four held (Table~\ref{tab:s15}).
+Three of them (P1--P3) were in the original specification, on GitHub
+before the run; the fourth (P3b) was added by an amendment whose
+precedence rests on the local commit record (\S\ref{sec:protocol}).
 
 \begin{table}[t]
 \centering\scriptsize\setlength{\tabcolsep}{2.5pt}
 \begin{tabular}{l l l l l}
 \toprule
-Contrast & $h$ & Account mean [95\%] & Pooled [95\%] & Holds?\\
+Contrast & $h$ & Account mean [95\%] & Pooled [95\%] & Held?\\
 \midrule
 P2: oracle vs B-EQ, $<0$ & \hC & \ci{cf/pred/p2/90} & \R{cf/pred/p2/90/verdict}\\
 P3: shuffled B-EQ vs B-EQ, $<0$ & \hB & \ci{cf/pred/p3/30} & \R{cf/pred/p3/30/verdict}\\
@@ -129,7 +132,10 @@ B-SR vs B-EQ, all & \hB & \ci{xh/s17/f1-vs-f0/all/30} & --\\
 \bottomrule
 \end{tabular}
 \caption{The prespecified follow-up S15 on held-out origins on or after
-1997-07-01: CRPS skill of the first forecast against the second. P3b tests
+1997-07-01: CRPS skill of the first forecast against the second. A
+prediction held if its account-mean interval lies wholly on the predicted
+side. P1--P3 are from the original specification, pushed before the run;
+P3b was added by an amendment timed only by the local commit record. P3b tests
 that shuffled B-EQ's loss against B-EQ is under a quarter of B-SR's, as
 $s_{\text{shuf}} - s_{\text{SR}}/4 > 0$ with both skills against B-EQ; P1
 (secondary) tests that B-SR's skill against B-EQ is higher in the
@@ -153,7 +159,7 @@ is wider than that of $\Delta B_{\text{hist}}$ at
 \R{xd/s16/90/share_origins_wider}\% of origins at \hC\ days, with a median
 per-account ratio of \R{xd/s16/90/ratio_median} (S16).
 
-\paragraph{Predictability of the detected schedule.} For each origin we
+\paragraph{Predictability of the detected streams' flows.} For each origin we
 re-detect the schedule at up to six earlier monthly checkpoints from the
 history available then, project its streams over the next 30 days, and
 compare with what those streams actually booked. The score is the summed
@@ -166,7 +172,7 @@ discretionary spending. Tertile cut points are fixed on development
 the predictable tertile have a detected income, against
 \R{xh/s17/comp/unpredictable/share_income_detected}\% in the unpredictable
 one; every origin has some detected stream). B-SR does relatively better
-where schedules were predictable, but in absolute terms it still loses to
+where detected streams' net monthly flows were easier to predict, but in absolute terms it still loses to
 B-EQ in every tertile under the account mean, and gains only on the pooled
 score in the predictable tertile (Table~\ref{tab:s15}); the same holds when
 origins without a detected income are excluded

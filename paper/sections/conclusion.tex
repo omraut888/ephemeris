@@ -1,29 +1,29 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-On sparse Berka accounts, the state-space model has lower CRPS at seven
-days, while the empirical forecast wins at \hB\ and \hC\ days; at \hC\
-days, supplying realized scheduled flows still fails to rescue the
-schedule-replacement forecast.
+On sparse Berka accounts, the state-space model has lower CRPS at \hA\
+days, while the empirical forecast wins at \hB\ and \hC\ days.
 \begin{itemize}
 \item \textbf{The state-space model's intervals are the more cautious about
-  the downside;} the empirical forecast is the sharper one.
-\item \textbf{Tests of schedule replacement (exploratory).} Substituting
-  realized future flows from detected streams did not recover B-SR's
-  \hC-day loss, and shuffling historical flow--residual pairs cost much
-  less than schedule replacement. The source of the remaining loss is
-  unresolved.
+  the downside;} at \hB\ and \hC\ days the empirical forecast is the
+  sharper one.
+\item \textbf{Tests of schedule replacement (exploratory).} Supplying
+  realized future flows from detected streams improved schedule
+  replacement at \hB\ days. At \hC\ days, the oracle variant still scored
+  worse than the empirical forecast under both aggregations. Shuffling
+  historical flow--residual pairs cost much less than schedule
+  replacement. The source of the remaining loss is unresolved.
 \item \textbf{New negative booked-balance crossings are over-predicted by
-  all four model-based forecasts,} and none beats the account's own
-  historical frequency at any horizon.
+  all four unrecalibrated forecasts we tested,} and all four lost to the
+  account's own historical frequency at every horizon.
 \item \textbf{The planned calibration and sharpness claims fail in
   part,} and the paper says where (Table~\ref{tab:claims}).
 \end{itemize}
-Two directions follow. One is a hybrid that uses the schedule only when
-it has been regular, and the account's empirical changes otherwise,
-selected on calibration at every level. The other is a test on modern,
-card-heavy accounts with pending transactions, which these data cannot
-provide.
+A natural benchmark for a future frozen evaluation is the simple horizon
+rule suggested by these results: V2 at \hA\ days and B-EQ at \hB\ and \hC\
+days. We did not evaluate it as a rule, and it is not a result of this
+paper. The other direction is a test on modern, card-heavy accounts with
+pending transactions, which these data cannot provide.
 
 \begin{table}[t]
 \centering\footnotesize
