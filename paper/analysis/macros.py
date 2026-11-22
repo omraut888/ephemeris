@@ -459,7 +459,8 @@ def tables():
     lines = []
     for r in tl:
         commit = "\\texttt{" + r['commit'] + "}"
-        where = r['first_pushed_utc'] or ('(GitHub run)' if r['source'] == 'GitHub Actions' else '(run log)')
+        where = r['first_pushed_utc'] or {'GitHub Actions': '(GitHub run)', 'guard log': '(run log)'}.get(
+            r['source'], '(not yet pushed)')
         event = r['event'].replace("_", "\\_").replace("#", "\\#")
         lines.append(f"{event} & {commit} & {r['time_utc']} & {where}" + r" \\")
     write_table("timeline", "\n".join([
@@ -670,6 +671,8 @@ def exploratory():
             table(f"{tag}/s13/fix", s13 / "postfix/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1", s13 / "postfix-v1-superseded/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1c", s13 / "postfix-v1-superseded/cells.csv", ["method", "h"])
+        if (d / "s16-dispersion/dispersion.csv").exists():
+            table(f"{tag}/s16", d / "s16-dispersion/dispersion.csv", ["h"])
         if (d / "s9-detector-postfix/compare.csv").exists():
             table(f"{tag}/s9p", d / "s9-detector-postfix/compare.csv", ["engine", "stratum", "comparison", "h"])
         s10 = d / "s10-rows-checks"
@@ -689,6 +692,14 @@ def exploratory():
         if (d / "s2-small/v1-crossings.csv").exists():
             table(f"{tag}/s2/crossings", d / "s2-small/v1-crossings.csv", ["h"])
             table(f"{tag}/s2/selection", d / "s2-small/selection-account-equal.csv", ["method"])
+
+
+def confirmatory():
+    """S15, the forward-period confirmatory test (cf/)."""
+    d = RES / "confirmatory-s15"
+    if (d / "predictions.csv").exists():
+        table("cf/pred", d / "predictions.csv", ["prediction", "h"])
+        table("cf", d / "compare.csv", ["comparison", "h"])
 
 
 def checksums():
@@ -739,6 +750,7 @@ def main():
         keyvalue(tag, RES / path)
     table("au/est", RES / "audit/estimands-heldout.csv", ["comparison", "stratum", "h"])
     exploratory()
+    confirmatory()
     keyvalue("au/prefix", RES / "audit/prefix-check-summary.csv")
     drift_recount()
     tables()

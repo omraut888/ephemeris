@@ -59,6 +59,11 @@ EVENTS = [
     ("7f9e8c5", "Exploratory held-out results S3, S5, S6 committed"),
     ("5f30843", "Exploratory held-out results S7 committed"),
     ("bde5b60", "Calibration in the large, from the stored events"),
+    ("fe14e1d", "Confirmatory specification S15 committed"),
+    ("RUN6", "Held-out start balances for the overdraft split, no forecasts (logged)"),
+    ("44afcf4", "S15 amended (P3b) before the run"),
+    ("RUN7", "Confirmatory forward-period run S15 (logged)"),
+    ("7102b72", "S15 results committed"),
 ]
 
 

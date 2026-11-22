@@ -119,9 +119,67 @@ loss. Restoring the pairing within
 B-SR, by drawing residuals only from windows whose scheduled flow resembles
 the projection, makes B-SR worse, not better, though it also leaves it
 fewer windows. Within-window dependence therefore explains at most a small
-part of the long-horizon loss; the rest is unexplained. A forward-period
-test of these predictions on held-out accounts is specified
-(\texttt{paper/REVISION.md}, S15) but has not been run.
+part of the long-horizon loss; the rest is unexplained.
+
+\paragraph{A confirmatory forward-period test.} We fixed four predictions
+from the development results above in a written specification
+(\texttt{paper/REVISION.md}, S15, committed before the run), and tested them
+once, in a logged run, on held-out origins dated on or after 1997-07-01
+(\R{cf/pred/p2/90/origins} per horizon in \R{cf/pred/p2/90/accounts}
+accounts). The primary estimand is the account mean; a prediction is
+confirmed if its 95\% interval lies wholly on the predicted side. All four
+were confirmed (Table~\ref{tab:s15}), and the pooled skill agrees in sign
+throughout.
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{p{0.40\linewidth} l l l l}
+\toprule
+Prediction & $h$ & Account mean [95\%] & Pooled & Verdict\\
+\midrule
+P2: the oracle loses to B-EQ & \hC & \R{cf/pred/p2/90/skill_mean} [\R{cf/pred/p2/90/skill_mean_lo}, \R{cf/pred/p2/90/skill_mean_hi}] & \R{cf/pred/p2/90/skill_pooled} & \R{cf/pred/p2/90/verdict}\\
+P3: shuffled B-EQ loses to B-EQ & \hB & \R{cf/pred/p3/30/skill_mean@3} [\R{cf/pred/p3/30/skill_mean_lo@3}, \R{cf/pred/p3/30/skill_mean_hi@3}] & \R{cf/pred/p3/30/skill_pooled@3} & \R{cf/pred/p3/30/verdict}\\
+ & \hC & \R{cf/pred/p3/90/skill_mean@3} [\R{cf/pred/p3/90/skill_mean_lo@3}, \R{cf/pred/p3/90/skill_mean_hi@3}] & \R{cf/pred/p3/90/skill_pooled@3} & \R{cf/pred/p3/90/verdict}\\
+P3b: that loss is under a quarter of B-SR's (statistic $s_{\text{shuf}} - s_{\text{SR}}/4 > 0$) & \hC & \R{cf/pred/p3b/90/skill_mean@3} [\R{cf/pred/p3b/90/skill_mean_lo@3}, \R{cf/pred/p3b/90/skill_mean_hi@3}] & \R{cf/pred/p3b/90/skill_pooled@3} & \R{cf/pred/p3b/90/verdict}\\
+P1 (secondary): B-SR's skill is higher in the predictable than the unpredictable tertile (difference) & \hB & \R{cf/pred/p1-secondary/30/skill_mean} [\R{cf/pred/p1-secondary/30/skill_mean_lo}, \R{cf/pred/p1-secondary/30/skill_mean_hi}] & \R{cf/pred/p1-secondary/30/skill_pooled} & \R{cf/pred/p1-secondary/30/verdict}\\
+ & \hC & \R{cf/pred/p1-secondary/90/skill_mean} [\R{cf/pred/p1-secondary/90/skill_mean_lo}, \R{cf/pred/p1-secondary/90/skill_mean_hi}] & \R{cf/pred/p1-secondary/90/skill_pooled} & \R{cf/pred/p1-secondary/90/verdict}\\
+\bottomrule
+\end{tabular}
+\caption{The forward-period confirmatory test S15 on held-out Berka
+(origins on or after 1997-07-01; P1 on the \R{cf/pred/p1-secondary/30/origins}
+origins in the two outer tertiles). CRPS skill of the first forecast
+against the second (for P3b, the test statistic), with
+\R{c/ci-level}\% account-bootstrap intervals. On these origins B-SR's
+account-mean skill against B-EQ at \hC\ days is \R{cf/f1-vs-f0/90/skill_mean}
+(\texttt{paper/results/confirmatory-s15/}).}
+\label{tab:s15}
+\end{table}
+
+What the test does and does not show. It confirms, on held-out accounts and
+a later period, that even exact future scheduled flows do not rescue the
+replacement at \hC\ days, that within-window dependence is real but small
+next to the schedule-based loss, and that replacement does relatively
+better where schedules were predictable. It does not identify what causes
+the loss. \emph{Prior exposure:} before the specification we had seen the
+frozen held-out evaluation and the exploratory held-out results of
+\S\ref{sec:reversal} and this section, including held-out B-SR against
+B-EQ over all origins, which include the post-cutoff ones; we had not seen
+any held-out result for the oracle, for shuffled B-EQ, by predictability
+tertile, or restricted to the post-cutoff period. The cutoff date was
+chosen from the calendar.
+
+\paragraph{An open hypothesis: does the adjustment widen the sampled
+changes?} One possibility is that subtracting each window's realized
+scheduled flows leaves residuals that are more dispersed than the raw
+changes. A descriptive check on development accounts (exploratory, S16)
+does not support it: the 5--95\% range of $\Delta B_{\text{hist}} -
+S_{\text{hist}}$ is wider than that of $\Delta B_{\text{hist}}$ at
+\R{xd/s16/90/share_origins_wider}\% of origins at \hC\ days
+(\R{xd/s16/30/share_origins_wider}\% at \hB), and the median per-account
+ratio of the two ranges is \R{xd/s16/90/ratio_median} (quartiles
+\R{xd/s16/90/ratio_q25} and \R{xd/s16/90/ratio_q75}). Spread is therefore
+not obviously the cause; how the residuals are located relative to the
+coming flows remains an open question.
 
 \paragraph{Schedule predictability: weak, aggregation-dependent effects.}
 We measured, from each origin's own history, how far the schedule
@@ -129,7 +187,9 @@ detected at earlier checkpoints missed the next month's scheduled flows,
 and split origins into tertiles. On the pooled score, schedule replacement
 helps slightly in the most predictable tertile and hurts in the others.
 Under the planned account mean it hurts in every tertile
-(Table~\ref{tab:mechanism}), and the middle tertile does worst.
+(Table~\ref{tab:mechanism}), and the middle tertile does worst. The
+relative pattern (better in the predictable tertile than in the
+unpredictable one) was confirmed in the forward-period test above.
 
 \paragraph{History length: weaker, aggregation-dependent evidence.} If
 B-EQ needed a long history to represent the distribution of changes, the

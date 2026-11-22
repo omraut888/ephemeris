@@ -30,3 +30,8 @@ Exploratory held-out run: S7 rerun (logged),7f9e8c5,2026-11-21 01:27,,guard log,
 "Exploratory held-out results S3, S5, S6 committed",7f9e8c5,2026-11-21 01:27,2026-11-21 13:19,git; GitHub activity,7f9e8c5
 Exploratory held-out results S7 committed,5f30843,2026-11-21 01:32,2026-11-21 13:19,git; GitHub activity,5f30843
 "Calibration in the large, from the stored events",bde5b60,2026-11-21 13:21,2026-11-21 13:36,git; GitHub activity,bde5b60
+Confirmatory specification S15 committed,fe14e1d,2026-11-21 16:49,2026-11-22 00:52,git; GitHub activity,fe14e1d
+"Held-out start balances for the overdraft split, no forecasts (logged)",fe14e1d,2026-11-21 21:58,,guard log,run6
+S15 amended (P3b) before the run,44afcf4,2026-11-22 00:53,,git; GitHub activity,44afcf4
+Confirmatory forward-period run S15 (logged),44afcf4,2026-11-22 00:53,,guard log,run7
+S15 results committed,7102b72,2026-11-22 00:56,,git; GitHub activity,7102b72
