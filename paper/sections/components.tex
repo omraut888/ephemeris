@@ -1,78 +1,19 @@
 \section{Components and the pooled reference}
 \label{sec:components}
 
-\paragraph{Ablations of V0 (the plan's claim D1) and of V2 (exploratory).}
-The plan's ablations removed components from V0, because they were
-written before V2 existed. They were run on held-out accounts in a second,
-separately logged run, after the main results were known
-(Table~\ref{tab:ablations}, Appendix~\ref{app:tables}). The V2 ablations
-were added later, on both splits (development results in
-\texttt{paper/results/exploratory/s6-v2-ablations/}). Below: each variant's
-skill against its full model on held-out accounts, account mean with the
-pooled skill in brackets (positive: removing the component lowers CRPS).
-
-\begin{center}\scriptsize
-\begin{tabular}{l ll ll}
-\toprule
- & \multicolumn{2}{c}{in V0} & \multicolumn{2}{c}{in V2}\\
-\cmidrule(lr){2-3}\cmidrule(lr){4-5}
-Component removed & \hB\ d & \hC\ d & \hB\ d & \hC\ d\\
-\midrule
-adaptive noise & \R{ho/ablp/all/abl-fixed-noise/30/skill@3} {\tiny(\R{ho/ablp/all/abl-fixed-noise/30/pooled_skill@3})} & \R{ho/ablp/all/abl-fixed-noise/90/skill@3} {\tiny(\R{ho/ablp/all/abl-fixed-noise/90/pooled_skill@3})} & \R{xh/s6/V2-noadapt-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-noadapt-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-noadapt-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-noadapt-vs-V2/90/skill_pooled@3})}\\
-regime detector & \R{ho/ablp/all/abl-no-detector/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-detector/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-detector/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-detector/90/pooled_skill@3})} & \R{xh/s6/V2-nodetector-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-nodetector-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-nodetector-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-nodetector-vs-V2/90/skill_pooled@3})}\\
-spend floor & \R{ho/ablp/all/abl-no-floor/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-floor/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-floor/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-floor/90/pooled_skill@3})} & \R{xh/s6/V2-nofloor-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V2-nofloor-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V2-nofloor-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V2-nofloor-vs-V2/90/skill_pooled@3})}\\
-lumps / sparse spending & \R{ho/ablp/all/abl-no-lumps/30/skill@3} {\tiny(\R{ho/ablp/all/abl-no-lumps/30/pooled_skill@3})} & \R{ho/ablp/all/abl-no-lumps/90/skill@3} {\tiny(\R{ho/ablp/all/abl-no-lumps/90/pooled_skill@3})} & \R{xh/s6/V0-vs-V2/30/skill_mean@3} {\tiny(\R{xh/s6/V0-vs-V2/30/skill_pooled@3})} & \R{xh/s6/V0-vs-V2/90/skill_mean@3} {\tiny(\R{xh/s6/V0-vs-V2/90/skill_pooled@3})}\\
-the filter & -- & -- & \R{xh/s6/cp-nokf-vs-v2/30/skill_mean@3} {\tiny(\R{xh/s6/cp-nokf-vs-v2/30/skill_pooled@3})} & \R{xh/s6/cp-nokf-vs-v2/90/skill_mean@3} {\tiny(\R{xh/s6/cp-nokf-vs-v2/90/skill_pooled@3})}\\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent Held-out origins: \R{ho/abldata/eligible_origins} per horizon for
-V0's ablations and \R{xh/s6/V2-nodetector-vs-V2/30/forecasts} for V2's.
-
-\begin{itemize}
-\item \textbf{Removing the detector hurts both models, V2 far more.} The
-  sign is the same as for V0; the magnitude is not. A diagnostic on
-  development accounts (exploratory; Appendix~\ref{app:detector}) traces
-  it. The whole V2 effect sits in accounts with detected income and an
-  income alarm; elsewhere removing the detector leaves V2's forecasts
-  unchanged. In Berka, the first income-tagged record is typically a
-  small fraction of the later pay (median \R{xd/s9/mech/pay1-over-last/median}\%),
-  and the income alarm, a median \R{xd/s9/mech/first-alarm-age/median} days
-  into the history, is what moves the expected paycheck $m$ to the pay
-  level. Without it, $\hat m$ stays at a median
-  \R{xd/s9/mech/m-nodet-over-last/median}\% of the last paycheck, and V2's
-  cone, whose spending model ignores the spend rate, projects most of the
-  pay as missing. The V2 ablation therefore measures the detector's role
-  in initializing the income state, not its response to later regime
-  changes.
-\item \textbf{An engine flaw, fixed after the freeze.} The cause is the
-  income channel's outlier gate. After a small first income record, the
-  real paychecks look like outliers and skip the paycheck update; the
-  income noise estimate then inflates until they pass the gate, by which
-  time the gain on $m$ is too small for it to catch up (median gain
-  \R{xd/s13/trace/before-fix/income-alarm/nodet/median_k_last12} without the
-  detector against \R{xd/s13/trace/before-fix/income-alarm/det/median_k_last12}
-  with it; Appendix~\ref{app:detector}). We added a gate escape: with the
-  income detector off, two consecutive income observations gated on the
-  same side start a new pay level, as an alarm would. With the detector on,
-  the engine is unchanged: the frozen V0 and V2, rerun with the fix on the same
-  \R{d/pf-accounts} development accounts as the earlier post-freeze check
-  (Appendix~\ref{app:identity}), differ in
-  \R{xd/s13/fix/V2/90/forecasts_changed} of \R{xd/s13/fix/V2/90/forecasts}
-  forecasts per horizon, and the frozen results stand. With the fix,
-  removing the detector costs V2 an account-mean skill of
-  \R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_mean} at \hC\ days on
-  development (pooled \R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_pooled}),
-  instead of \R{xd/s6/V2-nodetector-vs-V2/90/skill_mean}.
-\item \textbf{The spend floor has no effect in V2}, whose spending model
-  does not use the rate the floor acts on.
-\item \textbf{Fixed noise priors are marginally better} in both models.
-\item \textbf{Removing V2's sparse spending} (V0) is much worse.
-\item \textbf{Removing the filter} (CP-noKF) is slightly worse.
-\end{itemize}
-V0's lumps row and V2's sparse-spending row are different components that
-play the same role, the heavy tail of spending.
+\paragraph{Components (exploratory).} Ablations of V0 (the plan's claim D1)
+and of V2 are in Appendix~\ref{app:ablations}. Removing V2's sparse
+spending (giving V0) or its filter makes it worse; the spend floor has no
+effect in V2; fixed noise priors are marginally better. Removing the
+detector costs V2 far more than V0 because of a flaw in the frozen engine:
+without the detector, a small first income record left the paycheck
+estimate far below the real pay (Appendix~\ref{app:detector}). We fixed it
+after the freeze without changing the frozen configuration. With paycheck
+initialization fixed, replacing the CUSUM detector by the two-observation
+gate reset costs V2 an account-mean skill of
+\R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_mean} at \hC\ days on
+development (pooled \R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_pooled}),
+against \R{xd/s6/V2-nodetector-vs-V2/90/skill_mean} before the fix.
 
 \paragraph{B-GLOBAL, the pooled-data reference (exploratory).} B-GLOBAL
 is trained on \R{dev/data/accounts_run} other accounts, data a local-first

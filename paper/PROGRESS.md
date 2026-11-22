@@ -11,7 +11,7 @@
   reliability figure; §4 (item 3 for §4).
 - **Next:**
   1. DONE §6 (items 1, 2, 3, 4, and Table 3 to three decimals);
-  2. §7 compact (item 5);
+  2. DONE §7 compact (item 5);
   3. the cuts (item 9): §8, §9 and an Additional-results appendix;
   4. the detector wording (item 6);
   5. "30 and 90 days" (item 7);
