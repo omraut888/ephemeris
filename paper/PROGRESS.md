@@ -10,7 +10,7 @@
 - **Done:** S17 specification and results; CLIM+; the new-crossing
   reliability figure; §4 (item 3 for §4).
 - **Next:**
-  1. §6, "Tests of schedule replacement" (items 1, 2, 3, 4, 8);
+  1. DONE §6 (items 1, 2, 3, 4, and Table 3 to three decimals);
   2. §7 compact (item 5);
   3. the cuts (item 9): §8, §9 and an Additional-results appendix;
   4. the detector wording (item 6);

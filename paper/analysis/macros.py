@@ -91,6 +91,8 @@ def fmt(col, v):
         return f"{float(v):.1f}"
     if c.startswith("miss") or c.startswith("prevalence") or c.startswith("share") or c == "values_moved_share":
         return pct(v)
+    if c == "brier":
+        return f"{float(v):.4f}"
     if c.startswith("brier"):
         return f"{float(v):.3f}"
     if c.startswith("bss"):
