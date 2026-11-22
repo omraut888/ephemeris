@@ -1016,6 +1016,33 @@ def s15():
     show(res)
     panel(data, ms, [("F1", "F0"), ("O", "F0"), ("EQ-shuf", "F0")], out)
 
+# ---------------------------------------------------------------- S16 ----
+
+def s16():
+    """Does subtracting S_hist widen the sampled changes? (REVISION.md S16)"""
+    out = OUT / "s16-dispersion"
+    w = defaultdict(dict)
+    for r in csv.DictReader(open(EXP / "schedule-s11/rows.csv")):
+        if r["method"] in ("F0", "F1") and r["h"] in ("30", "90"):
+            w[(r["account"], r["origin"], r["h"])][r["method"]] = float(r["width90"])
+    res = [["h", "origins", "accounts", "share_origins_wider", "share_accounts_wider",
+            "ratio_q25", "ratio_median", "ratio_q75"]]
+    for h in ("30", "90"):
+        per = defaultdict(list)
+        wider = n = 0
+        for (a, o, hh), v in w.items():
+            if hh != h or "F0" not in v or "F1" not in v or v["F0"] <= 0:
+                continue
+            ratio = v["F1"] / v["F0"]
+            per[a].append(ratio)
+            wider += ratio > 1
+            n += 1
+        med = np.array([np.median(x) for x in per.values()])
+        q = np.quantile(med, [0.25, 0.5, 0.75])
+        res.append([h, n, len(med), fmt(wider / n), fmt(float(np.mean(med > 1))), *(fmt(x, 3) for x in q)])
+    write(out / "dispersion.csv", res)
+    show(res)
+
 
 # ----------------------------------------------------------------- S7 ----
 

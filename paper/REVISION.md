@@ -923,3 +923,26 @@ are seen; any further analysis is labelled exploratory.
   the origin count after it was checked from dates only.
 - The predictions were formed on the development split, whose accounts
   are disjoint from the held-out ones.
+
+## S16 (round 5) Does subtracting S_hist widen the sampled changes? (development; descriptive)
+
+A short descriptive check, offered in the paper as an open hypothesis for
+the long-horizon loss, not a conclusion.
+
+**Quantity.** At each frozen development origin and h ∈ {30, 90}, the
+5–95% range of the sampled changes:
+- ΔB_hist (B-EQ's samples, F0);
+- ΔB_hist − S_hist (B-SR's samples less the constant S_t, F1).
+
+These are exactly F0's and F1's stored 90% interval widths (S11 rows), so
+nothing is recomputed. The interquartile range is not in the stored rows
+and is not computed, to keep the check minimal.
+
+**Per account:** the median over its origins of the ratio of widths (F1 to
+F0).
+
+**Reported:** the share of accounts whose ratio exceeds 1 (the adjusted
+changes are wider); the quartiles of the ratio over accounts; and the
+pooled share of origins with a wider adjusted range. Summary:
+`explore_summary.py s16`. Results:
+`paper/results/exploratory/s16-dispersion/`.
