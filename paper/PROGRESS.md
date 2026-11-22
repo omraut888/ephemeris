@@ -2,8 +2,28 @@
 
 ## Resume here (updated after every step)
 
-**Round 5 finished.** Nothing is running or half-done, and nothing was
-pushed. Waiting for the user.
+**Release v1 prepared.** Tag `v1.0-paper` is local only; nothing was
+pushed. Nothing is running.
+
+## Release v1 (2026-11-22)
+
+- **Consistency pass.** Fixed:
+  - the S15 table rows are now compact;
+  - the reversal table's 90-day row has its interval;
+  - the limitations give the new-crossing prevalence;
+  - the introduction names exactly what S15 confirmed;
+  - the protocol note gives the amendment's push time;
+  - one awkward sentence in §7.
+
+  Left as is: the title page reads "Draft, <date>", and Table 3's
+  shuffled-B-EQ row shows 0.00 at two decimals (the text gives −0.012).
+- **README:** a Paper section.
+- **arXiv bundle:** `scripts/arxiv-bundle.sh` writes
+  `paper/build/arxiv.tar.gz` (44 files, about 0.5 MB). `--check` compiles
+  it in a fresh directory with pdflatex alone: 32 pages, 0 warnings.
+- **CITATION.cff.**
+- **Tag:** `v1.0-paper` (annotated, "Paper v1: pre-arXiv"). Push it with
+  `git push origin v1.0-paper`.
 
 ## Round 5 summary (2026-11-22)
 
