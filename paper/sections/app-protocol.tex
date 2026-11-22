@@ -207,9 +207,9 @@ two levels crossed, their intervals are exchanged.
     needs a correction:
     $1 - \sum_i m_i / \sum_i r_i = \sum_{r_i > 0} w_i (1 - m_i/r_i) -
     \sum_{r_i = 0} m_i / \sum_i r_i$. The code computes the ratio of sums
-    directly (\texttt{pooled\_skill} in
-    \texttt{crates/ephemeris-eval/src/aggregate.rs}, and the same ratio in
-    \texttt{paper/analysis/explore\_summary.py}), so the reported pooled
+    directly (the function \texttt{pooled\_skill} in the evaluation
+    crate's \texttt{aggregate.rs}, and the same ratio in
+    \texttt{explore\_summary.py}), so the reported pooled
     skills need no correction; the weighted form is only an
     interpretation.
   \end{itemize}

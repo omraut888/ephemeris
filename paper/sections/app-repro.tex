@@ -32,9 +32,9 @@ scripts/paper-heldout-pairwise.sh
 git diff --stat paper/results/heldout \
     paper/results/heldout-posthoc
 \end{verbatim}
-The held-out command refuses an uncommitted tree and appends the run,
-with its reason, to \texttt{paper/results/heldout-runs.log}. The last
-command shows any difference from the committed tables. On the author's
+The last command shows any difference from the committed tables. The
+held-out command refuses an uncommitted tree and logs each run with its
+reason in the run log, \texttt{paper/results/heldout-runs.log}. On the author's
 Mac (8\,GB, \R{rt/heldout_backtest/threads} threads), the development
 backtest took \R{rt/dev_backtest/minutes} minutes, the held-out backtest
 \R{rt/heldout_backtest/minutes} minutes, and the held-out variants V0--V4
