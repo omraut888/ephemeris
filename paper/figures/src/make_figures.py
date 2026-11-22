@@ -363,6 +363,42 @@ def overdraft(png):
     save(fig, "overdraft-heldout", png)
 
 
+def newcross(png):
+    """Reliability on new crossings of zero (origins starting at or above
+    zero), held-out; from the stored events (S17)."""
+    f = XH / "s17-stored/newcross-reliability.csv"
+    if not f.exists():
+        print("newcross: S17 held-out results missing; skipped")
+        return
+    rel = read(f)
+    colors = {"V2": COLOR["V2"], "CP-noKF": COLOR["V0"], "B-EQp": COLOR["B-EQ"], "B-SRp": COLOR["V1"],
+              "CLIM": MUTED}
+    marks = {"V2": "D", "CP-noKF": "o", "B-EQp": "^", "B-SRp": "s", "CLIM": "v"}
+    shown = [r for r in rel if int(r["count"]) >= 20]
+    top = min(1.0, max(max(float(r["mean_p"]), float(r["observed"])) for r in shown) + 0.05)
+    fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.6), sharex=True, sharey=True)
+    for j, h in enumerate(("7", "30", "90")):
+        ax = axes[j]
+        ax.plot([0, top], [0, top], color=MUTED, lw=0.8, ls="--")
+        for m in colors:
+            pts = [(float(r["mean_p"]), float(r["observed"])) for r in shown if r["h"] == h and r["method"] == m]
+            if pts:
+                ax.plot(*zip(*pts), color=colors[m], marker=marks[m], ms=3, lw=1.1, label=m)
+        ax.set_xlim(0, top)
+        ax.set_ylim(0, top)
+        ax.set_title(f"new crossing of 0, {h} d", fontsize=7.5, color=INK)
+        tidy(ax, "both")
+        ax.set_xlabel("forecast probability")
+        if j == 0:
+            ax.set_ylabel("observed frequency")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=5)
+    fig.suptitle("Reliability on new crossings, held-out Berka (bins with at least 20 forecasts; exploratory)",
+                 color=INK, fontsize=9)
+    fig.tight_layout(rect=(0, 0.1, 1, 1))
+    save(fig, "newcross-heldout", png)
+
+
 def grid(png):
     """The simulation grid: V2 vs B-EQ by sparsity and schedule regularity."""
     f = XD / "s4-grid/compare.csv"
@@ -402,7 +438,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     if a.png:
         a.png.mkdir(parents=True, exist_ok=True)
-    for f in (pit, coverage, skill, detector, cone, reversal, overdraft, grid):
+    for f in (pit, coverage, skill, detector, cone, reversal, overdraft, newcross, grid):
         f(a.png)
         print(f"{f.__name__}: done")
 
