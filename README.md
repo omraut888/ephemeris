@@ -87,6 +87,29 @@ end are partial.*
 *At 390px phone width: demo data in light mode (daily view) and sandbox data
 in dark mode (pay-cycle lows).*
 
+## Paper
+
+**When Does Transaction History Beat a State-Space Model? Probabilistic
+Balance Forecasting on Sparse Bank Accounts** (Om Raut).
+
+On held-out accounts of the Berka bank data, the state-space forecaster
+beats the account's own past balance changes at a week, and loses to them
+at a month and beyond. The long-horizon loss is not explained by errors in
+projecting the pay-and-bill schedule (it survives even when the schedule is
+replaced by the flows that actually happened), and keeping each past
+window's pay together with the spending that followed it accounts for only
+a small part.
+
+The paper, its analysis plan and every committed result are in
+[`paper/`](paper/). To build the PDF from the committed results:
+
+```sh
+scripts/paper.sh --pdf-only     # writes paper/build/latex/main.pdf
+```
+
+It needs a TeX distribution with `latexmk` and the Python environment
+described at the top of `scripts/paper.sh`.
+
 ## Known gaps
 
 Phase 1 is done, with these gaps stated plainly. Details and measurements
