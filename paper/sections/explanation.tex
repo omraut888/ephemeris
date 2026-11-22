@@ -133,22 +133,26 @@ throughout.
 
 \begin{table}[t]
 \centering\scriptsize\setlength{\tabcolsep}{3pt}
-\begin{tabular}{p{0.40\linewidth} l l l l}
+\begin{tabular}{l l l l l}
 \toprule
 Prediction & $h$ & Account mean [95\%] & Pooled & Verdict\\
 \midrule
-P2: the oracle loses to B-EQ & \hC & \R{cf/pred/p2/90/skill_mean} [\R{cf/pred/p2/90/skill_mean_lo}, \R{cf/pred/p2/90/skill_mean_hi}] & \R{cf/pred/p2/90/skill_pooled} & \R{cf/pred/p2/90/verdict}\\
-P3: shuffled B-EQ loses to B-EQ & \hB & \R{cf/pred/p3/30/skill_mean@3} [\R{cf/pred/p3/30/skill_mean_lo@3}, \R{cf/pred/p3/30/skill_mean_hi@3}] & \R{cf/pred/p3/30/skill_pooled@3} & \R{cf/pred/p3/30/verdict}\\
+P2: oracle vs B-EQ, $<0$ & \hC & \R{cf/pred/p2/90/skill_mean} [\R{cf/pred/p2/90/skill_mean_lo}, \R{cf/pred/p2/90/skill_mean_hi}] & \R{cf/pred/p2/90/skill_pooled} & \R{cf/pred/p2/90/verdict}\\
+P3: shuffled B-EQ vs B-EQ, $<0$ & \hB & \R{cf/pred/p3/30/skill_mean@3} [\R{cf/pred/p3/30/skill_mean_lo@3}, \R{cf/pred/p3/30/skill_mean_hi@3}] & \R{cf/pred/p3/30/skill_pooled@3} & \R{cf/pred/p3/30/verdict}\\
  & \hC & \R{cf/pred/p3/90/skill_mean@3} [\R{cf/pred/p3/90/skill_mean_lo@3}, \R{cf/pred/p3/90/skill_mean_hi@3}] & \R{cf/pred/p3/90/skill_pooled@3} & \R{cf/pred/p3/90/verdict}\\
-P3b: that loss is under a quarter of B-SR's (statistic $s_{\text{shuf}} - s_{\text{SR}}/4 > 0$) & \hC & \R{cf/pred/p3b/90/skill_mean@3} [\R{cf/pred/p3b/90/skill_mean_lo@3}, \R{cf/pred/p3b/90/skill_mean_hi@3}] & \R{cf/pred/p3b/90/skill_pooled@3} & \R{cf/pred/p3b/90/verdict}\\
-P1 (secondary): B-SR's skill is higher in the predictable than the unpredictable tertile (difference) & \hB & \R{cf/pred/p1-secondary/30/skill_mean} [\R{cf/pred/p1-secondary/30/skill_mean_lo}, \R{cf/pred/p1-secondary/30/skill_mean_hi}] & \R{cf/pred/p1-secondary/30/skill_pooled} & \R{cf/pred/p1-secondary/30/verdict}\\
+P3b: $s_{\text{shuf}} - s_{\text{SR}}/4 > 0$ & \hC & \R{cf/pred/p3b/90/skill_mean@3} [\R{cf/pred/p3b/90/skill_mean_lo@3}, \R{cf/pred/p3b/90/skill_mean_hi@3}] & \R{cf/pred/p3b/90/skill_pooled@3} & \R{cf/pred/p3b/90/verdict}\\
+P1 (secondary): $s_{\text{SR}}^{\text{pred}} - s_{\text{SR}}^{\text{unpred}} > 0$ & \hB & \R{cf/pred/p1-secondary/30/skill_mean} [\R{cf/pred/p1-secondary/30/skill_mean_lo}, \R{cf/pred/p1-secondary/30/skill_mean_hi}] & \R{cf/pred/p1-secondary/30/skill_pooled} & \R{cf/pred/p1-secondary/30/verdict}\\
  & \hC & \R{cf/pred/p1-secondary/90/skill_mean} [\R{cf/pred/p1-secondary/90/skill_mean_lo}, \R{cf/pred/p1-secondary/90/skill_mean_hi}] & \R{cf/pred/p1-secondary/90/skill_pooled} & \R{cf/pred/p1-secondary/90/verdict}\\
 \bottomrule
 \end{tabular}
 \caption{The forward-period confirmatory test S15 on held-out Berka
 (origins on or after 1997-07-01; P1 on the \R{cf/pred/p1-secondary/30/origins}
-origins in the two outer tertiles). CRPS skill of the first forecast
-against the second (for P3b, the test statistic), with
+origins in the two outer tertiles). P2 and P3: CRPS skill of the first forecast
+against the second. P3b: shuffled B-EQ's loss against B-EQ is under a
+quarter of B-SR's, tested as $s_{\text{shuf}} - s_{\text{SR}}/4 > 0$ with both
+skills against B-EQ. P1: B-SR's skill against B-EQ is higher in the
+predictable than in the unpredictable tertile, tested on the difference.
+Each with
 \R{c/ci-level}\% account-bootstrap intervals. On these origins B-SR's
 account-mean skill against B-EQ at \hC\ days is \R{cf/f1-vs-f0/90/skill_mean}
 (\texttt{paper/results/confirmatory-s15/}).}

@@ -12,10 +12,10 @@
   development split, but they are not confirmatory. Schedule irregularity
   in Berka was not measured directly, and the simulation uses our own
   generator.
-\item \textbf{Overdraft events.} A negative booked end-of-day balance is
-  rare in Berka
-  (\R{xh/s5/u0/30/prevalence}\% of held-out origins at \hB\ days), so its
-  Brier scores rest on few events. The thresholds were fixed in our written
+\item \textbf{Overdraft events.} New crossings of zero are rare in Berka
+  (\R{xh/s5s/u0/30/new-crossings/clim/prevalence}\% of held-out origins
+  starting at or above zero, at \hB\ days), so their Brier scores rest on
+  few events. The thresholds were fixed in our written
   specification, not chosen by users.
 \item \textbf{Estimands.} The planned skill is a mean of per-account ratios,
   which accounts with small reference CRPS can move a lot. We report the
