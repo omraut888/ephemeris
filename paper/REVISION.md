@@ -841,13 +841,13 @@ rows' origin dates only, without outcomes.
 confirmatory test (REVISION.md S15)":
 
     target/release/ephemeris-eval explore schedule --held-out --from 1997-07-01 \
-        --out paper/build/confirmatory-forward \
-        --rerun-reason "round 4 forward-period confirmatory test (REVISION.md S15)"
+        --out paper/build/confirmatory-s15 \
+        --rerun-reason "confirmatory forward-period test S15 (P1 secondary, P2, P3, P3b); specification committed before the run"
 
 The code is the schedule runner at `ee45141` or later, with no change to
 F0, F1, O, EQ-shuf or the predictability measure. The summary is
 `explore_summary.py s15 --heldout`, to be written and committed before the
-run. Results go to `paper/results/confirmatory-forward/`.
+run. Results go to `paper/results/confirmatory-s15/`.
 
 **Methods** (as defined in S11 and S14, unchanged): F0 (= B-EQ), F1
 (= B-SR), O (the corrected oracle) and EQ-shuf.
@@ -876,6 +876,18 @@ brackets, account mean then pooled):
   Stated as it came out of development, the effect is small, a few
   percent of B-SR's loss. P3 tests its sign, not its size, and confirming
   it would not show that dependence explains the reversal.
+- **P3b (primary; amendment of 2026-11-21, before the run).** At 90 days,
+  under the account mean, shuffled B-EQ's loss against B-EQ is less than
+  a quarter of B-SR's loss against B-EQ, on the same post-cutoff origins.
+  With s_shuf and s_SR the account-mean skills of EQ-shuf and F1 against
+  F0, the test statistic is s_shuf − ¼·s_SR (loss_shuf < ¼·loss_SR ⇔
+  s_shuf > ¼·s_SR). It has a 95% interval from resampling accounts jointly
+  for both skills, and it is confirmed if the interval lies wholly above 0.
+  If B-SR does not lose (s_SR ≥ 0), P3b is reported as not confirmed. This
+  is the claim the paper makes, that the dependence effect is small
+  relative to the schedule-based loss, so it gets a confirmatory test.
+  (Development: s_shuf −0.013 and s_SR −0.34, so the statistic is about
+  +0.07.)
 - **P1 (secondary).** B-SR's skill against B-EQ is higher in the
   predictable tertile than in the unpredictable one: the account-mean
   skill of F1 vs F0 in the predictable tertile minus that in the
@@ -890,7 +902,8 @@ brackets, account mean then pooled):
 and **not confirmed** otherwise. The pooled result is reported beside it,
 and any disagreement in sign between the two is stated. There is no
 multiplicity adjustment: there are three predictions, two of them primary,
-and this is stated. Nothing is re-run or re-specified after the results
+and this is stated. With P3b there are four predictions, three of them
+primary. Nothing is re-run or re-specified after the results
 are seen; any further analysis is labelled exploratory.
 
 **Prior exposure, stated in the paper.**

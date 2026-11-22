@@ -930,8 +930,8 @@ def s5split():
 def s15():
     """The forward-period confirmatory test (REVISION.md S15). Held-out only:
     run with --heldout after the single guarded run."""
-    d = B / "confirmatory-forward"
-    out = ROOT / "paper/results/confirmatory-forward"
+    d = B / "confirmatory-s15"
+    out = ROOT / "paper/results/confirmatory-s15"
     cut = (0.1428, 0.4127)
     ms = ["F0", "F1", "O", "EQ-shuf"]
     data = load([d / "rows.csv"], set(ms))
@@ -966,6 +966,29 @@ def s15():
     row("P2", "O", "F0", "90", "all", lambda k: True, -1)
     for h in ("30", "90"):
         row("P3", "EQ-shuf", "F0", h, "all", lambda k: True, -1)
+    # P3b: s_shuf - s_SR/4 at 90 days, accounts resampled jointly.
+    ns, ds_, _ = sums("90", "EQ-shuf", "F0", lambda k: True)
+    nr, dr, n90 = sums("90", "F1", "F0", lambda k: True)
+    accts = sorted(set(ds_) & set(dr))
+    a_s = np.array([ns[a] for a in accts]); b_s = np.array([ds_[a] for a in accts])
+    a_r = np.array([nr[a] for a in accts]); b_r = np.array([dr[a] for a in accts])
+    idx = rng.integers(0, len(accts), size=(RESAMPLES, len(accts)))
+    def stat(sel, pooled):
+        if pooled:
+            ss = 1 - a_s[sel].sum(axis=-1) / b_s[sel].sum(axis=-1)
+            sr = 1 - a_r[sel].sum(axis=-1) / b_r[sel].sum(axis=-1)
+        else:
+            ss = (1 - a_s[sel] / b_s[sel]).mean(axis=-1)
+            sr = (1 - a_r[sel] / b_r[sel]).mean(axis=-1)
+        return ss - sr / 4, sr
+    all_ = np.arange(len(accts))
+    pm, srm = stat(all_, False)
+    pp, _ = stat(all_, True)
+    qm = np.quantile(stat(idx, False)[0], [0.025, 0.975])
+    qp = np.quantile(stat(idx, True)[0], [0.025, 0.975])
+    ok = qm[0] > 0 and srm < 0
+    res.append(["P3b", "EQ-shuf vs F0 minus 1/4 of F1 vs F0", "90", "all", n90, len(accts), fmt(pm), fmt(qm[0]),
+                fmt(qm[1]), fmt(pp), fmt(qp[0]), fmt(qp[1]), ">0", "confirmed" if ok else "not confirmed"])
     # P1: the difference between tertiles, accounts resampled jointly.
     for h in ("30", "90"):
         tert = {}
