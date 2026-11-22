@@ -27,8 +27,10 @@ drift rule. We also use two synthetic generators and one UK account
 (MoneyData, Appendix~\ref{app:moneydata}).
 
 \paragraph{Origins and methods.} Origins fall every \R{c/origin-step} days
-from day \R{c/warmup} of an account's history. Each forecast uses only the
-records dated on or before its origin. A test that cut the input at
+from day \R{c/warmup} of an account's history. Each per-account forecast
+uses only that account's records dated on or before its origin; the
+original B-GLOBAL and the pooled priors of V3 and V4 use cross-account
+information from later dates (Appendix~\ref{app:protocol}). A test that cut the input at
 \R{au/prefix/origins} random development origins reproduced all
 \R{au/prefix/truncated_equals_full} forecasts exactly.
 \begin{itemize}

@@ -117,10 +117,15 @@ origin plus \hC\ days stays inside the data. An origin needs at least
   \R{au/prefix/truncated_equals_full} forecasts equal those made from the
   full file, and all \R{au/prefix/row_equals_frozen} scored rows are
   byte-identical to the frozen development results.
-\item \textbf{The non-causal exceptions.} The drift exclusion above. The
-  V3/V4 priors and B-GLOBAL's training use other accounts' data from all
-  dates, so they carry calendar-future information for early origins.
-  Neither affects V0, V1 or V2.
+\item \textbf{Per-account and cross-account information.} Every
+  per-account forecast (V0, V1, V2 and the per-account baselines,
+  B-EQ among them) uses only that account's records through the origin.
+  The original B-GLOBAL and the pooled priors of V3 and V4 do not: they
+  are fitted on other accounts' data from all dates, so for early origins
+  they use cross-account information from later dates.
+  Appendix~\ref{app:bglobal} retrains B-GLOBAL without it. The drift
+  exclusion above also uses full histories. None of these affects the
+  forecasts of V0, V1 or V2.
 \item \textbf{Seeds.} The forecast seed is a fixed hash of (account,
   origin).
 \end{itemize}
@@ -193,18 +198,31 @@ two levels crossed, their intervals are exchanged.
     was the planned estimand;
   \item the \emph{pooled} skill
     $1 - \sum_i \mathrm{CRPS}_{m,i} / \sum_i \mathrm{CRPS}_{\text{ref},i}$, a
-    ratio of scores summed over all forecasts $i$. It equals
-    $\sum_i w_i (1 - \mathrm{CRPS}_{m,i}/\mathrm{CRPS}_{\text{ref},i})$ with
-    $w_i = \mathrm{CRPS}_{\text{ref},i} / \sum_j \mathrm{CRPS}_{\text{ref},j}$:
-    an average of per-forecast skills weighted by the reference's score,
-    so forecasts the reference finds hard count more.
+    ratio of scores summed over all forecasts $i$. Write $m_i$ and $r_i$
+    for the two scores. When every $r_i > 0$, it equals
+    $\sum_i w_i (1 - m_i/r_i)$ with $w_i = r_i / \sum_j r_j$: an average of
+    per-forecast skills weighted by the reference's score, so forecasts the
+    reference finds hard count more. When some $r_i = 0$ the weighted form
+    is undefined for those forecasts, and with their terms set to zero it
+    needs a correction:
+    $1 - \sum_i m_i / \sum_i r_i = \sum_{r_i > 0} w_i (1 - m_i/r_i) -
+    \sum_{r_i = 0} m_i / \sum_i r_i$. The code computes the ratio of sums
+    directly (\texttt{pooled\_skill} in
+    \texttt{crates/ephemeris-eval/src/aggregate.rs}, and the same ratio in
+    \texttt{paper/analysis/explore\_summary.py}), so the reported pooled
+    skills need no correction; the weighted form is only an
+    interpretation.
   \end{itemize}
 \item \textbf{Zero denominators.} An account whose reference CRPS sums to
-  zero has no account skill and is left out of the account mean. On
-  held-out Berka this applied to \R{xh/s10/zero-total} account, with B-SA
-  as the reference at \hA\ days. The pooled denominator is zero only if
-  every forecast's reference CRPS is; a bootstrap draw where that happened
-  would be dropped.
+  zero has no account skill and is left out of the account mean; its
+  forecasts stay in the pooled sums. On held-out Berka this applied to
+  \R{xh/s10/zero-total} account, with B-SA as the reference at \hA\ days:
+  all \R{xh/s10/zero/B-SA/7/accounts} accounts have paired forecasts,
+  and \R{xh/s10/zero/B-SA/7/accounts_mean} contribute to the account-mean
+  skill against B-SA at \hA\ days. Every other comparison has all
+  \R{xh/s10/zero/B-SA/7/accounts} in its account mean. The pooled
+  denominator is zero only if every forecast's reference CRPS is; a
+  bootstrap draw where that happened would be dropped.
 \item \textbf{Intervals} are \R{c/ci-level}\% intervals from
   \R{c/bootstrap} bootstrap resamples of whole accounts (seeds, on
   synthetic data).
