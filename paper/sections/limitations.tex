@@ -9,8 +9,11 @@
 \item \textbf{The explanation is exploratory.} The analyses of
   \S\ref{sec:explanation} and \S\ref{sec:overdraft} were specified and run
   after the held-out results were known. They were developed on the
-  development split, but they are not confirmatory. Schedule irregularity
-  in Berka was not measured directly, and the simulation uses our own
+  development split, but they are not confirmatory, and S15 is a
+  prespecified follow-up on previously evaluated data. Berka has no label
+  for schedule regularity; our predictability score sees only how well
+  the detected streams' monthly amounts were predicted
+  (Appendix~\ref{app:predictability}), and the simulation uses our own
   generator.
 \item \textbf{Overdraft events.} New crossings of zero are rare in Berka
   (\R{xh/s5s/u0/30/new-crossings/clim/prevalence}\% of held-out origins
@@ -28,9 +31,9 @@
 \item \textbf{An engine flaw found after the freeze.} Without the income
   detector, the frozen engine's paycheck estimate could stay far below the
   real pay after a small first income record (\S\ref{sec:components},
-  Appendix~\ref{app:detector}). The detector is on in every configuration
-  we evaluate, so no reported forecast is affected; the V2 detector
-  ablation measured the flaw. A post-freeze fix, active only with the
+  Appendix~\ref{app:detector}). The detector is on in the frozen primary
+  configuration, so no primary result is affected; the ablations evaluate
+  it off, and the V2 detector ablation measured the flaw. A post-freeze fix, active only with the
   detector off, removes it without changing the frozen configuration.
 \item \textbf{The model's reach.} The first week after a change is
   overconfident, and downward changes in skewed spending are rarely

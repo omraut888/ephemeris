@@ -1,23 +1,21 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-On sparse booked bank accounts, the empirical distribution of an account's
-own past balance changes is a hard baseline for a state-space forecaster.
+On sparse Berka accounts, the state-space model has lower CRPS at seven
+days, while the empirical forecast wins at \hB\ and \hC\ days; at \hC\
+days, supplying realized scheduled flows still fails to rescue the
+schedule-replacement forecast.
 \begin{itemize}
-\item \textbf{The state-space model wins at a week.} Its intervals are
-  the more cautious about the downside.
-\item \textbf{The empirical forecast wins at a month and beyond.}
-\item \textbf{Why is not established (exploratory).} Replacing past
-  scheduled flows with the projection raises CRPS at a month and beyond,
-  but even the realized future flows do not remove the loss at three
-  months, and within-window dependence explains only a small part. A
-  forward-period confirmatory test on held-out accounts confirmed both,
-  and that the replacement does relatively better where schedules are
-  predictable.
-\item \textbf{New crossings of zero are over-predicted by all four
-  model-based forecasts,} and none beats the account's own historical
-  frequency at any horizon. Short-horizon negative balances are mostly
-  existing ones.
+\item \textbf{The state-space model's intervals are the more cautious about
+  the downside;} the empirical forecast is the sharper one.
+\item \textbf{Tests of schedule replacement (exploratory).} Substituting
+  realized future flows from detected streams did not recover B-SR's
+  \hC-day loss, and shuffling historical flow--residual pairs cost much
+  less than schedule replacement. The source of the remaining loss is
+  unresolved.
+\item \textbf{New negative booked-balance crossings are over-predicted by
+  all four model-based forecasts,} and none beats the account's own
+  historical frequency at any horizon.
 \item \textbf{The planned calibration and sharpness claims fail in
   part,} and the paper says where (Table~\ref{tab:claims}).
 \end{itemize}

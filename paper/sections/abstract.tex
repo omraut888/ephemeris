@@ -5,40 +5,31 @@ nothing more than the empirical distribution of the account's own past
 balance changes. We ask when each is better, on sparse booked accounts of
 the Berka bank data.
 
-\emph{The headline: a horizon reversal.} On held-out accounts, a Kalman-filter
-Monte Carlo forecaster with compound-Poisson spending (V2) has lower CRPS
-than that empirical forecast (B-EQ) at \hA\ days (skill
-\R{ho/pair/B-EQ/7/skill}). B-EQ has lower CRPS at \hB\ and \hC\ days (V2's
-skill \R{ho/pair/B-EQ/30/skill} and \R{ho/pair/B-EQ/90/skill}; pooled over
-origins, \R{ho/pair/B-EQ/30/pooled_skill} and
+\emph{The result.} On sparse Berka accounts, a Kalman-filter Monte Carlo
+forecaster with compound-Poisson spending (V2) has lower CRPS than that
+empirical forecast (B-EQ) at \hA\ days, while the empirical forecast wins
+at \hB\ and \hC\ days. On held-out accounts V2's account-mean skill against
+B-EQ is \R{ho/pair/B-EQ/7/skill}, \R{ho/pair/B-EQ/30/skill} and
+\R{ho/pair/B-EQ/90/skill} at \hA, \hB\ and \hC\ days (pooled over origins,
+\R{ho/pair/B-EQ/7/pooled_skill}, \R{ho/pair/B-EQ/30/pooled_skill} and
 \R{ho/pair/B-EQ/90/pooled_skill}).
 
-\emph{What does not explain it (exploratory).} We did not measure
-schedule irregularity in Berka, and these analyses followed the held-out
-results. Replacing the scheduled flows in B-EQ's own past windows with the
-detected schedule's projection (B-SR) raises CRPS at \hB\ and \hC\ days
-(pooled skill \R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
-\R{xh/s3/B-SR-vs-B-EQ/90/skill_pooled} on held-out accounts). But projection
-error is not sufficient: on development accounts, replacing them with the
-\emph{realized} future scheduled flows still loses to B-EQ at \hC\ days
-(account mean \R{xd/s11/o-vs-f0/90/skill_mean}; pooled
-\R{xd/s11/o-vs-f0/90/skill_pooled}). Breaking the pairing of each window's
-scheduled and other flows costs B-EQ only a little, so within-window
-dependence, our leading hypothesis, explains a small part at most. A
-forward-period confirmatory test on held-out accounts, specified in
-advance, confirmed all four of its predictions: the oracle still loses at
-\hC\ days (account-mean skill \R{cf/pred/p2/90/skill_mean}), the
-dependence effect is real but under a quarter of the schedule-based loss,
-and the replacement does relatively better where schedules were
-predictable. What causes the long-horizon loss remains open.
+\emph{Tests of schedule replacement (exploratory).} Replacing the scheduled
+flows in B-EQ's own past windows with the detected schedule's projection
+(B-SR) raises CRPS at \hB\ and \hC\ days. At \hC\ days, supplying the
+realized scheduled flows instead of the projection still fails to rescue
+it. On later Berka origins, in a prespecified follow-up on previously
+evaluated data, substituting realized future flows from detected streams
+did not recover B-SR's \hC-day loss (the oracle's account-mean skill
+against B-SR: \R{xh/s17/o-vs-f1/all/90/skill_mean@3}). Shuffling historical
+flow--residual pairs incurred a much smaller penalty than schedule
+replacement. These contrasts leave the source of the remaining loss
+unresolved.
 
-\emph{Overdraft events (exploratory).} Most short-horizon negative-balance
-events continue a balance that is already negative. For \emph{new}
-crossings of zero (prevalence \R{xh/s5s/u0/90/new-crossings/V2/prevalence}\%
-at \hC\ days on held-out accounts) no forecast beats the account's own
-historical frequency at any horizon, and the four model-based forecasts
-over-predict them badly (V2's mean probability at \hC\ days:
-\R{xh/s5s/u0/90/new-crossings/V2/mean_p}\%).
+\emph{Shortfalls (exploratory, secondary).} For new negative
+booked-balance crossings, no forecast beats the account's own historical
+frequency at any horizon, and the four model-based forecasts over-predict
+them.
 
 \emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
 intervals cover too much, so the planned calibration claim fails.

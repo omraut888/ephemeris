@@ -16,43 +16,40 @@ single account's history, which is all a \emph{local-first} application
 \end{itemize}
 This paper asks when each is better, on sparse, booked bank accounts.
 
-\paragraph{A horizon reversal.} On the held-out accounts of the Berka bank
-data, the state-space model chosen by our analysis plan, V2, has lower CRPS
-than B-EQ at \hA\ days. B-EQ has lower CRPS at \hB\ and \hC\ days, under
+\paragraph{The result.} On sparse Berka accounts, the state-space model
+chosen by our analysis plan, V2, has lower CRPS than the empirical
+forecast B-EQ at \hA\ days, while B-EQ wins at \hB\ and \hC\ days, under
 either way of averaging scores (\S\ref{sec:reversal},
-Figure~\ref{fig:reversal}).
+Figure~\ref{fig:reversal}). At \hC\ days, supplying realized scheduled
+flows still fails to rescue the schedule-replacement forecast.
 
-\paragraph{What does not explain it (exploratory).} We did not measure
-schedule irregularity in Berka, and every analysis of the reversal was
-specified after the held-out results:
+\paragraph{Tests of schedule replacement (exploratory).} Every analysis of
+the reversal was specified after the held-out results
+(\S\ref{sec:explanation}).
 \begin{itemize}
-\item replacing the scheduled flows in B-EQ's own past windows with the
-  detected schedule's projection (B-SR) raises CRPS at \hB\ and \hC\ days;
-\item but projection error is not sufficient: on development accounts,
-  replacing them with the realized future scheduled flows still loses at
-  \hC\ days;
-\item breaking the pairing of each window's scheduled and other flows
-  costs B-EQ only a little, so within-window dependence, our leading
-  hypothesis, explains a small part at most;
-\item the replacement does relatively better where schedules were
-  predictable, though on development it helps only on the pooled score;
-  in our simulator, irregular schedules, not sparse spending,
-  give B-EQ its long-horizon advantage.
+\item Replacing the scheduled flows in B-EQ's own past windows with the
+  detected schedule's projection (B-SR) raises CRPS at \hB\ and \hC\ days.
+\item On later Berka origins, substituting realized future flows from
+  detected streams did not recover B-SR's \hC-day loss.
+\item Shuffling historical flow--residual pairs incurred a much smaller
+  penalty than schedule replacement.
+\item B-SR does relatively better where the detected schedule's past flows
+  were predictable, but still loses to B-EQ under the planned account mean.
 \end{itemize}
-A forward-period confirmatory test on held-out accounts, specified before
-it was run, confirmed that the oracle still loses, that the dependence
-effect is small next to the schedule-based loss, and that the replacement
-does relatively better where schedules were predictable
-(\S\ref{sec:explanation}); what causes the loss remains open. The calendar-alignment rule and the sparse-event
-model we tested do not account for the gap, and history length is weak,
-aggregation-dependent evidence.
+These contrasts leave the source of the remaining loss unresolved. Four
+predictions (that the oracle still loses to B-EQ at \hC\ days, that the
+shuffle penalty is negative and under a quarter of B-SR's loss, and the
+relative predictability pattern) were fixed before a prespecified
+follow-up on previously evaluated Berka data; all four held. In our own
+simulator, B-EQ beats V2 at \hB\ and \hC\ days only when schedules are
+irregular.
 
-\paragraph{Overdraft events (exploratory).} An overdraft warning needs the
+\paragraph{Shortfalls (exploratory).} An overdraft warning needs the
 probability that a balance at or above zero becomes negative within the
-horizon. Most short-horizon negative-balance events instead continue a
-balance that is already negative. For new crossings, no forecast beats the
-account's own historical frequency at any horizon, and the four
-model-based forecasts over-predict them (\S\ref{sec:overdraft}).
+horizon. For these new negative booked-balance crossings, no forecast
+beats the account's own historical frequency at any horizon, and the four
+model-based forecasts over-predict them (\S\ref{sec:overdraft}). Most
+short-horizon negative balances continue an existing one.
 
 \paragraph{Calibration.} V2's \lC\% intervals meet the plan's band, and it
 misses below them less often than nominal. Its \lA\% intervals cover far
