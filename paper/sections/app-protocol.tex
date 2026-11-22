@@ -75,8 +75,11 @@ calendar is used, because the engine has no UK calendar.
 
 \subsection{The revision candidates}
 \label{sec:variants}
-The original model is V0. The candidates and the rule for choosing among
-them were committed before any revision code was written.
+The original model is V0. On development data it failed A2: its \lC\%
+interval covered \R{dev/var/V0/90/cov90}\% at \hC\ days. The candidates and
+the rule for choosing among them were committed before any revision code
+was written. The rule required \lC\% coverage within $\pm\R{c/select-tol}$
+points at every horizon, then chose the lowest CRPS; it selected V2.
 \begin{itemize}
 \item \textbf{V1: online conformal recalibration} of V0 by adaptive
   conformal inference \citep{gibbs2021aci}, per account and horizon. Each
@@ -212,6 +215,30 @@ All methods share one origin set on Berka: every method has the same
 
 
 \subsection{The timeline}
+\label{sec:timeline}
+Git commit times are set by the author's machine; GitHub's record of when
+it first received each commit is not.
+\begin{itemize}
+  \item The freeze was on GitHub at \R{tl/70a7bca/pushed}, before held-out run~1
+  began at \R{tl/run1/time}.
+  \item The held-out results were on GitHub at \R{tl/cdf070d/pushed}, before the
+  ablation run began at \R{tl/run2/time}.
+  \item The plan was first pushed at \R{tl/8c40faf/pushed}, together with the
+  first development results. Its precedence over them rests on its
+  author-controlled commit time, \R{tl/8c40faf/time}.
+  \item The exploratory specifications (\S\ref{sec:explanation},
+  \S\ref{sec:overdraft}) were likewise first pushed at
+  \R{tl/9ec075f/pushed}, with their results. Their precedence rests on commit
+  times (\R{tl/9ec075f/time}, against \R{tl/run3/time} for the first
+  exploratory held-out run, which the guard logged).
+  \item The S15 specification (\S\ref{sec:explanation}) was on
+  GitHub at \R{tl/fe14e1d/pushed}, before its single run at
+  \R{tl/run7/time}. Its one amendment (P3b) was committed at
+  \R{tl/44afcf4/time}, before the run, and first pushed at
+  \R{tl/44afcf4/pushed}, after it; its precedence rests on the commit time.
+\end{itemize}
+
+
 \begin{table}[htbp]
 \centering\scriptsize
 \tab{timeline}

@@ -2,8 +2,22 @@
 
 ## Resume here (updated after every step)
 
-**Release v1 prepared.** Tag `v1.0-paper` is local only; nothing was
-pushed. Nothing is running.
+**Round 6 (third referee report), in progress.**
+- **State after the interruption:** the uncommitted edits (the S17 macros,
+  the compact protocol §4, and the timeline and selection rule moved into
+  Appendix A) were complete, so they were finished and committed as they
+  were. §6 had not been touched.
+- **Done:** S17 specification and results; CLIM+; the new-crossing
+  reliability figure; §4 (item 3 for §4).
+- **Next:**
+  1. §6, "Tests of schedule replacement" (items 1, 2, 3, 4, 8);
+  2. §7 compact (item 5);
+  3. the cuts (item 9): §8, §9 and an Additional-results appendix;
+  4. the detector wording (item 6);
+  5. "30 and 90 days" (item 7);
+  6. title date and availability (items 8 and 10);
+  7. the abstract, introduction, limitations and conclusion;
+  8. rebuild, bundle check, retag.
 
 ## Release v1 (2026-11-22)
 

@@ -65,69 +65,38 @@ Appendix~\ref{app:protocol}.
   forecasts in \R{ho/var/V2/30/accounts} accounts per horizon.
 \end{itemize}
 
-\paragraph{The analysis plan, the revision and the freeze.} The plan fixed
-falsifiable claims before any real-data run. Its two central claims:
+\paragraph{Plan, freeze and held-out run.} A written analysis plan fixed
+falsifiable claims before any real-data run, among them calibration (A2:
+every central interval within $\pm\R{c/a2-tol}$ points of nominal at \hA\
+and \hB\ days, $\pm\R{c/a2-tol-90}$ at \hC) and sharpness (B1: positive CRPS
+skill against \emph{each} baseline at \hB\ and \hC\ days). The original
+model V0 failed A2 on development data; a revision rule written before any
+revision code chose V2 among four candidates (Appendix~\ref{app:protocol}),
+and V2 was frozen. The held-out split runs only through a command that
+refuses an uncommitted tree and logs every run; the main held-out
+evaluation ran once.
+
+\paragraph{What is exploratory, and what S15 is.} Everything after that run
+is exploratory: post-hoc summaries of the stored forecasts, a second logged
+run of the planned ablations, and the analyses of
+\S\ref{sec:explanation}--\S\ref{sec:overdraft}, each specified in writing
+(\texttt{paper/REVISION.md}) and developed on development accounts first.
+One of them, S15, is a \emph{prespecified follow-up on previously evaluated
+Berka data}: predictions fixed from development results, tested once in a
+logged run on held-out origins dated on or after 1997-07-01. Its
+provenance:
 \begin{itemize}
-  \item \textbf{A2:} on held-out data, every central interval within
-  $\pm\R{c/a2-tol}$ points of nominal at \hA\ and \hB\ days and
-  $\pm\R{c/a2-tol-90}$ at \hC;
-  \item \textbf{B1:} CRPS skill against \emph{each} baseline positive at \hB\ and
-  \hC\ days, with an interval excluding zero.
+  \item the original specification was on GitHub at \R{tl/fe14e1d/pushed},
+  before the logged run at \R{tl/run7/time};
+  \item its one amendment (P3b) was first pushed with the results, at
+  \R{tl/44afcf4/pushed}; its precedence rests on the local commit record
+  (\R{tl/44afcf4/time});
+  \item the later-period origins were already inside held-out aggregates we
+  had viewed; the oracle, shuffle and predictability contrasts had not been
+  viewed on held-out data;
+  \item information after the cutoff did enter: the predictability cut
+  points and the predictions came from development accounts over all
+  dates, and the drift exclusion uses full histories.
 \end{itemize}
-
-On development data, the original model V0 failed A2: its \lC\% interval
-covered \R{dev/var/V0/90/cov90}\% at \hC\ days. A revision rule written
-before any revision code chose among four candidates:
-\begin{itemize}
-  \item \textbf{V1:} conformal recalibration \citep{gibbs2021aci};
-  \item \textbf{V2:} compound-Poisson discretionary spending;
-  \item \textbf{V3:} pooled priors;
-  \item \textbf{V4:} V2 and V3 combined, recalibrated as V1.
-\end{itemize}
-
-The rule required \lC\% coverage within $\pm\R{c/select-tol}$ points at
-every horizon, then chose the lowest CRPS. It selected V2, which was
-frozen.
-
-The held-out split runs only through a command that refuses an
-uncommitted working tree, logs each run, and refuses a second run without
-a logged reason. The main held-out evaluation ran once.
-
-\paragraph{What is exploratory.} Everything reported after that run is
-labelled exploratory, with no confirmatory status:
-\begin{itemize}
-  \item a second, logged run of the planned ablations, which run~1 omitted
-  through a harness gap;
-  \item post-hoc summaries of the stored forecasts (paired comparisons, pooled
-  skills, one-sided misses, per-cell verdicts);
-  \item the analyses behind \S\ref{sec:explanation} and \S\ref{sec:overdraft}.
-  They were specified in writing (the repository's
-  \texttt{paper/REVISION.md}), developed on the development split, and
-  then run on held-out accounts in two further logged runs.
-\end{itemize}
-
-\paragraph{Timeline.}
-\label{sec:timeline}
-Git commit times are set by the author's machine; GitHub's record of when
-it first received each commit is not.
-\begin{itemize}
-  \item The freeze was on GitHub at \R{tl/70a7bca/pushed}, before held-out run~1
-  began at \R{tl/run1/time}.
-  \item The held-out results were on GitHub at \R{tl/cdf070d/pushed}, before the
-  ablation run began at \R{tl/run2/time}.
-  \item The plan was first pushed at \R{tl/8c40faf/pushed}, together with the
-  first development results. Its precedence over them rests on its
-  author-controlled commit time, \R{tl/8c40faf/time}.
-  \item The exploratory specifications (\S\ref{sec:explanation},
-  \S\ref{sec:overdraft}) were likewise first pushed at
-  \R{tl/9ec075f/pushed}, with their results. Their precedence rests on commit
-  times (\R{tl/9ec075f/time}, against \R{tl/run3/time} for the first
-  exploratory held-out run, which the guard logged).
-  \item The confirmatory specification S15 (\S\ref{sec:explanation}) was on
-  GitHub at \R{tl/fe14e1d/pushed}, before its single run at
-  \R{tl/run7/time}. Its one amendment (P3b) was committed at
-  \R{tl/44afcf4/time}, before the run, and first pushed at
-  \R{tl/44afcf4/pushed}, after it; its precedence rests on the commit time.
-\end{itemize}
-
-The full timeline and every deviation are in Appendix~\ref{app:protocol}.
+The full protocol, the timeline and every deviation are in
+Appendix~\ref{app:protocol}.

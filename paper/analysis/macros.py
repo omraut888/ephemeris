@@ -671,6 +671,14 @@ def exploratory():
             table(f"{tag}/s13/fix", s13 / "postfix/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1", s13 / "postfix-v1-superseded/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1c", s13 / "postfix-v1-superseded/cells.csv", ["method", "h"])
+        s17 = d / "s17-stored"
+        if (s17 / "contrasts.csv").exists():
+            table(f"{tag}/s17", s17 / "contrasts.csv", ["comparison", "subset", "h"])
+            table(f"{tag}/s17/comp", s17 / "tertile-composition.csv", ["tertile"])
+        if (s17 / "newcross-concentration.csv").exists():
+            keyvalue(f"{tag}/s17/conc", s17 / "newcross-concentration.csv")
+        if (s17 / "newcross-climatologies.csv").exists():
+            table(f"{tag}/s17/clim", s17 / "newcross-climatologies.csv", ["h", "method"])
         if (d / "s16-dispersion/dispersion.csv").exists():
             table(f"{tag}/s16", d / "s16-dispersion/dispersion.csv", ["h"])
         if (d / "s9-detector-postfix/compare.csv").exists():
