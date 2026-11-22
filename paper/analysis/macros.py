@@ -220,6 +220,14 @@ def constants():
     # S13's closeness tolerance for m-hat against a paycheck (explore.rs).
     ex = (ROOT / "crates/ephemeris-eval/src/explore.rs").read_text()
     put("c/close-tol", integer(100 * float(re.search(r"< ([0-9.]+) \* amounts\[i\]\.abs\(\)", ex).group(1))))
+    # S11's predictability score (explore.rs): checkpoints, step, minimum
+    # history and the date-matching window.
+    put("c/pred-checkpoints", re.search(r"for j in 1\.\.=(\d+) \{\n\s+let c = origin - (\d+) \* j;", ex).group(1))
+    put("c/pred-step", re.search(r"let c = origin - (\d+) \* j;", ex).group(1))
+    put("c/pred-minhist", re.search(r"if c < first \+ (\d+) \{", ex).group(1))
+    put("c/pred-match", re.search(r"const MATCH_DAYS: Day = (\d+);", ex).group(1))
+    es = (ROOT / "paper/analysis/explore_summary.py").read_text()
+    put("c/pred-minchk", re.search(r'int\(r\["checkpoints"\]\) < (\d+)', es).group(1))
     # Nominal miss rate on each side of the central 90% interval.
     put("c/nominal-tail", f"{100 * (1 - float(levels[2])) / 2:g}")
     hz = c["berka_run/HORIZONS"].strip("[]").split(",")
@@ -671,6 +679,9 @@ def exploratory():
             table(f"{tag}/s13/fix", s13 / "postfix/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1", s13 / "postfix-v1-superseded/forecasts.csv", ["method", "h"])
             table(f"{tag}/s13/fix1c", s13 / "postfix-v1-superseded/cells.csv", ["method", "h"])
+        if (d / "s11-schedule/cutpoints.csv").exists():
+            for r in csv.DictReader(open(d / "s11-schedule/cutpoints.csv")):
+                put(f"{tag}/s11cut/{slug(r['quantile'])}", r["amount_error"])
         s17 = d / "s17-stored"
         if (s17 / "contrasts.csv").exists():
             table(f"{tag}/s17", s17 / "contrasts.csv", ["comparison", "subset", "h"])

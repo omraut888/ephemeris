@@ -33,6 +33,10 @@
 \newcommand{\tab}[1]{\adjustbox{max width=\linewidth}{\input{results/tables/#1.tex}}}
 % Pooled skill with the account mean in brackets, from one comparison key.
 \newcommand{\pq}[2]{\R{#1/#2/skill_pooled}\,{\scriptsize(\R{#1/#2/skill_mean})}}
+% Three-decimal pooled skill (account mean in brackets), and a full cell
+% pair with intervals: account mean [lo, hi] & pooled [lo, hi].
+\newcommand{\pqt}[2]{\R{#1/#2/skill_pooled@3}\,{\scriptsize(\R{#1/#2/skill_mean@3})}}
+\newcommand{\ci}[1]{\R{#1/skill_mean@3} [\R{#1/skill_mean_lo@3}, \R{#1/skill_mean_hi@3}] & \R{#1/skill_pooled@3} [\R{#1/skill_pooled_lo@3}, \R{#1/skill_pooled_hi@3}]}
 \newcommand{\TODO}[1]{\textcolor{red}{[TODO: #1]}}
 
 \title{When Does Transaction History Beat a State-Space Model?\\
@@ -65,6 +69,7 @@ Probabilistic Balance Forecasting on Sparse Bank Accounts}
 \input{sections/app-protocol}
 \input{sections/app-tables}
 \input{sections/app-bglobal}
+\input{sections/app-results}
 \input{sections/app-regime}
 \input{sections/app-identity}
 \input{sections/app-moneydata}
