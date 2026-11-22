@@ -49,7 +49,8 @@ def points(x, d=1):
 
 
 def integer(x):
-    return f"{round(float(x)):,}".replace(",", "{,}")
+    s = f"{abs(round(float(x))):,}".replace(",", "{,}")
+    return ("\\textminus{}" + s) if round(float(x)) < 0 else s
 
 
 def slug(s):
@@ -76,6 +77,12 @@ def fmt(col, v):
     if c.startswith("crps_") or c.startswith("bias_"):
         s = integer(abs(float(v)))
         return ("\\textminus{}" + s) if float(v) < 0 else s
+    if c in ("pay_first_over_last", "never_close_share", "final_m_over_pay", "final_s_over_pay2"):
+        return pct(v)
+    if c in ("forecasts_changed", "coverage_flips", "origins", "events"):
+        return integer(v)
+    if c.startswith("citl"):
+        return points(v, 2)
     if c in ("observed", "mean_p"):
         return pct(v, 2)
     if c in ("diff", "diff_lo", "diff_hi"):
@@ -210,6 +217,9 @@ def constants():
     levels = re.search(r"pub const INTERVALS: \[f64; 4\] = \[([^\]]+)\]", dist).group(1).split(",")
     for i, lv in enumerate(levels, 1):
         put(f"c/l{i}", integer(100 * float(lv)))
+    # S13's closeness tolerance for m-hat against a paycheck (explore.rs).
+    ex = (ROOT / "crates/ephemeris-eval/src/explore.rs").read_text()
+    put("c/close-tol", integer(100 * float(re.search(r"< ([0-9.]+) \* amounts\[i\]\.abs\(\)", ex).group(1))))
     # Nominal miss rate on each side of the central 90% interval.
     put("c/nominal-tail", f"{100 * (1 - float(levels[2])) / 2:g}")
     hz = c["berka_run/HORIZONS"].strip("[]").split(",")
@@ -621,7 +631,8 @@ def exploratory():
     import glob
     for tag, d in (("xd", RES / "exploratory"), ("xh", RES / "exploratory-heldout")):
         for sub, short in (("s3-reversal", "s3"), ("s6-v2-ablations", "s6"), ("s7-bglobal", "s7"),
-                           ("s8-phase", "s8"), ("s9-detector", "s9"), ("s11-schedule", "s11")):
+                           ("s8-phase", "s8"), ("s9-detector", "s9"), ("s11-schedule", "s11"),
+                           ("s14-dependence", "s14")):
             for f in sorted(glob.glob(str(d / sub / "*.csv"))):
                 name = pathlib.Path(f).stem
                 if name.startswith("compare"):
@@ -650,6 +661,17 @@ def exploratory():
         if (s12 / "scores.csv").exists():
             table(f"{tag}/s12/sc", s12 / "scores.csv", ["block", "subset", "method"])
             table(f"{tag}/s12/n", s12 / "counts.csv", ["threshold", "h"])
+        if (d / "s5-overdraft/split.csv").exists():
+            table(f"{tag}/s5s", d / "s5-overdraft/split.csv", ["threshold", "h", "subset", "method"])
+        s13 = d / "s13-income"
+        if (s13 / "trace.csv").exists():
+            table(f"{tag}/s13/trace", s13 / "trace.csv", ["engine", "group", "config"])
+            keyvalue(f"{tag}/s13/v0", s13 / "v0-bias.csv")
+            table(f"{tag}/s13/fix", s13 / "postfix/forecasts.csv", ["method", "h"])
+            table(f"{tag}/s13/fix1", s13 / "postfix-v1-superseded/forecasts.csv", ["method", "h"])
+            table(f"{tag}/s13/fix1c", s13 / "postfix-v1-superseded/cells.csv", ["method", "h"])
+        if (d / "s9-detector-postfix/compare.csv").exists():
+            table(f"{tag}/s9p", d / "s9-detector-postfix/compare.csv", ["engine", "stratum", "comparison", "h"])
         s10 = d / "s10-rows-checks"
         if s10.exists():
             table(f"{tag}/s10/ct", s10 / "coverage-tails.csv", ["method", "h"])

@@ -972,6 +972,58 @@ other compiler versions.
 The paper reports C1 as falsified for the frozen engine and fixed after the
 freeze, with these numbers.
 
+### The paycheck channel without the detector (2026-11-21; post-freeze, separate from the results above)
+
+**Found by the exploratory V2 detector ablation** (REVISION.md S9 and S13,
+development only).
+
+**The flaw.** With the income detector off, the paycheck estimate m can
+stay far below the real pay:
+1. In many Berka accounts the first income record is small (a median 4% of
+   the later paycheck), and the filter's posterior on m becomes confident
+   at that level.
+2. The real paychecks are then outliers to the income gate (NIS above
+   10.83), so they skip the update of m.
+3. The income noise estimate, fed capped samples, inflates until the
+   paychecks pass the gate. By then the gain on m is tiny (median 0.002,
+   against 0.057 with the detector), because P_mm grows only by q_m.
+
+In the 214 development accounts with an income alarm, m̂ never came within
+20% of a paycheck in 75% of them. With the detector on, its alarm releases
+m within two paychecks, so no frozen configuration is affected. The flaw
+did, however, make the V2 detector ablation measure the initialization of
+m rather than regime detection. V0's smaller ablation loss is not
+compensation: removing the detector shifts V0's 90-day median by −9,200,
+close to V2's −10,542; V0 starts from an upward bias.
+
+**The fix.** Core commits `12def8e` (first version) and `3bf095a` (final):
+- With the income detector off, two consecutive income observations gated
+  on the same side start a new pay level: m gets a jump of variance ν² and
+  the income noise estimate forgets, as on an alarm.
+- A first version also fired with the detector on. On the first 100
+  development accounts it changed 479 of 3,105 forecasts per horizon at 30
+  and 90 days, with slightly higher CRPS (V2, 90 days: 3,406 to 3,421).
+  It was withdrawn.
+- **Tests:** the existing pay-cut test now also checks the detector-off
+  path. A new test has a small first paycheck with the detector off, and
+  another checks that alternating outliers do not escape. Both of the
+  first two fail without the fix.
+
+**Effect:**
+- **Frozen configuration unchanged.** V0 and V2 rerun on the first 100
+  development accounts differ in 0 of 3,105 forecasts per horizon, and the
+  S9 rerun's detector-on forecasts on all 27,855 development origins are
+  identical.
+- **Golden files** unchanged on every shell: `scripts/test-full.sh` passed
+  natively, in WASM, through UniFFI, desktop IPC, the Swift package and
+  Vitest.
+- **Without the detector,** V2's 90-day skill against full V2 on
+  development is −0.015 (account mean; pooled −0.009) instead of −0.46.
+  m̂ ends at 1.05 times the last paycheck instead of 0.13.
+
+The frozen results are not regenerated. The paper reports the flaw and the
+fix in §9, Appendix B.4 and the limitations.
+
 **Not assessed by the held-out runs:** A1 (synthetic, model-matched),
 B2 (realistic generator) and C1 (bit identity). They were assessed
 afterwards: `paper/results/synthetic/`, `paper/results/identity/`, and the

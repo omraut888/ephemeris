@@ -3,9 +3,9 @@
 
 We did not measure schedule irregularity in Berka directly, and every
 analysis in this section was specified after the held-out results were
-known. What follows is a set of comparisons consistent with one
-explanation, not a demonstration of it. We tested four explanations, each
-specified in writing before running (\texttt{paper/REVISION.md}):
+known. The comparisons below narrow the explanation down; they do not
+establish one. We tested four candidate explanations, each specified in
+writing before running (\texttt{paper/REVISION.md}):
 \begin{itemize}
 \item calendar alignment;
 \item the cost of projecting the schedule;
@@ -61,24 +61,75 @@ Intervals are in the result files (\texttt{paper/results/exploratory*}).}
 \label{tab:explain}
 \end{table}
 
-\paragraph{Replacing past scheduled flows with the projection: the
-best-supported explanation.} Four methods project the detected
-pay-and-bill schedule: V2, CP-noKF, B-SR and B-SA+. All four have higher
-CRPS than B-EQ at \hB\ and \hC\ days, on both splits, B-SA+ by the most
-(Table~\ref{tab:explain}). B-SR is the closest contrast: on the same
-windows, it differs from B-EQ only by the replacement
-$S_t - S_{\text{hist}}$. It loses on held-out accounts with pooled skill
-\R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
+\paragraph{Replacing past scheduled flows with the projection.} Four
+methods project the detected pay-and-bill schedule: V2, CP-noKF, B-SR and
+B-SA+. All four have higher CRPS than B-EQ at \hB\ and \hC\ days, on both
+splits, B-SA+ by the most (Table~\ref{tab:explain}). B-SR is the closest
+contrast: on the same windows, it differs from B-EQ only by the
+replacement $S_t - S_{\text{hist}}$. It loses on held-out accounts with
+pooled skill \R{xh/s3/B-SR-vs-B-EQ/30/skill_pooled} and
 \R{xh/s3/B-SR-vs-B-EQ/90/skill_pooled} (account mean
 \R{xh/s3/B-SR-vs-B-EQ/30/skill_mean} and
 \R{xh/s3/B-SR-vs-B-EQ/90/skill_mean}). Its \lC\% intervals are about as
 narrow as B-EQ's (median \R{xh/s3/stats/B-SR/90/median_width90} against
 \R{xh/s3/stats/B-EQ/90/median_width90} CZK at \hC\ days), so the loss is
-not a matter of width. On these accounts, the projection of the detected
-schedule is a worse guide to the coming flows than the flows the same
-streams produced in the past windows. Whether that is because the
-schedules are irregular is what the simulation below suggests and what we
-did not measure.
+not a matter of width.
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{l lll}
+\toprule
+Comparison (skill of the first; development) & \hA\ d & \hB\ d & \hC\ d\\
+\midrule
+B-SR vs B-EQ (schedule replacement) & \pq{xd/s14/f1-vs-f0}{7} & \pq{xd/s14/f1-vs-f0}{30} & \pq{xd/s14/f1-vs-f0}{90}\\
+Oracle vs B-EQ (realized future scheduled flows) & \pq{xd/s14/o-vs-f0}{7} & \pq{xd/s14/o-vs-f0}{30} & \pq{xd/s14/o-vs-f0}{90}\\
+Shuffled B-EQ vs B-EQ (pairing broken) & \pq{xd/s14/eq-shuf-vs-f0}{7} & \pq{xd/s14/eq-shuf-vs-f0}{30} & \pq{xd/s14/eq-shuf-vs-f0}{90}\\
+Matched B-SR vs B-SR (pairing restored) & \pq{xd/s14/sr-match-vs-f1}{7} & \pq{xd/s14/sr-match-vs-f1}{30} & \pq{xd/s14/sr-match-vs-f1}{90}\\
+\addlinespace
+B-SR vs B-EQ, predictable tertile & -- & \pq{xd/s11-predictable/f1-vs-f0}{30} & \pq{xd/s11-predictable/f1-vs-f0}{90}\\
+B-SR vs B-EQ, middle tertile & -- & \pq{xd/s11-middle/f1-vs-f0}{30} & \pq{xd/s11-middle/f1-vs-f0}{90}\\
+B-SR vs B-EQ, unpredictable tertile & -- & \pq{xd/s11-unpredictable/f1-vs-f0}{30} & \pq{xd/s11-unpredictable/f1-vs-f0}{90}\\
+\bottomrule
+\end{tabular}
+\caption{What explains B-SR's loss (exploratory, development accounts,
+\R{xd/s14/f1-vs-f0/30/forecasts} origins in \R{xd/s14/f1-vs-f0/30/accounts}
+accounts per horizon; tertiles of \R{xd/s11-predictable/f1-vs-f0/30/forecasts}
+origins each): pooled CRPS skill of the first forecast against the second,
+account mean in brackets. Intervals are in
+\texttt{paper/results/exploratory/s11-schedule/} and \texttt{s14-dependence/}.}
+\label{tab:mechanism}
+\end{table}
+
+\paragraph{Projection error is not sufficient.} If B-SR lost only because
+the projection $S_t$ misjudges the coming flows, replacing $S_t$ with the
+flows the same streams actually produced over the horizon (an oracle,
+using the future) should remove the loss. On development accounts it does
+at short horizons but not at long ones: at \hC\ days the oracle still loses
+to B-EQ (Table~\ref{tab:mechanism}).
+
+\paragraph{Within-window dependence: real, but small.} Our leading
+hypothesis was that B-EQ wins because each past window keeps its pay and
+the spending that went with it together, while schedule-based forecasts
+recombine the two. Breaking that pairing within B-EQ, by recombining each
+window's scheduled flows with another window's residual, does make it
+worse at \hB\ and \hC\ days under both aggregations, but only slightly
+(account-mean skill \R{xd/s14/eq-shuf-vs-f0/30/skill_mean@3} and
+\R{xd/s14/eq-shuf-vs-f0/90/skill_mean@3}), a small fraction of B-SR's
+loss. Restoring the pairing within
+B-SR, by drawing residuals only from windows whose scheduled flow resembles
+the projection, makes B-SR worse, not better, though it also leaves it
+fewer windows. Within-window dependence therefore explains at most a small
+part of the long-horizon loss; the rest is unexplained. A forward-period
+test of these predictions on held-out accounts is specified
+(\texttt{paper/REVISION.md}, S15) but has not been run.
+
+\paragraph{Schedule predictability: weak, aggregation-dependent effects.}
+We measured, from each origin's own history, how far the schedule
+detected at earlier checkpoints missed the next month's scheduled flows,
+and split origins into tertiles. On the pooled score, schedule replacement
+helps slightly in the most predictable tertile and hurts in the others.
+Under the planned account mean it hurts in every tertile
+(Table~\ref{tab:mechanism}), and the middle tertile does worst.
 
 \paragraph{History length: weaker, aggregation-dependent evidence.} If
 B-EQ needed a long history to represent the distribution of changes, the
@@ -120,8 +171,8 @@ result:
 \item \textbf{Sparsity alone} shrinks V2's lead but never reverses it.
 \end{itemize}
 In our generator, B-EQ's advantage at \hB\ and \hC\ days needs irregular
-schedules. That is consistent with the B-SR result on Berka, where
-irregularity was not measured. The simulation covers \hB\ and \hC\ days
+schedules. On Berka, the predictability tertiles give only weak support for
+the same pattern. The simulation covers \hB\ and \hC\ days
 only, and varies the three regularity factors together.
 
 \begin{figure}[t]
@@ -162,8 +213,9 @@ by +10 and +20 days, V2's pooled skill against B-EQ is
 (\R{xd/s3/V2-vs-B-EQ/30/skill_mean}) on the frozen grid. The sign holds on
 every grid.
 
-\paragraph{What we did not show.} The explanation rests on the comparisons
-above and on a simulation that uses our own generator. A direct test
-would measure, per account and from history available at the origin, how
-far realized paychecks and bills depart from the detected schedule, and
-relate that to the effect of the schedule replacement.
+\paragraph{What we did not show.} None of these analyses identifies why
+B-EQ wins at long horizons. Projection error and within-window dependence
+each explain a part at most, the simulation uses our own generator, and
+every analysis here followed the held-out results. The schedule
+irregularity the simulation varies was measured on Berka only through the
+predictability tertiles above, whose effects are weak.

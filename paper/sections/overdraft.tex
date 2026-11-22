@@ -23,9 +23,46 @@ is not counted). We scored that event at two thresholds:
   $h$-day windows in which its own balance fell below $u$.
 \end{itemize}
 All empirical forecasts are coherent path forecasts over the same
-\R{c/lookback} days. Table~\ref{tab:overdraft} gives the prevalence and
-Brier scores, on held-out accounts (with development in brackets);
-Figure~\ref{fig:overdraft} shows the reliability.
+\R{c/lookback} days.
+
+\paragraph{Existing negatives and new crossings.} Some origins start with
+the balance already negative: \R{xh/s5s/u0/7/existing-negatives/clim/origins}
+of \R{xh/s5s/u0/7/all/clim/origins} held-out origins. For them the event is
+almost certain and says nothing about a warning. They produce most of the
+short-horizon events: \R{xh/s5s/u0/7/existing-negatives/clim/events} of the
+\R{xh/s5s/u0/7/all/clim/events} at \hA\ days. Our primary overdraft outcome
+is therefore the \emph{new crossing}: an origin that starts at or above zero
+and goes below it within the horizon. The split uses the stored forecasts
+and each origin's booked balance (exploratory, after the held-out results;
+the balances were read in a separately logged held-out step).
+Table~\ref{tab:newcross} gives the new crossings;
+Table~\ref{tab:overdraft} keeps all origins, including the existing
+negatives, and the tenth-percentile threshold; Figure~\ref{fig:overdraft}
+shows the reliability over all origins.
+
+\begin{table}[t]
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{l rr rrrrr}
+\toprule
+ & & & \multicolumn{4}{c}{Brier skill against CLIM} & V2 mean $p$\\
+\cmidrule(lr){4-7}
+$h$ & events & prevalence (\%) & V2 & CP-noKF & B-EQp & B-SRp & minus observed\\
+\midrule
+\hA & \R{xh/s5s/u0/7/new-crossings/clim/events} & \R{xh/s5s/u0/7/new-crossings/clim/prevalence} {\scriptsize(\R{xd/s5s/u0/7/new-crossings/clim/prevalence})} & \R{xh/s5s/u0/7/new-crossings/V2/bss_vs_clim} & \R{xh/s5s/u0/7/new-crossings/cp-nokf/bss_vs_clim} & \R{xh/s5s/u0/7/new-crossings/B-EQp/bss_vs_clim} & \R{xh/s5s/u0/7/new-crossings/B-SRp/bss_vs_clim} & \R{xh/s5s/u0/7/new-crossings/V2/citl_diff}\\
+\hB & \R{xh/s5s/u0/30/new-crossings/clim/events} & \R{xh/s5s/u0/30/new-crossings/clim/prevalence} {\scriptsize(\R{xd/s5s/u0/30/new-crossings/clim/prevalence})} & \R{xh/s5s/u0/30/new-crossings/V2/bss_vs_clim} & \R{xh/s5s/u0/30/new-crossings/cp-nokf/bss_vs_clim} & \R{xh/s5s/u0/30/new-crossings/B-EQp/bss_vs_clim} & \R{xh/s5s/u0/30/new-crossings/B-SRp/bss_vs_clim} & \R{xh/s5s/u0/30/new-crossings/V2/citl_diff}\\
+\hC & \R{xh/s5s/u0/90/new-crossings/clim/events} & \R{xh/s5s/u0/90/new-crossings/clim/prevalence} {\scriptsize(\R{xd/s5s/u0/90/new-crossings/clim/prevalence})} & \R{xh/s5s/u0/90/new-crossings/V2/bss_vs_clim} & \R{xh/s5s/u0/90/new-crossings/cp-nokf/bss_vs_clim} & \R{xh/s5s/u0/90/new-crossings/B-EQp/bss_vs_clim} & \R{xh/s5s/u0/90/new-crossings/B-SRp/bss_vs_clim} & \R{xh/s5s/u0/90/new-crossings/V2/citl_diff}\\
+\bottomrule
+\end{tabular}
+\caption{New crossings of zero on held-out Berka (exploratory; the primary
+overdraft outcome): origins starting at or above zero
+(\R{xh/s5s/u0/7/new-crossings/clim/origins} per horizon in
+\R{xh/s5s/u0/7/new-crossings/clim/accounts} accounts), the number and
+prevalence of crossings (development in brackets), Brier skill against the
+account's climatology (pooled; negative: worse than CLIM), and V2's mean
+probability minus the observed frequency, in percentage points. Intervals
+are in \texttt{paper/results/exploratory-heldout/s5-overdraft/split.csv}.}
+\label{tab:newcross}
+\end{table}
 
 \begin{table}[t]
 \centering\scriptsize\setlength{\tabcolsep}{3.5pt}
@@ -42,7 +79,8 @@ below own tenth pct. & \hA & \R{xh/s5/u10/7/prevalence} {\scriptsize(\R{xd/s5/u1
  & \hC & \R{xh/s5/u10/90/prevalence} {\scriptsize(\R{xd/s5/u10/90/prevalence})} & \R{xh/s5/u10/90/brier_V2} & \R{xh/s5/u10/90/brier_CP-noKF} & \R{xh/s5/u10/90/brier_B-EQp} & \R{xh/s5/u10/90/brier_B-SRp} & \R{xh/s5/u10/90/brier_CLIM}\\
 \bottomrule
 \end{tabular}
-\caption{Overdraft events on held-out Berka (exploratory): prevalence (\%,
+\caption{Overdraft events on held-out Berka over all origins, including
+those already below zero (exploratory): prevalence (\%,
 pooled over origins; development in brackets) and Brier scores (mean over
 origins; lower is better). \R{xh/s5/u0/30/forecasts} origins per horizon in
 \R{xh/s5/u0/30/accounts} accounts. Account-equal Brier scores, Brier skill
@@ -52,29 +90,29 @@ development results are in
 \label{tab:overdraft}
 \end{table}
 
-\paragraph{Below zero: at a month or more, no method beats the account's
-climatology.} The event is rare: \R{xh/s5/u0/7/prevalence},
-\R{xh/s5/u0/30/prevalence} and \R{xh/s5/u0/90/prevalence}\% of origins at
-\hA, \hB\ and \hC\ days on held-out accounts.
-\begin{itemize}
-\item \textbf{At \hB\ and \hC\ days,} each of the four model-based
-  forecasts has a higher Brier
-  score than CLIM. V2's Brier skill against CLIM is \R{xh/s5/u0/30/bss_V2}
-  and \R{xh/s5/u0/90/bss_V2}.
-\item \textbf{At \hA\ days,} only B-EQp beats CLIM: skill
-  \R{xh/s5/u0/7/bss_B-EQp} [\R{xh/s5/u0/7/bss_B-EQp_lo},
-  \R{xh/s5/u0/7/bss_B-EQp_hi}], and \R{xd/s5/u0/7/bss_B-EQp} on development.
-  The held-out prevalence of this cell is below the \R{c/prev-min}\% our
-  specification set for reliable results, so we mark it unreliable. An
-  audit on development accounts (exploratory, specification S12) explains
-  it: of the \R{xd/s12/n/u0/7/events} events at \hA\ days,
-  only \R{xd/s12/n/u0/7/events_start_at_or_above} start at or above zero;
-  the rest continue a balance that is already negative. Among origins
-  starting at or above zero, B-EQp's Brier skill against CLIM is
-  \R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_vs_clim}
-  [\R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_lo},
-  \R{xd/s12/sc/u0-7/start-at-or-above/B-EQp/bss_hi}].
-\end{itemize}
+\paragraph{New crossings: no forecast beats the account's climatology.}
+New crossings are rare: \R{xh/s5s/u0/7/new-crossings/clim/prevalence},
+\R{xh/s5s/u0/30/new-crossings/clim/prevalence} and
+\R{xh/s5s/u0/90/new-crossings/clim/prevalence}\% of held-out origins at \hA,
+\hB\ and \hC\ days. At every horizon each of the four model-based forecasts
+has a higher Brier score than CLIM, with every 95\% interval below zero
+(Table~\ref{tab:newcross}), and all four over-predict the event. The same
+holds on development accounts, where a cross-fitted isotonic recalibration
+of V2 did beat CLIM at \hB\ and \hC\ days
+(\R{xd/s12/sc/u0-30/start-at-or-above/V2-iso/bss_vs_clim} and
+\R{xd/s12/sc/u0-90/start-at-or-above/V2-iso/bss_vs_clim}); it was not
+applied to held-out data.
+
+\paragraph{Existing negatives: the \hA-day advantage is persistence.} Over
+all origins, B-EQp beats CLIM at \hA\ days (skill
+\R{xh/s5/u0/7/bss_B-EQp} [\R{xh/s5/u0/7/bss_B-EQp_lo},
+\R{xh/s5/u0/7/bss_B-EQp_hi}]; Table~\ref{tab:overdraft}). That advantage
+comes entirely from origins already below zero, where any forecast that
+says the balance stays negative beats a climatology that says it usually
+does not. On new crossings, B-EQp's skill is
+\R{xh/s5s/u0/7/new-crossings/B-EQp/bss_vs_clim}
+[\R{xh/s5s/u0/7/new-crossings/B-EQp/bss_lo},
+\R{xh/s5s/u0/7/new-crossings/B-EQp/bss_hi}].
 
 \paragraph{Below the account's own tenth percentile: every method beats
 climatology.} At \hB\ days the Brier skills against CLIM are:

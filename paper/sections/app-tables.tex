@@ -189,6 +189,32 @@ origins have their first one within 180 days), because the first
 income-tagged record is a median \R{xd/s9/mech/pay1-over-last/median}\% of
 the later pay. With the detector, $\hat m$ is a median
 \R{xd/s9/mech/m-det-over-last/median}\% of the last paycheck; without it,
-\R{xd/s9/mech/m-nodet-over-last/median}\%. V0 is biased less; neither its
-recorded lumps nor its spend-rate estimate accounts for the difference, so
-the path by which V0 partly compensates is not identified.
+\R{xd/s9/mech/m-nodet-over-last/median}\%. V0 is not compensating: removing the detector shifts its median by
+\R{xd/s13/v0/shift_V0} at \hC\ days, close to V2's
+\R{xd/s13/v0/shift_V2}; V0 simply starts from an upward bias.
+
+\paragraph{The mechanism and the fix.} Tracing the income channel at each
+development account's last origin (\R{xd/s13/trace/before-fix/income-alarm/nodet/accounts}
+accounts with an income alarm), without the detector:
+\begin{itemize}
+\item a median \R{xd/s13/trace/before-fix/income-alarm/nodet/gated_first12}
+  of the first twelve paychecks are gated as outliers, because the first
+  income record set $m$ far too low with a confident posterior;
+\item meanwhile the income noise estimate inflates until the innovation
+  variance is \R{xd/s13/trace/before-fix/income-alarm/nodet/final_s_over_pay2}\%
+  of the squared paycheck, and the gain on $m$ falls to a median
+  \R{xd/s13/trace/before-fix/income-alarm/nodet/median_k_last12};
+\item so $\hat m$ never comes within \R{c/close-tol}\% of a paycheck in
+  \R{xd/s13/trace/before-fix/income-alarm/nodet/never_close_share}\% of these
+  accounts.
+\end{itemize}
+The post-freeze gate escape (\S\ref{sec:components}) applies only with the
+income detector off. After it, $\hat m$ never comes within \R{c/close-tol}\% in
+\R{xd/s13/trace/after-fix/income-alarm/nodet/never_close_share}\% of these
+accounts and ends at a median \R{xd/s13/trace/after-fix/income-alarm/nodet/final_m_over_pay}\%
+of the last paycheck. A first version that also fired with the detector on
+changed \R{xd/s13/fix1/V2/90/forecasts_changed} of
+\R{xd/s13/fix1/V2/90/forecasts} forecasts per horizon on the same accounts,
+for slightly higher CRPS (V2 at \hC\ days: \R{xd/s13/fix1c/V2/90/mean_crps_norm_frozen}
+to \R{xd/s13/fix1c/V2/90/mean_crps_norm_fixed}), and was withdrawn. The
+golden files did not change on any shell.

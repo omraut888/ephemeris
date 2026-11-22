@@ -46,6 +46,25 @@ V0's ablations and \R{xh/s6/V2-nodetector-vs-V2/30/forecasts} for V2's.
   pay as missing. The V2 ablation therefore measures the detector's role
   in initializing the income state, not its response to later regime
   changes.
+\item \textbf{An engine flaw, fixed after the freeze.} The cause is the
+  income channel's outlier gate. After a small first income record, the
+  real paychecks look like outliers and skip the paycheck update; the
+  income noise estimate then inflates until they pass the gate, by which
+  time the gain on $m$ is too small for it to catch up (median gain
+  \R{xd/s13/trace/before-fix/income-alarm/nodet/median_k_last12} without the
+  detector against \R{xd/s13/trace/before-fix/income-alarm/det/median_k_last12}
+  with it; Appendix~\ref{app:detector}). We added a gate escape: with the
+  income detector off, two consecutive income observations gated on the
+  same side start a new pay level, as an alarm would. With the detector on,
+  the engine is unchanged: the frozen V0 and V2, rerun with the fix on the same
+  \R{d/pf-accounts} development accounts as the earlier post-freeze check
+  (Appendix~\ref{app:identity}), differ in
+  \R{xd/s13/fix/V2/90/forecasts_changed} of \R{xd/s13/fix/V2/90/forecasts}
+  forecasts per horizon, and the frozen results stand. With the fix,
+  removing the detector costs V2 an account-mean skill of
+  \R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_mean} at \hC\ days on
+  development (pooled \R{xd/s9p/after-fix/all/V2-nodet-vs-V2/90/skill_pooled}),
+  instead of \R{xd/s6/V2-nodetector-vs-V2/90/skill_mean}.
 \item \textbf{The spend floor has no effect in V2}, whose spending model
   does not use the rate the floor acts on.
 \item \textbf{Fixed noise priors are marginally better} in both models.

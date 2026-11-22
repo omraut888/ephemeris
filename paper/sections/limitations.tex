@@ -25,6 +25,13 @@
 \item \textbf{Scoring resolution.} V1, V4 and B-GLOBAL are scored from
   quantile functions that are flat beyond \R{c/qf-lo}\% and \R{c/qf-hi}\%,
   coarser in the tails than the Monte Carlo cones.
+\item \textbf{An engine flaw found after the freeze.} Without the income
+  detector, the frozen engine's paycheck estimate could stay far below the
+  real pay after a small first income record (\S\ref{sec:components},
+  Appendix~\ref{app:detector}). The detector is on in every configuration
+  we evaluate, so no reported forecast is affected; the V2 detector
+  ablation measured the flaw. A post-freeze fix, active only with the
+  detector off, removes it without changing the frozen configuration.
 \item \textbf{The model's reach.} The first week after a change is
   overconfident, and downward changes in skewed spending are rarely
   detected (\S\ref{sec:regime}). Without a detected income there is no
