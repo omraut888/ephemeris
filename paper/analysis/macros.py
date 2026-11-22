@@ -79,7 +79,8 @@ def fmt(col, v):
         return ("\\textminus{}" + s) if float(v) < 0 else s
     if c in ("pay_first_over_last", "never_close_share", "final_m_over_pay", "final_s_over_pay2"):
         return pct(v)
-    if c in ("forecasts_changed", "coverage_flips", "origins", "events"):
+    if c in ("forecasts_changed", "coverage_flips", "origins", "events", "both",
+             "risk_set_reconstructed", "risk_set_reported"):
         return integer(v)
     if c.startswith("citl"):
         return points(v, 2)
@@ -692,6 +693,8 @@ def exploratory():
             keyvalue(f"{tag}/s17/conc", s17 / "newcross-concentration.csv")
         if (s17 / "newcross-climatologies.csv").exists():
             table(f"{tag}/s17/clim", s17 / "newcross-climatologies.csv", ["h", "method"])
+        if (d / "s18-labels/counts.csv").exists():
+            table(f"{tag}/s18", d / "s18-labels/counts.csv", ["h"])
         if (d / "s16-dispersion/dispersion.csv").exists():
             table(f"{tag}/s16", d / "s16-dispersion/dispersion.csv", ["h"])
         if (d / "s9-detector-postfix/compare.csv").exists():
@@ -703,6 +706,11 @@ def exploratory():
             table(f"{tag}/s10/zero", s10 / "zero-reference.csv", ["method", "h"])
             put(f"{tag}/s10/zero-total", str(sum(int(r["accounts_zero"]) for r in
                                                csv.DictReader(open(s10 / "zero-reference.csv")))))
+            # Accounts contributing to the account mean: those with paired
+            # forecasts minus those whose reference CRPS sums to zero.
+            for r in csv.DictReader(open(s10 / "zero-reference.csv")):
+                put(f"{tag}/s10/zero/{slug(r['method'])}/{slug(r['h'])}/accounts_mean",
+                    integer(int(r["accounts"]) - int(r["accounts_zero"])))
         if (d / "s5-overdraft/citl.csv").exists():
             table(f"{tag}/s5c", d / "s5-overdraft/citl.csv", ["threshold", "h", "method"])
         if (d / "s4-grid/compare.csv").exists():
@@ -719,7 +727,12 @@ def confirmatory():
     """S15, the forward-period confirmatory test (cf/)."""
     d = RES / "confirmatory-s15"
     if (d / "predictions.csv").exists():
-        table("cf/pred", d / "predictions.csv", ["prediction", "h"])
+        rows = table("cf/pred", d / "predictions.csv", ["prediction", "h"])
+        # The paper's label: a prediction "held" (S15 is a prespecified
+        # follow-up on previously evaluated data, not a confirmation).
+        label = {"confirmed": "held", "not confirmed": "not held"}
+        for r in rows:
+            put(f"cf/pred/{slug(r['prediction'])}/{slug(r['h'])}/verdict", label[r["verdict"]])
         table("cf", d / "compare.csv", ["comparison", "h"])
 
 
