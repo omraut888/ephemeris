@@ -1,0 +1,4 @@
+key,seconds,threads,source
+dev_backtest,994.4,8,paper/build/berka-dev/data.csv (wall_seconds; the development backtest in scripts/paper.sh)
+heldout_backtest,851.4,8,paper/build/heldout/berka/data.csv (wall_seconds; the first held-out run)
+heldout_variants,7869.1,8,paper/build/heldout/variants/data.csv (wall_seconds; V0-V4 in the first held-out run)

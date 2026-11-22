@@ -723,6 +723,14 @@ def exploratory():
             table(f"{tag}/s2/selection", d / "s2-small/selection-account-equal.csv", ["method"])
 
 
+def runtimes():
+    """Measured wall times of the long runs (paper/results/runtimes.csv),
+    copied from the runs' data.csv files on the author's Mac."""
+    for r in csv.DictReader(open(RES / "runtimes.csv")):
+        put(f"rt/{r['key']}/minutes", str(round(float(r["seconds"]) / 60)))
+        put(f"rt/{r['key']}/threads", r["threads"])
+
+
 def confirmatory():
     """S15, the forward-period confirmatory test (cf/)."""
     d = RES / "confirmatory-s15"
@@ -747,6 +755,7 @@ def checksums():
 def main():
     constants()
     checksums()
+    runtimes()
     berka_span()
     specs = [
         ("ho/var", "heldout/variants.csv", ["method", "h"]),

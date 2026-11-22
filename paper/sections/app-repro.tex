@@ -1,27 +1,54 @@
 \section{Reproducing the paper}
+\label{app:repro}
 \sloppy
-Two levels of reproduction are possible:
+Every number in the text is read from committed result files by
+\texttt{paper/analysis/macros.py}. The commands below run from a clone of
+the tagged release, on macOS or Linux with Rust, Python~3.11, \texttt{uv}
+and a TeX distribution with \texttt{latexmk}.
+
+\paragraph{(a) The PDF from committed artifacts.} No raw data are needed:
+\begin{verbatim}
+git clone https://github.com/omraut888/ephemeris
+cd ephemeris && git checkout v1.0.1-paper
+uv venv --python 3.11 paper/.venv
+uv pip install --python paper/.venv/bin/python \
+    --require-hashes -r paper/requirements.txt
+scripts/paper.sh --pdf-only   # paper/build/latex/main.pdf
+\end{verbatim}
+This regenerates the macros and tables from \texttt{paper/results/} and
+compiles the PDF. We ran these steps in a fresh clone of the release
+commit; the PDF built and its text was identical to ours.
+
+\paragraph{(b) The primary held-out table from the raw data.} Fetch and
+check the data, rebuild the development stages (the held-out B-GLOBAL is
+trained on the development features), rerun the held-out evaluation, and
+recompute V2's paired comparisons (Table~\ref{tab:pairwise}):
+\begin{verbatim}
+paper/.venv/bin/python -I scripts/fetch_paper_data.py
+scripts/paper.sh
+scripts/paper-heldout.sh \
+    --rerun-reason "independent reproduction"
+scripts/paper-heldout-pairwise.sh
+git diff --stat paper/results/heldout \
+    paper/results/heldout-posthoc
+\end{verbatim}
+The held-out command refuses an uncommitted tree and appends the run,
+with its reason, to \texttt{paper/results/heldout-runs.log}. The last
+command shows any difference from the committed tables. On the author's
+Mac (8\,GB, \R{rt/heldout_backtest/threads} threads), the development
+backtest took \R{rt/dev_backtest/minutes} minutes, the held-out backtest
+\R{rt/heldout_backtest/minutes} minutes, and the held-out variants V0--V4
+\R{rt/heldout_variants/minutes} minutes; \texttt{scripts/paper.sh} also
+runs the synthetic studies and the identity checks. We did not rerun (b)
+for this version.
+
+\paragraph{Checksums.} The fetch script checks the raw files against
+\texttt{paper/data.sha256}; for the two transaction files:
 \begin{itemize}
-\item \textbf{Rebuild from committed artifacts.} Every result file the text
-  quotes is committed under \texttt{paper/results/}.
-  \texttt{scripts/paper.sh --pdf-only} regenerates the numbers, the tables
-  and this PDF from them, without the raw data. Every number in the text
-  is read from those files by \texttt{paper/analysis/macros.py}.
-\item \textbf{Recompute from the raw data.}
-  \texttt{scripts/fetch\_paper\_data.py} downloads Berka and MoneyData, and
-  \texttt{scripts/paper.sh} recomputes every development, synthetic,
-  MoneyData and identity result, then the figures and the PDF. The script
-  first checks the files against pinned SHA-256 checksums
-  (\texttt{paper/data.sha256}); for the two transaction files they are:
-  \begin{itemize}
-  \item \texttt{berka/trans.tsv}:\\
-    \texttt{\scriptsize\R{sha/berka/trans.tsv}}
-  \item \texttt{moneydata/transactions.tsv}:\\
-    \texttt{\scriptsize\R{sha/moneydata/transactions.tsv}}
-  \end{itemize}
-  The held-out evaluation is not rerun by that script. It ran once,
-  behind its guard, and recomputing it requires the guarded command with
-  a logged reason.
+\item \texttt{berka/trans.tsv}:\\
+  \texttt{\scriptsize\R{sha/berka/trans.tsv}}
+\item \texttt{moneydata/transactions.tsv}:\\
+  \texttt{\scriptsize\R{sha/moneydata/transactions.tsv}}
 \end{itemize}
 The protocol, every decision and its date, and the claims as first written
 are in \texttt{paper/PLAN.md}.
