@@ -946,3 +946,68 @@ changes are wider); the quartiles of the ratio over accounts; and the
 pooled share of origins with a wider adjusted range. Summary:
 `explore_summary.py s16`. Results:
 `paper/results/exploratory/s16-dispersion/`.
+
+# Round 6: the third referee report (v1 corrections; stored outputs only)
+
+No new forecasts and no new guarded held-out runs. Everything below is
+computed from stored outputs: the S15 held-out rows and state, the S11/S12/S14
+development rows, and the S5 held-out events with the logged start balances.
+The one exception is CLIM+, a development-only climatology computed from the
+development balances (item 5f).
+
+## S17 Analyses from stored outputs (fixed before computing)
+
+1. **Per-tertile absolute skill.** B-SR (F1) against B-EQ (F0) in each
+   predictability tertile: account mean and pooled, each with a 95%
+   account-bootstrap interval (2,000 resamples, seed 6). On the S15
+   held-out origins and on development.
+2. **The direct oracle contrast.** Skill of O against F1 at 30 and 90 days,
+   both aggregations with intervals, held-out S15 and development.
+3. **Origins without a detected schedule.** Count them per tertile. None
+   exist on either split (every origin has a detected income or bill), so
+   the closer check is reported instead: the share of origins with a
+   detected income in each tertile, and item 1 repeated excluding origins
+   without a detected income.
+4. **The predictability score**, defined exactly in the paper from the code
+   (S11): checkpoints, normalization, matching, missing streams, cut points,
+   and what it does and does not capture.
+5. **New crossings** (held-out, origins starting at or above zero; stored
+   events and start balances):
+   - a. per method: mean forecast probability, absolute Brier score, Brier
+     skill against CLIM with account-clustered intervals (the existing
+     split);
+   - b. a reliability plot of the four forecasts and CLIM on new crossings
+     only: ten equal-width bins, bins with at least 20 forecasts;
+   - c. the distinct accounts behind the positive 90-day windows, and
+     "crossing clusters": runs of consecutive eligible origins (30 days
+     apart) in one account whose 90-day window crossed. These are an
+     approximation to episodes from the stored windows; held-out daily
+     balances are not re-read;
+   - d. label sensitivity to reported against reconstructed balances:
+     development only (S12), stated as such;
+   - e. CLIM-D, the distance-conditioned climatology: development only
+     (S12);
+   - f. **CLIM+**, a climatology whose risk set starts at or above zero: the
+     share, among the account's past h-day windows starting at or above
+     zero, that went below zero. Development only, computed from the
+     development balances by `ephemeris-eval explore shortfall` (no other
+     change to that runner; the other columns must equal the stored S12
+     events). Scored on new crossings with the other methods.
+
+Summaries: `explore_summary.py s17` (development) and
+`explore_summary.py --heldout s17`. Results: `s17-stored/` under
+`exploratory/` and `exploratory-heldout/`.
+
+# v2 (deferred; not part of v1)
+
+- **The 2×2 mechanism experiment.** Cross the scheduled-flow term (historical
+  vs projected vs realized) with residual sourcing (same-window vs
+  other-window vs matched with equal window counts), so the oracle and
+  shuffle contrasts become one design with equal sample sizes.
+- **A switching rule.** Use the schedule only where it has been
+  predictable, selected on development with calibration at every level,
+  then tested on a fresh period.
+- **A new cohort.** Card-heavy accounts with pending transactions; Berka
+  cannot test this.
+- **The detector follow-up,** described by its actual configurations: CUSUM
+  against a two-observation reset after fixing paycheck initialization.
