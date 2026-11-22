@@ -989,8 +989,23 @@ pub fn clim_d(c: &Ctx, h: usize, u: f64) -> f64 {
     hit as f64 / k as f64
 }
 
+/// CLIM+ (S17): among the past windows starting at or above `u`, the share
+/// that went below it; plain CLIM's value when there are none.
+pub fn clim_plus(c: &Ctx, h: usize, u: f64, clim: f64) -> f64 {
+    let b = c.bal;
+    let ds: Vec<usize> = (c.lo()..=c.t - h).filter(|&d| b[d] >= u).collect();
+    if ds.is_empty() {
+        return clim;
+    }
+    let hit = ds
+        .iter()
+        .filter(|&&d| (1..=h).any(|j| b[d + j] < u))
+        .count();
+    hit as f64 / ds.len() as f64
+}
+
 pub const SHORTFALL_HEADER: &str = "account,origin,h,threshold,u,b0,start_below,event,event_day0,\
-event_reported,min_path,p_V2,p_CP-noKF,p_B-EQp,p_B-SRp,p_CLIM,p_CLIM-D";
+event_reported,min_path,p_V2,p_CP-noKF,p_B-EQp,p_B-SRp,p_CLIM,p_CLIM-D,p_CLIM+";
 
 /// S12 at one origin: one line per horizon and threshold.
 pub fn shortfall_origin(acct: &Account, origin: Day) -> Option<Vec<String>> {
@@ -1037,7 +1052,7 @@ pub fn shortfall_origin(acct: &Account, origin: Day) -> Option<Vec<String>> {
             let event_rep = rep[t + 1..=t + hu].iter().any(|&x| x < u);
             let [eq, sr, clim] = empirical_below(&c, &sc, hu, u);
             out.push(format!(
-                "{},{},{h},{name},{u},{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{h},{name},{u},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                 acct.id,
                 Date(origin),
                 bal[t],
@@ -1051,7 +1066,8 @@ pub fn shortfall_origin(acct: &Account, origin: Day) -> Option<Vec<String>> {
                 eq,
                 sr,
                 clim,
-                clim_d(&c, hu, u)
+                clim_d(&c, hu, u),
+                clim_plus(&c, hu, u, clim)
             ));
         }
     }
