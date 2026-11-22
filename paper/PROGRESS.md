@@ -2,13 +2,48 @@
 
 ## Resume here (updated after every step)
 
-**Round 6 (third referee report) finished.** Tag `v1.0-paper` was
-recreated locally on the final commit and not pushed. Nothing is running.
+**Round 7 (fourth referee report, final v1 round) finished.** New
+annotated tag `v1.0.1-paper` ("Paper v1.0.1: arXiv submission") on the
+final commit; `v1.0-paper` untouched. Nothing pushed, nothing running.
+Before submitting: push the commits and the tag, then publish the GitHub
+release `v1.0.1-paper` so the URL in the availability statement resolves.
 
-**After the API interruption:** the uncommitted edits (the S17 macros,
-compact §4, and the timeline and selection rule in Appendix A) were
-complete, so they were finished and committed (`9751bc7`). §6 had not
-been started, and was written fresh.
+## Round 7 summary (2026-11-22)
+
+- **S18 (development, labels only; spec committed first):** on Table 5's
+  risk set (start at or above zero), reported balances change eligibility
+  for 3 of 27,855 origins (all enter; 2 cross within 90 days) and flip 5
+  labels 1→0 and none 0→1 among 315 new crossings at 90 days. Identity
+  with the stored S12 events: 83,565/83,565.
+- **Abstract and §1:** the oracle passage uses the referee's wording and
+  leads with the oracle against B-EQ at 90 days (−0.419 / −0.201); the
+  loss to B-GLOBAL is named; "not a matter of width" removed; "the four
+  unrecalibrated forecasts we tested" lost to climatology.
+- **Predictability:** "where detected streams' net monthly flows were
+  easier to predict"; switching rule removed from the conclusion; the
+  horizon rule (V2 at 7, B-EQ at 30/90) is a benchmark for a future
+  frozen evaluation.
+- **Appendix A.6:** pooled-skill identity corrected for zero reference
+  scores; the code uses the ratio of sums (`aggregate.rs` `pooled_skill`,
+  `explore_summary.py`); 3,514 accounts paired vs 3,513 in the account
+  mean for B-SA at 7 days (zero reference sum excluded).
+- **§7:** no effective-sample claim; counts only; recalibration a lead.
+- **§6 / Table 4:** verdicts "held" (macro mapping, results untouched);
+  caption states the hold rule and the amendment's local timing;
+  diagnostics sentence says the shuffle modifies B-EQ, the oracle and
+  matching B-SR.
+- **§5 / conclusion:** sharpness qualified by horizon (B-EQ wider at 7
+  days); the causal "pays more" sentence replaced by width, coverage and
+  CRPS.
+- **§4 / Appendix A:** per-account forecasts use records through the
+  origin; original B-GLOBAL and V3/V4 priors use later cross-account data.
+- **Artifact:** Zenodo placeholder removed; release URL; Appendix H gives
+  the commands for (a) and (b) with measured runtimes
+  (`paper/results/runtimes.csv`). Clean-clone test of (a): builds, and
+  is byte-identical with SOURCE_DATE_EPOCH fixed. (b) documented, not
+  rerun.
+- **Build:** 33 pages, 0 warnings; main text pp. 1–13, references p. 14,
+  appendix from p. 15. arXiv bundle check: 33 pages, 0 warnings.
 
 ## Round 6 summary (2026-11-22)
 
