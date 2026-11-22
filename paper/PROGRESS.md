@@ -2,22 +2,52 @@
 
 ## Resume here (updated after every step)
 
-**Round 6 (third referee report), in progress.**
-- **State after the interruption:** the uncommitted edits (the S17 macros,
-  the compact protocol §4, and the timeline and selection rule moved into
-  Appendix A) were complete, so they were finished and committed as they
-  were. §6 had not been touched.
-- **Done:** S17 specification and results; CLIM+; the new-crossing
-  reliability figure; §4 (item 3 for §4).
-- **Next:**
-  1. DONE §6 (items 1, 2, 3, 4, and Table 3 to three decimals);
-  2. DONE §7 compact (item 5);
-  3. DONE the cuts (item 9): main text ends p. 12;
-  4. the detector wording (item 6);
-  5. "30 and 90 days" (item 7);
-  6. title date and availability (items 8 and 10);
-  7. the abstract, introduction, limitations and conclusion;
-  8. rebuild, bundle check, retag.
+**Round 6 (third referee report) finished.** Tag `v1.0-paper` was
+recreated locally on the final commit and not pushed. Nothing is running.
+
+**After the API interruption:** the uncommitted edits (the S17 macros,
+compact §4, and the timeline and selection rule in Appendix A) were
+complete, so they were finished and committed (`9751bc7`). §6 had not
+been started, and was written fresh.
+
+## Round 6 summary (2026-11-22)
+
+- **Stored-output analyses (S17)**, plus CLIM+ (development only):
+  - per-tertile and oracle-against-B-SR contrasts;
+  - tertile composition (no origin lacks a detected schedule; 72% of
+    predictable held-out origins have income, against 33% of unpredictable
+    ones);
+  - new-crossing reliability, concentration (1,172 positive 90-day windows
+    from 213 accounts in 363 clusters), and the CLIM+ / CLIM-D scores.
+- **§6, "Tests of schedule replacement".**
+  - The oracle and the shuffle are described as diagnostics of one
+    construction (the oracle changes only the scheduled term); matched
+    B-SR is flagged as hard to interpret.
+  - The requested wording is used; S15 is a prespecified follow-up, with
+    extra rows below a rule.
+  - The predictability score is defined exactly (new appendix subsection).
+  - Table 3 uses three decimals.
+- **§7, "Shortfalls: new negative booked-balance crossings".** New table,
+  reliability figure, concentration, and the development checks (labels,
+  CLIM+, CLIM-D, isotonic recalibration).
+- **§4:** S15's status and provenance stated separately, including the
+  post-cutoff information.
+- **Cuts:**
+  - §8 keeps A2 and V1;
+  - §9 is a summary paragraph (the detector follow-up named CUSUM vs
+    two-observation reset);
+  - the history-length analysis, the simulator, the calendar and origin
+    phase, the all-origin shortfalls, the tenth percentile, the
+    calibration details, the ablations and the timeline moved to the
+    appendix.
+- **Rewritten:** the abstract, introduction, limitations (items 2 and 6)
+  and conclusion. The horizon wording now says 30 and 90 days.
+- **Title page:** no date.
+- **Availability:** the public URL and a Zenodo placeholder.
+- **README** summary aligned.
+- **PDF:** 33 pages, 0 warnings; main text pp. 1–12, references p. 13,
+  appendix from p. 14.
+- **arXiv bundle:** 46 files, compiles alone (33 pages, 0 warnings).
 
 ## Release v1 (2026-11-22)
 
