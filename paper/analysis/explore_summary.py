@@ -1145,6 +1145,42 @@ def s17():
         show(sc)
 
 
+# ----------------------------------------------------------------- S18 ---
+
+def s18():
+    """Label sensitivity on the new-crossing risk set (REVISION.md S18):
+    reported against reconstructed balances, development, threshold 0."""
+    out = OUT / "s18-labels"
+    lab = list(csv.DictReader(open(EXP / "shortfall-labels/labels.csv")))
+    s12 = {(r["account"], r["origin"], r["h"]): r
+           for r in csv.DictReader(open(EXP / "shortfall/events.csv")) if r["threshold"] == "u0"}
+    same = sum(k in s12 and s12[k]["b0"] == r["b0"] and s12[k]["event"] == r["event"]
+               for r in lab for k in [(r["account"], r["origin"], r["h"])])
+    write(out / "identity.csv", [["check", "rows", "identical"],
+                                 ["b0 and event = stored S12 events (u0)", len(lab), same]])
+    print(f"identity: {same}/{len(lab)} (S12 u0 rows: {len(s12)})")
+    rows = [["h", "origins", "risk_set_reconstructed", "risk_set_reported", "both",
+             "leave", "leave_events", "enter", "enter_events_reported",
+             "both_flips_0to1", "both_flips_1to0",
+             "new_crossings_reconstructed", "new_crossings_reported"]]
+    for h in HS:
+        rs = [r for r in lab if r["h"] == h]
+        a = [float(r["b0"]) >= 0 for r in rs]
+        b = [float(r["b0_rep"]) >= 0 for r in rs]
+        e = [r["event"] == "1" for r in rs]
+        er = [r["event_rep"] == "1" for r in rs]
+        idx = range(len(rs))
+        both = [i for i in idx if a[i] and b[i]]
+        leave = [i for i in idx if a[i] and not b[i]]
+        enter = [i for i in idx if b[i] and not a[i]]
+        rows.append([h, len(rs), sum(a), sum(b), len(both),
+                     len(leave), sum(e[i] for i in leave), len(enter), sum(er[i] for i in enter),
+                     sum((not e[i]) and er[i] for i in both), sum(e[i] and not er[i] for i in both),
+                     sum(e[i] for i in idx if a[i]), sum(er[i] for i in idx if b[i])])
+    write(out / "counts.csv", rows)
+    show(rows)
+
+
 # ----------------------------------------------------------------- S7 ----
 
 def s7():
