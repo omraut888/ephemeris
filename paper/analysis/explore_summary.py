@@ -1043,6 +1043,107 @@ def s16():
     write(out / "dispersion.csv", res)
     show(res)
 
+# ---------------------------------------------------------------- S17 ----
+
+def s17():
+    """Round 6 analyses from stored outputs (REVISION.md S17)."""
+    held = EXP.name == "explore-heldout"
+    out = OUT / "s17-stored"
+    rng = np.random.default_rng(SEED)
+    cut = (0.1428, 0.4127)
+    sdir = (B / "confirmatory-s15") if held else (EXP / "schedule-s11")
+    data = load([sdir / "rows.csv"], {"F0", "F1", "O"})
+    st = {(r["account"], r["origin"]): r for r in csv.DictReader(open(sdir / "state.csv"))}
+
+    def tert(r):
+        a = float(r["abs_err"]) / float(r["abs_real"]) if float(r["abs_real"]) > 0 else float("nan")
+        if not np.isfinite(a) or int(r["checkpoints"]) < 3:
+            return "unrated"
+        return "predictable" if a <= cut[0] else ("middle" if a <= cut[1] else "unpredictable")
+
+    lab = {k: tert(r) for k, r in st.items()}
+    comp = [["tertile", "origins", "no_schedule", "share_income_detected"]]
+    for s in ("predictable", "middle", "unpredictable", "unrated"):
+        ks = [k for k in st if lab[k] == s]
+        if ks:
+            comp.append([s, len(ks), sum(st[k]["income"] == "0" and st[k]["bills"] == "0" for k in ks),
+                         fmt(float(np.mean([st[k]["income"] == "1" for k in ks])))])
+    write(out / "tertile-composition.csv", comp)
+    show(comp)
+    res = [["comparison", "subset", "h"] + CMP_HEAD[2:]]
+    subsets = [("all", lambda k: True)] + [
+        (f"{s}", lambda k, s=s: lab.get((k[0], k[1])) == s) for s in ("predictable", "middle", "unpredictable")] + [
+        (f"{s}, income detected", lambda k, s=s: lab.get((k[0], k[1])) == s and st[(k[0], k[1])]["income"] == "1")
+        for s in ("predictable", "unpredictable")]
+    for (m, ref) in (("F1", "F0"), ("O", "F1"), ("O", "F0")):
+        for name, keep in subsets:
+            if (m, ref) != ("F1", "F0") and name != "all":
+                continue
+            for h in ("30", "90"):
+                sub = {k: v for k, v in data.items() if k[2] == h and m in v and ref in v and keep(k)}
+                if not sub:
+                    continue
+                r = compare(sub, m, ref, rng)
+                res.append([f"{m} vs {ref}", name, h, len(sub), len({k[0] for k in sub})] + [fmt(x) for x in r])
+    write(out / "contrasts.csv", res)
+    show(res)
+
+    if held:
+        # New crossings: reliability bins, and the accounts and crossing
+        # clusters behind the positive 90-day windows.
+        ev = list(csv.DictReader(open(EXP / "berka/events.csv")))
+        b0 = {(r["account"], r["origin"]): float(r["b0"]) for r in csv.DictReader(open(EXP / "startbal/startbal.csv"))}
+        nc = [r for r in ev if r["threshold"] == "u0" and b0[(r["account"], r["origin"])] >= 0.0]
+        rel = [["h", "method", "bin", "count", "mean_p", "observed"]]
+        for h in HS:
+            rows = [r for r in nc if r["h"] == h]
+            y = np.array([float(r["event"]) for r in rows])
+            for m in ("V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM"):
+                p = np.array([float(r[f"p_{m}"]) for r in rows])
+                bins = np.minimum((p * 10).astype(int), 9)
+                for k in range(10):
+                    s = bins == k
+                    if s.any():
+                        rel.append([h, m, k, int(s.sum()), fmt(float(p[s].mean())), fmt(float(y[s].mean()))])
+        write(out / "newcross-reliability.csv", rel)
+        pos = defaultdict(list)
+        for r in nc:
+            if r["h"] == "90" and r["event"] == "1":
+                pos[r["account"]].append(r["origin"])
+        clusters = 0
+        import datetime as dt
+        for a, os_ in pos.items():
+            ds = sorted(dt.date.fromisoformat(o) for o in os_)
+            clusters += 1 + sum((ds[i] - ds[i - 1]).days > 30 for i in range(1, len(ds)))
+        conc = [["key", "value"], ["positive_windows_90", sum(len(v) for v in pos.values())],
+                ["accounts_90", len(pos)], ["crossing_clusters_90", clusters]]
+        write(out / "newcross-concentration.csv", conc)
+        show(conc)
+    else:
+        # Identity of the rerun shortfall events with S12, and new crossings
+        # scored with CLIM-D and CLIM+.
+        new = list(csv.DictReader(open(EXP / "shortfall/events.csv")))
+        old = {(r["account"], r["origin"], r["h"], r["threshold"]): r
+               for r in csv.DictReader(open(EXP / "shortfall-s12/events.csv"))}
+        cols = [c for c in old[next(iter(old))] if c not in ("account", "origin", "h", "threshold")]
+        same = sum(all(r[c] == old[(r["account"], r["origin"], r["h"], r["threshold"])][c] for c in cols) for r in new)
+        write(out / "identity.csv", [["check", "compared", "identical"],
+                                     ["shortfall rerun = S12 events (all S12 columns)", len(new), same]])
+        print("identity", same, "of", len(new))
+        sc = [["h", "method", "origins", "accounts", "prevalence", "mean_p", "brier", "bss_vs_clim", "bss_lo", "bss_hi"]]
+        for h in HS:
+            rows = [r for r in new if r["threshold"] == "u0" and r["h"] == h and r["start_below"] == "0"]
+            y = np.array([float(r["event"]) for r in rows])
+            acct = np.array([r["account"] for r in rows])
+            pc = np.array([float(r["p_CLIM"]) for r in rows])
+            for m in ("V2", "B-EQp", "CLIM", "CLIM-D", "CLIM+"):
+                p = np.array([float(r[f"p_{m}"]) for r in rows])
+                bss, lo, hi = bss_boot(p, pc, y, acct, rng)
+                sc.append([h, m, len(rows), len(set(acct)), fmt(y.mean(), 5), fmt(p.mean(), 5),
+                           fmt(float(np.mean((p - y) ** 2)), 5), fmt(bss), fmt(lo), fmt(hi)])
+        write(out / "newcross-climatologies.csv", sc)
+        show(sc)
+
 
 # ----------------------------------------------------------------- S7 ----
 
@@ -1083,6 +1184,6 @@ if __name__ == "__main__":
     if args and args[0] == "--heldout":
         FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
         args = args[1:]
-        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7", "s15"}, "held-out: S3, S5, S5c, S6, S7 only"
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7", "s15", "s17"}, "held-out: S3, S5, S5c, S6, S7 only"
     for a in args:
         globals()[a.lower()]()
