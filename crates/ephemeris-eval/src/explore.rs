@@ -1004,6 +1004,40 @@ pub fn clim_plus(c: &Ctx, h: usize, u: f64, clim: f64) -> f64 {
     hit as f64 / ds.len() as f64
 }
 
+pub const SHORTFALL_LABELS_HEADER: &str = "account,origin,h,b0,b0_rep,event,event_rep";
+
+/// S18 at one origin: the start balance and the below-zero event under the
+/// reconstructed and the reported balances, one line per horizon. No
+/// forecasts; same scaling as `shortfall_origin`.
+pub fn shortfall_labels(acct: &Account, origin: Day) -> Option<Vec<String>> {
+    let first = acct.first_day();
+    let end = origin + HORIZONS[2];
+    let t = (origin - first) as usize;
+    let s = acct.scale_at(origin).filter(|&s| s > 0.0)?;
+    let k = REFERENCE_SCALE / s;
+    let bal: Vec<f64> = acct.daily_balance(end).iter().map(|b| b * k).collect();
+    let rep: Vec<f64> = reported_balance(acct, end).iter().map(|b| b * k).collect();
+    Some(
+        HORIZONS
+            .iter()
+            .map(|&h| {
+                let hu = h as usize;
+                let ev = bal[t + 1..=t + hu].iter().any(|&x| x < 0.0);
+                let ev_rep = rep[t + 1..=t + hu].iter().any(|&x| x < 0.0);
+                format!(
+                    "{},{},{h},{},{},{},{}",
+                    acct.id,
+                    Date(origin),
+                    bal[t],
+                    rep[t],
+                    u8::from(ev),
+                    u8::from(ev_rep)
+                )
+            })
+            .collect(),
+    )
+}
+
 pub const SHORTFALL_HEADER: &str = "account,origin,h,threshold,u,b0,start_below,event,event_day0,\
 event_reported,min_path,p_V2,p_CP-noKF,p_B-EQp,p_B-SRp,p_CLIM,p_CLIM-D,p_CLIM+";
 

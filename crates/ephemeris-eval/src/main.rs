@@ -163,7 +163,7 @@ enum Cmd {
     /// Exploratory (paper/REVISION.md S1–S6), development split only:
     /// `eligibility`, `crossings`, `berka` or `grid`.
     Explore {
-        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall", "income-trace", "startbal"])]
+        #[arg(value_parser = ["eligibility", "crossings", "berka", "grid", "phase", "bglobal", "detector", "schedule", "shortfall", "shortfall-labels", "income-trace", "startbal"])]
         what: String,
         /// Exploratory held-out run (`berka` or `bglobal` only): guarded and
         /// logged like the frozen evaluation, with a required reason.
@@ -951,6 +951,27 @@ fn explore(
                 &out.join("data.csv"),
                 &format!("key,value\norigins,{n}\nitems,{}\n", items.len()),
             )?;
+        }
+        "shortfall-labels" => {
+            // S18 (REVISION.md, round 7): development only, labels only.
+            let accts = split_accounts(data, Split::Dev)?;
+            let items: Vec<(&Account, i32)> = accts
+                .iter()
+                .flat_map(|a| {
+                    ephemeris_eval::variants::eligible_origins(a)
+                        .into_iter()
+                        .map(move |o| (a, o))
+                })
+                .collect();
+            let res = parallel_map(&items, threads, "shortfall-labels", |&(a, o)| {
+                ex::shortfall_labels(a, o)
+            });
+            let mut s = format!("{}\n", ex::SHORTFALL_LABELS_HEADER);
+            for l in res.into_iter().flatten().flatten() {
+                s.push_str(&l);
+                s.push('\n');
+            }
+            write(&out.join("labels.csv"), &s)?;
         }
         "income-trace" => {
             // S13 (REVISION.md, round 4 item 1): development only.
