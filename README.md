@@ -92,13 +92,12 @@ in dark mode (pay-cycle lows).*
 **When Does Transaction History Beat a State-Space Model? Probabilistic
 Balance Forecasting on Sparse Bank Accounts** (Om Raut).
 
-On held-out accounts of the Berka bank data, the state-space forecaster
-beats the account's own past balance changes at a week, and loses to them
-at a month and beyond. The long-horizon loss is not explained by errors in
-projecting the pay-and-bill schedule (it survives even when the schedule is
-replaced by the flows that actually happened), and keeping each past
-window's pay together with the spending that followed it accounts for only
-a small part.
+On sparse accounts of the Berka bank data, the state-space forecaster has
+lower CRPS than the account's own past balance changes at seven days, while
+the empirical forecast wins at 30 and 90 days. At 90 days, supplying the
+scheduled flows that actually happened still fails to rescue the
+schedule-replacement forecast, and the source of the remaining loss is
+unresolved.
 
 The paper, its analysis plan and every committed result are in
 [`paper/`](paper/). To build the PDF from the committed results:
