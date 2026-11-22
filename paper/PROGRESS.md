@@ -2,7 +2,7 @@
 
 ## Resume here (updated after every step)
 
-**Round 7 (fourth referee report, final v1 round) finished.** New
+**Round 7 (fourth referee report, final v1 round) finished** (last fix: the §1 oracle result stated once). New
 annotated tag `v1.0.1-paper` ("Paper v1.0.1: arXiv submission") on the
 final commit; `v1.0-paper` untouched. Nothing pushed, nothing running.
 Before submitting: push the commits and the tag, then publish the GitHub
