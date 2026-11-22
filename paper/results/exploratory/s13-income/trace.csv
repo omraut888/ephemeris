@@ -3,7 +3,7 @@ before fix,income alarm,det,214,0.042,2.0,0.000,0.0566,0.054,1.082
 before fix,income alarm,nodet,214,0.042,4.0,0.748,0.0023,0.913,0.133
 before fix,no income alarm,det,268,1.000,0.0,0.000,0.5701,0.000,1.000
 before fix,no income alarm,nodet,268,1.000,0.0,0.000,0.5701,0.000,1.000
-after fix,income alarm,det,214,0.042,2.0,0.000,0.0527,0.043,1.074
+after fix,income alarm,det,214,0.042,2.0,0.000,0.0566,0.054,1.082
 after fix,income alarm,nodet,214,0.042,2.0,0.065,0.0391,0.041,1.051
 after fix,no income alarm,det,268,1.000,0.0,0.000,0.5701,0.000,1.000
 after fix,no income alarm,nodet,268,1.000,0.0,0.000,0.5701,0.000,1.000

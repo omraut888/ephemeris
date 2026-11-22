@@ -1,0 +1,7 @@
+method,h,forecasts,forecasts_changed,coverage_flips,max_abs_crps_change,max_rel_crps_change
+V0,7,3105,0,0,0.000e+00,0.000e+00
+V0,30,3105,0,0,0.000e+00,0.000e+00
+V0,90,3105,0,0,0.000e+00,0.000e+00
+V2,7,3105,0,0,0.000e+00,0.000e+00
+V2,30,3105,0,0,0.000e+00,0.000e+00
+V2,90,3105,0,0,0.000e+00,0.000e+00
