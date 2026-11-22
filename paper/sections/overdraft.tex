@@ -71,34 +71,45 @@ forecast over-predicts.}
 \label{fig:newcross}
 \end{figure}
 
-\paragraph{No forecast beats the account's climatology.} New crossings are
-rare, and at every horizon each of the four model-based forecasts has a
-higher Brier score than CLIM, with every interval below zero, and
-over-predicts the event (Table~\ref{tab:newcross},
-Figure~\ref{fig:newcross}). The \R{xh/s17/conc/positive_windows_90}
-positive \hC-day windows come from \R{xh/s17/conc/accounts_90} accounts,
-in \R{xh/s17/conc/crossing_clusters_90} clusters of consecutive positive
-origins, so the effective number of independent events is far smaller than
-the window count.
+\paragraph{The four unrecalibrated forecasts lost to climatology.} New
+crossings are rare, and at every horizon each of the four forecasts we
+tested has a higher Brier score than CLIM, with every interval below
+zero, and over-predicts the event (Table~\ref{tab:newcross},
+Figure~\ref{fig:newcross}). The positive \hC-day windows number
+\R{xh/s17/conc/positive_windows_90}; they come from
+\R{xh/s17/conc/accounts_90} accounts, in
+\R{xh/s17/conc/crossing_clusters_90} clusters of consecutive positive
+origins. Intervals come from resampling whole accounts.
 
 \paragraph{Checks on development accounts.} These use the development split
-only (S12, S17), because they need balances or forecasts not stored for
+only (S12, S17, S18), because they need balances or forecasts not stored for
 held-out accounts.
 \begin{itemize}
-\item \textbf{Labels.} Labelling from the bank's reported balances instead
-  of the reconstructed ones removes \R{xd/s12/n/u0/90/flips_1to0} of the
-  \R{xd/s12/n/u0/90/events} negative-balance events at \hC\ days and adds
-  \R{xd/s12/n/u0/90/flips_0to1}.
+\item \textbf{Labels} (S18), on the risk set of
+  Table~\ref{tab:newcross}: origins starting at or above zero. Using the
+  bank's reported balances instead of the reconstructed ones changes
+  eligibility for \R{xd/s18/90/enter} of \R{xd/s18/90/origins} origins,
+  which start below zero only in the reconstruction (they enter the risk
+  set; \R{xd/s18/90/enter_events_reported} of them cross within \hC\
+  days), and removes none (\R{xd/s18/90/leave}). On the
+  \R{xd/s18/90/both} origins eligible under both, it changes
+  \R{xd/s18/90/both_flips_1to0} labels from crossing to no crossing at
+  \hC\ days and \R{xd/s18/90/both_flips_0to1} the other way, of
+  \R{xd/s18/90/new_crossings_reconstructed} new crossings
+  (\R{xd/s18/30/both_flips_1to0} and \R{xd/s18/30/both_flips_0to1} of
+  \R{xd/s18/30/new_crossings_reconstructed} at \hB\ days).
 \item \textbf{Better references.} A climatology whose risk set starts at
   or above zero (CLIM+) beats CLIM on new crossings at every horizon
   (\R{xd/s17/clim/7/clim+/bss_vs_clim}, \R{xd/s17/clim/30/clim+/bss_vs_clim}
   and \R{xd/s17/clim/90/clim+/bss_vs_clim}); one conditioned on the
   starting balance's distance from zero (CLIM-D) does not
   (\R{xd/s17/clim/90/clim-d/bss_vs_clim} at \hC\ days).
-\item \textbf{Ranking signal.} A cross-fitted isotonic recalibration of V2
-  beats CLIM on new crossings at \hB\ and \hC\ days
+\item \textbf{A lead, not a result.} On development accounts, a
+  cross-fitted isotonic recalibration of V2 scored better than CLIM on new
+  crossings at \hB\ and \hC\ days
   (\R{xd/s12/sc/u0-30/start-at-or-above/V2-iso/bss_vs_clim} and
-  \R{xd/s12/sc/u0-90/start-at-or-above/V2-iso/bss_vs_clim}), so V2's
-  probabilities may carry ranking information despite the
-  over-prediction. It was not applied to held-out data.
+  \R{xd/s12/sc/u0-90/start-at-or-above/V2-iso/bss_vs_clim}). V2's
+  probabilities may therefore carry ranking information despite the
+  over-prediction; recalibration was not applied to held-out data, and
+  testing it needs a frozen evaluation.
 \end{itemize}
