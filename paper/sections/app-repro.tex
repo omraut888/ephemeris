@@ -17,7 +17,11 @@ scripts/paper.sh --pdf-only   # paper/build/latex/main.pdf
 \end{verbatim}
 This regenerates the macros and tables from \texttt{paper/results/} and
 compiles the PDF. We ran these steps in a fresh clone of the release
-commit; the PDF built and its text was identical to ours.
+commit on the author's Mac. The PDF built, and with
+\texttt{SOURCE\_DATE\_EPOCH} and \texttt{FORCE\_SOURCE\_DATE=1} set for
+both builds it was byte-identical to the one built in the working
+repository. Both builds used the same TeX installation; we have not
+compared builds across installations.
 
 \paragraph{(b) The primary held-out table from the raw data.} Fetch and
 check the data, rebuild the development stages (the held-out B-GLOBAL is
