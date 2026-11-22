@@ -2,11 +2,81 @@
 
 ## Resume here (updated after every step)
 
-**Round 3 is at its checkpoint (after Tier A and the development results of
-B1 and B2). Stopped and waiting for the user.**
-- Nothing is running, nothing is half-done, nothing was pushed.
-- The next actions need the user's decisions (below): the confirmatory
-  test, the held-out runs, and how B1/B2 enter the paper.
+**Round 4 is stopped at the point the user set: the confirmatory test is
+specified (REVISION.md S15) and NOT run.** Nothing is running or half-done,
+and nothing was pushed. The next action is the user's approval of S15.
+After that: write nothing new; run the command in S15 once (guarded), then
+`explore_summary.py --heldout s15`.
+
+## Round 4 summary (2026-11-21)
+
+**1. The engine flaw (S13; development).**
+- **Mechanism.** With the income detector off:
+  - a small first income record (median 4% of the later pay) sets m
+    confidently too low;
+  - real paychecks are then gated as outliers (median 4 of the first 12);
+  - the income noise estimate inflates (S ≈ 0.91 pay²);
+  - the gain on m falls to 0.002, so in 75% of the 214 income-alarm
+    accounts m̂ never comes within 20% of a paycheck.
+- **V0's smaller bias** is a different starting point, not compensation:
+  removing the detector shifts V0's 90-day median by −9,200 and V2's by
+  −10,542.
+- **The fix** (post-freeze, `12def8e` then `3bf095a`): an income gate
+  escape, active only with the income detector off.
+  - The first version, which also fired with the detector on, changed 479
+    of 3,105 forecasts per horizon for slightly worse CRPS, and was
+    withdrawn.
+  - Tests: three, two of which fail without the fix.
+  - `test-full`: passed twice (all shells); no golden file changed.
+- **Measured effect.**
+  - Frozen V0/V2 on the first 100 development accounts: 0 of 3,105
+    changed. All 167,130 detector-on forecasts in S9 are identical.
+  - Without the detector, V2's 90-day loss is −0.015 (account mean;
+    pooled −0.009) instead of −0.46, and m̂ ends at 1.05 times the pay
+    instead of 0.13.
+- Recorded in §9, Appendix B.4, the limitations and PLAN §11.
+
+**2. Dependence (S14; development).** All identities pass; (b) as stated is
+algebraically B-EQ.
+- **D1, shuffled B-EQ, holds but is small.** It loses to B-EQ at 30 and 90
+  days under both aggregations: account mean −0.012 / −0.013, pooled
+  −0.003 / −0.006, about 1/30 of B-SR's loss.
+- **D2, matched B-SR, fails.** It is worse than B-SR (−0.07 / −0.07
+  account mean).
+- **The oracle** still loses at 90 days, and its spread is about B-EQ's.
+- **So** the long-horizon loss is not explained by projection error, and
+  dependence explains only a small part.
+
+**3. Confirmatory specification S15** (committed `fe14e1d`; summary written,
+not run).
+- **Design:** held-out origins on or after 1997-07-01 (49,762 per horizon,
+  3,512 accounts); one guarded run; primary estimand the account mean,
+  pooled also reported.
+- **P2:** the oracle loses to B-EQ at 90 days.
+- **P3:** shuffled B-EQ loses to B-EQ at 30 and 90 days (stated as small).
+- **P1 (secondary):** B-SR's skill is higher in the predictable tertile
+  than the unpredictable one. Development: account mean +0.011
+  [−0.072, +0.096] at 30 days and +0.25 at 90.
+- **Prior exposure** is stated.
+
+**4. Overdraft split (held-out; guarded start-balance read, no
+forecasts).**
+- 281 origins start below zero, and they give 277 of the 392 events at 7
+  days.
+- New-crossing prevalence is 0.10 / 0.42 / 1.02%.
+- Every forecast loses to climatology on new crossings at every horizon,
+  with every interval below 0. The 7-day B-EQp advantage (+0.26) is
+  persistence: −0.54 [−0.81, −0.33] on new crossings.
+
+**5. Paper.** The abstract, introduction, §6, §7, §9, Appendix B.4,
+limitations and conclusion are rewritten. 31 pages, 0 warnings, main text
+to p. 16.
+
+**Deviation from the requested framing.** The user asked for
+within-window dependence as "the leading exploratory hypothesis". The
+development results make it a small effect, so the paper calls it the
+leading hypothesis tested and states that it explains a small part at
+most.
 
 ## Round 3 checkpoint summary (2026-11-21)
 
