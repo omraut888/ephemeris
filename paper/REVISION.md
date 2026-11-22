@@ -998,6 +998,35 @@ Summaries: `explore_summary.py s17` (development) and
 `explore_summary.py --heldout s17`. Results: `s17-stored/` under
 `exploratory/` and `exploratory-heldout/`.
 
+# Round 7: the fourth referee report (final v1 round; wording and hygiene)
+
+No new forecasts and no guarded held-out runs. One development-only label
+recount (S18), because the S12 label sensitivity was computed over all
+origins, not over Table 5's risk set (origins starting at or above zero).
+
+## S18 Label sensitivity on the new-crossing risk set (development; labels only)
+
+- **Origins:** the S12 development origins (`eligible_origins`, development
+  split), at 7, 30 and 90 days, threshold 0 only.
+- **Balances:** the reconstructed balance (the running sum, as in S12) and
+  the bank's reported balance (`reported_balance`: the day's last record in
+  file order, carried forward). No forecasts are made.
+- **Per origin and horizon:** the start balance under each (`b0`,
+  `b0_rep`), and the event under each: some day 1..h below zero (`event`,
+  `event_rep`).
+- **Reported, separately:**
+  1. *eligibility changes:* origins in the reconstructed risk set
+     (`b0 >= 0`) that leave it under reported balances (`b0_rep < 0`), and
+     origins that enter it (`b0 < 0`, `b0_rep >= 0`), with their events;
+  2. *label changes* on origins eligible under both: 0→1 and 1→0;
+  3. the new-crossing event count under each definition (each on its own
+     risk set).
+- **Identity check:** `b0` and `event` must equal the stored S12 events
+  (`threshold = u0`) for every origin and horizon.
+- Command: `ephemeris-eval explore shortfall-labels` (development only);
+  summary `explore_summary.py s18`; results in
+  `paper/results/exploratory/s18-labels/`.
+
 # v2 (deferred; not part of v1)
 
 - **The 2×2 mechanism experiment.** Cross the scheduled-flow term (historical
