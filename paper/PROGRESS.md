@@ -2,11 +2,41 @@
 
 ## Resume here (updated after every step)
 
-**Round 4 is stopped at the point the user set: the confirmatory test is
-specified (REVISION.md S15) and NOT run.** Nothing is running or half-done,
-and nothing was pushed. The next action is the user's approval of S15.
-After that: write nothing new; run the command in S15 once (guarded), then
-`explore_summary.py --heldout s15`.
+**Round 5 finished.** Nothing is running or half-done, and nothing was
+pushed. Waiting for the user.
+
+## Round 5 summary (2026-11-22)
+
+**S15 (confirmatory, held-out forward period).**
+- **Specification:** amended with P3b in `44afcf4` before the run.
+- **Run:** once through the guard, 2026-11-22T00:53Z, 49,762 origins per
+  horizon in 3,512 accounts. Results: `paper/results/confirmatory-s15/`
+  (`7102b72`).
+- **Outcomes**, account mean (primary) with pooled in brackets; all four
+  confirmed, and pooled agrees in sign:
+  - **P2:** the oracle against B-EQ at 90 days: −0.42 [−0.45, −0.39]
+    (−0.20).
+  - **P3:** shuffled B-EQ against B-EQ: −0.016 [−0.018, −0.014] at 30
+    days and −0.015 [−0.018, −0.013] at 90 (−0.005, −0.004).
+  - **P3b:** s_shuf − s_SR/4 = +0.091 [+0.086, +0.097] (+0.050). B-SR's
+    90-day skill on these origins is −0.43.
+  - **P1 (secondary):** predictable minus unpredictable: +0.20
+    [+0.16, +0.24] at 30 days and +0.29 [+0.20, +0.38] at 90 (+0.26,
+    +0.42).
+- The original specification was on GitHub (00:52) before the run
+  (00:53). The amendment rests on its commit time.
+
+**S16 (development, descriptive).** The 5–95% range of ΔB − S_hist is wider
+than that of ΔB at 47.9% of origins at 30 days and 51.6% at 90. The median
+per-account ratio is 1.000 (quartiles 0.93 and 1.02 at 90 days). The
+adjustment does not systematically widen the changes; the paper presents
+this as an open hypothesis the check does not support.
+
+**Paper.**
+- Updated: the abstract, introduction, §6 (with an S15 table and the
+  prior-exposure statement), the conclusion, and the timeline and
+  protocol notes.
+- 32 pages, 0 LaTeX warnings. Main text to p. 16, appendix from p. 19.
 
 ## Round 4 summary (2026-11-21)
 
