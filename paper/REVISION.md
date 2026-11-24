@@ -1067,6 +1067,29 @@ events (S19); the larger experiments are in the v2 plan below.
   `explore_summary.py --heldout s19`). Results:
   `exploratory/s19-references/` and `exploratory-heldout/s19-references/`.
 
+# Round 9: the sixth referee report (text additions; arXiv v1)
+
+No new forecasts, no new scores and no guarded runs. Two text additions
+(direct versus iterated multistep forecasting in §2 and a discussion
+section; dispersion growth as a hypothesis) and the v2 plan below.
+
+## S20 Width growth from stored medians (arithmetic only; fixed before computing)
+
+- **Inputs:** the frozen held-out median 90% widths in
+  `heldout/variants.csv` (`median_width90_czk`; for each method, the median
+  over accounts of the account's mean width) for V2 and B-EQ at 7, 30 and
+  90 days. Nothing is rerun or rescored.
+- **Quantities:** for each method, the ratios width(30)/width(7) and
+  width(90)/width(7), and the random-walk references sqrt(30/7) and
+  sqrt(90/7). Also, for orientation, the linear-growth reference 90/7.
+  Two decimals.
+- **Caveat stated with them:** a ratio of medians over accounts is not
+  the median of per-account ratios, and widths mix accounts with
+  different volatility; the comparison is descriptive and the
+  explanations offered for it are untested.
+- Computed in `macros.py` (`derived()`), keys `d/wg/<method>/<h>` and
+  `d/wg/rw/<h>`, `d/wg/lin/90`.
+
 # v2 (deferred; not part of v1): the plan for the journal version
 
 Fifth referee report (major revision at a specialist forecasting journal).
