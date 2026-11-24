@@ -1027,6 +1027,46 @@ origins, not over Table 5's risk set (origins starting at or above zero).
   summary `explore_summary.py s18`; results in
   `paper/results/exploratory/s18-labels/`.
 
+# Round 8: the fifth referee report (arXiv v1 additions)
+
+No new forecasts and no guarded runs. One exploratory addition from stored
+events (S19); the larger experiments are in the v2 plan below.
+
+## S19 Stronger shortfall references (stored events only; fixed before scoring held-out)
+
+- **Data.** New crossings at threshold 0 (origins starting at or above
+  zero), at 7, 30 and 90 days. Development: the stored S12 events
+  (`paper/build/explore/shortfall/events.csv`, `threshold = u0`,
+  `start_below = 0`). Held-out: the stored S5 events with the logged start
+  balances (`explore-heldout/berka/events.csv`, `startbal/startbal.csv`),
+  as in the existing split.
+- **CONST** (constant): for every origin, the development prevalence of new
+  crossings at that horizon, $\pi_h$ = events / origins on development.
+- **SHRUNK** (account rate shrunk toward the prevalence):
+  $p = w_h \cdot \mathrm{CLIM} + (1 - w_h)\,\pi_h$, where CLIM is the stored
+  account climatology (share of the account's past h-day windows in the
+  365-day lookback that went below zero). $w_h$ is chosen on development
+  only, per horizon, from the grid 0, 0.05, ..., 1, to minimize the mean
+  Brier score on development new crossings (ties: the larger $w$). The
+  weight does not depend on history length, because the stored events do
+  not carry each origin's window count. $\pi_h$ and $w_h$ are written to
+  `s19-references/fit.csv` before any held-out score is computed.
+- **Scores (held-out, and development for reference):** for CONST, SHRUNK
+  and the existing five (V2, CP-noKF, B-EQp, B-SRp, CLIM): mean
+  probability, mean Brier score, Brier skill against CLIM with the
+  existing account bootstrap (2,000 resamples, seed 6).
+- **The strongest reference** for the paper's comparison is fixed here as
+  the one of CLIM, CONST and SHRUNK with the lowest development Brier score
+  at that horizon. Every forecast also gets Brier skill against it, with
+  the same bootstrap. Which reference is lowest on held-out data is
+  reported as observed.
+- **Arithmetic check:** the referee's figures (CONST at 1.14% on held-out at
+  90 days gives Brier about 0.0101 against CLIM's 0.0107) are compared with
+  the computed values and reported either way.
+- Summary: `explore_summary.py s19` (development fit, then
+  `explore_summary.py --heldout s19`). Results:
+  `exploratory/s19-references/` and `exploratory-heldout/s19-references/`.
+
 # v2 (deferred; not part of v1)
 
 - **The 2×2 mechanism experiment.** Cross the scheduled-flow term (historical
