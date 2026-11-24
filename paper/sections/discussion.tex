@@ -26,16 +26,37 @@ signed amounts $A$, so the $h$-day sum $S_h$ has
 \operatorname{Var}(S_h) = h\,\mathbb E[\lambda]\,\mathbb E[A^2]
   + h^2 \operatorname{Var}(\lambda)\,(\mathbb E[A])^2 ,
 \]
-whose second term grows quadratically with the horizon. Two candidate
-explanations, neither tested:
+whose second term grows quadratically with the horizon. With
+$\lambda \sim \mathrm{Gamma}(n + \tfrac12, \text{rate} = D)$,
+$\operatorname{Var}(\lambda)/\mathbb E[\lambda] = 1/D$, so the ratio of
+the quadratic to the linear term is
+\[
+R_h = \frac{h}{D}\,\frac{(\mathbb E[A])^2}{\mathbb E[A^2]} \le \frac{h}{D}.
+\]
+For a full \R{c/sparse-window}-day window this bounds the extra variance
+of the discretionary flows at \R{d/rh/var/7}\%, \R{d/rh/var/30}\% and
+\R{d/rh/var/90}\% at \hA, \hB\ and \hC\ days (\R{d/rh/sd/7}\%,
+\R{d/rh/sd/30}\% and \R{d/rh/sd/90}\% in standard deviation). The bound
+holds only for the discretionary component under the model's own
+assumptions, not for the full forecast's quantile widths, and a shorter
+window gives a larger bound. Four candidate explanations, none tested:
 \begin{enumerate}[label=(\alph*)]
-\item \textbf{Shared rate uncertainty.} The rate drawn once per path
-  inflates V2's spread at long horizons through the $h^2$ term.
+\item \textbf{Shared rate uncertainty.} The rate drawn once per path adds
+  the $h^2$ term; by the bound above, it is unlikely to explain most of
+  the gap.
 \item \textbf{Balance-dependent behaviour.} Real balances may spread more
   slowly than a random walk, for instance because spending responds to the
-  balance. B-EQ's historical windows would inherit this; V2's additive
+  balance; B-EQ's historical windows would inherit this, and V2's additive
   simulation cannot represent it.
+\item \textbf{Paycheck-state diffusion.} V2's expected paycheck is a random
+  walk, so in the simplified case of equally spaced paydays the variance
+  of cumulative income grows roughly with the cube of the number of
+  paydays.
+\item \textbf{B-EQ too narrow at long horizons.} A
+  \R{c/lookback}-day lookback holds few non-overlapping \hC-day windows,
+  which may make B-EQ understate long-horizon dispersion, consistent with
+  its weaker \hC-day coverage on accounts with under a year of history
+  (\R{ho/str/history-lt-12-months/B-EQ/90/cov90}\% against V2's
+  \R{ho/str/history-lt-12-months/V2/90/cov90}\%, \S\ref{sec:reversal}).
 \end{enumerate}
-B-EQ's slow growth may also reflect that a \R{c/lookback}-day lookback
-holds few non-overlapping \hC-day windows. The v2 plan tests both
-explanations (\texttt{paper/REVISION.md}).
+The v2 plan tests each of them (\texttt{paper/REVISION.md}).
