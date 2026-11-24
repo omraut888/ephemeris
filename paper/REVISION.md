@@ -1067,16 +1067,59 @@ events (S19); the larger experiments are in the v2 plan below.
   `explore_summary.py --heldout s19`). Results:
   `exploratory/s19-references/` and `exploratory-heldout/s19-references/`.
 
-# v2 (deferred; not part of v1)
+# v2 (deferred; not part of v1): the plan for the journal version
 
-- **The 2×2 mechanism experiment.** Cross the scheduled-flow term (historical
-  vs projected vs realized) with residual sourcing (same-window vs
-  other-window vs matched with equal window counts), so the oracle and
-  shuffle contrasts become one design with equal sample sizes.
-- **A switching rule.** Use the schedule only where it has been
-  predictable, selected on development with calibration at every level,
-  then tested on a fresh period.
-- **A new cohort.** Card-heavy accounts with pending transactions; Berka
-  cannot test this.
-- **The detector follow-up,** described by its actual configurations: CUSUM
-  against a two-observation reset after fixing paycheck initialization.
+Fifth referee report (major revision at a specialist forecasting journal).
+Every item below is specified in full, on development data, and frozen
+before any held-out or new-period run; each run goes through the guard
+with a logged reason. All use the same origins, the same 365-day lookback
+and the same eligibility as the v1 evaluation unless stated, and report
+both aggregations with 2,000-resample account-bootstrap intervals.
+
+1. **Balance dependence** (the untested limitation of v1).
+   - Dispersion growth by horizon: the spread (5-95% range and SD) of
+     realized h-day changes against h, per account, compared with V2's and
+     B-EQ's forecast spreads; random-walk growth would scale with sqrt(h).
+   - Realized change against starting balance: the regression of the
+     realized h-day change on the origin balance (relative to the
+     account's lookback mean), pooled and per account, at 7, 30 and 90
+     days. A negative slope is mean reversion.
+   - A balance-matched empirical forecast: B-EQ restricted to past windows
+     whose starting balance is closest to today's (k nearest, k fixed on
+     development, with an equal-k unconditioned control).
+   - A mean-reverting balance model: an AR(1)-type model of the balance
+     toward the account's lookback mean, fitted per account by least
+     squares on the lookback, with innovations resampled from its own
+     residuals (no Gaussian assumption).
+   - Scored against B-EQ and V2 on the same origins; the claim to test is
+     that balance-conditioned forecasts close B-EQ's long-horizon advantage
+     over V2.
+2. **The conditioned oracle.** The 2x2 design: scheduled-flow term
+   (projected vs realized) crossed with residual sourcing (unconditional vs
+   matched on the scheduled flow), with the effective sample sizes of the
+   residual pools equalized (the unconditional arm subsampled to the
+   matched arm's window count, averaged over a fixed number of draws).
+   Extends the v1 oracle, shuffle and matched-B-SR diagnostics into one
+   design.
+3. **Calendar-period and origin-grid sensitivity.** Common eligibility
+   across all variants: the primary comparisons by calendar period (half-
+   or full-year blocks) and with the origin grid shifted (offsets 0, 10,
+   20 days, as in S8), each on the same accounts.
+4. **CZK rescoring.** The primary table rescored in original CZK (no
+   per-origin normalization), both aggregations, beside the normalized
+   scores.
+5. **A raw-data rerun of the primary table from the tagged artifact.**
+   From a clean clone of the release tag: fetch the data, rebuild the
+   development stages, rerun the held-out evaluation through the guard
+   with the logged reason "independent reproduction", recompute the
+   pairwise table, and diff it against the committed one (Appendix H,
+   command set b).
+6. **An independent cohort, if available.** Card-heavy accounts with
+   pending transactions; Berka cannot test this. Only with documented
+   provenance and a frozen plan before access to outcomes.
+7. **Also carried over from round 6:** the switching rule is dropped in
+   favour of the horizon rule (V2 at 7 days, B-EQ at 30 and 90) as a
+   benchmark for a frozen evaluation; the detector follow-up (CUSUM
+   against a two-observation reset after fixing paycheck initialization);
+   recalibrated shortfall probabilities (isotonic, cross-fitted on
+   development) scored against CONST and SHRUNK on a fresh period.
