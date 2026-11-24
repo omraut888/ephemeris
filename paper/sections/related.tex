@@ -26,6 +26,18 @@ exponential forgetting and an information weight per sample. Page's CUSUM
 \citep{page1954} is the classical sequential test for a shift in mean; we
 apply it to the filter's normalized innovations.
 
+\paragraph{Direct and iterated multistep forecasts.} Our main comparison
+is an instance of a classical choice. An iterated forecast fits one-step
+dynamics and simulates them forward; a direct forecast fits each horizon's
+change on its own. \citet{marcellino2006direct} compared the two for
+autoregressions on US macroeconomic series: iterated forecasts are more
+efficient when the one-step model is correctly specified, and direct
+forecasts are more robust when it is not; on their series, iterated
+forecasts usually did better. V2 iterates daily dynamics;
+B-EQ estimates each horizon's change directly from the account's past
+windows. Our contribution is evidence on which wins for sparse personal
+transactions, and at which horizons.
+
 \paragraph{Evaluating probabilistic forecasts.} We follow the paradigm of
 maximizing sharpness subject to calibration
 \citep{gneiting2007calibration}. Scores are the continuous ranked

@@ -1,0 +1,41 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Direct against iterated.} V2 is an iterated forecast: it
+estimates daily dynamics and simulates them forward. B-EQ is a direct one:
+it takes each horizon's change from the account's past windows of that
+length. Iterated forecasts are the more efficient when the daily model is
+correctly specified, and direct forecasts are the more robust when it is
+not \citep{marcellino2006direct}. Our results fit the second half of that
+statement: V2 has lower CRPS at \hA\ days, where errors in the daily model
+have few steps to compound, and B-EQ wins at \hB\ and \hC\ days. On the
+macroeconomic series of \citet{marcellino2006direct} the iterated method
+usually won; on sparse personal transactions, in our data, it wins only at
+the shortest horizon. We have not shown which part of V2's daily model is
+misspecified; \S\ref{sec:explanation} rules out some candidates.
+
+\paragraph{Dispersion growth (a hypothesis, untested).} From \hA\ to \hC\
+days, V2's median \lC\% width grows by a factor of \R{d/wg/V2/90}
+(\R{d/wg/V2/30} by \hB\ days), and B-EQ's by \R{d/wg/B-EQ/90}
+(\R{d/wg/B-EQ/30}). A random walk's width grows with $\sqrt h$, a factor
+of \R{d/wg/rw/90} (\R{d/wg/rw/30}); linear growth would give
+\R{d/wg/lin/90}. These are ratios of medians over accounts, not per-account
+ratios. In V2's sparse branch, each path draws a rate $\lambda$ and then
+signed amounts $A$, so the $h$-day sum $S_h$ has
+\[
+\operatorname{Var}(S_h) = h\,\mathbb E[\lambda]\,\mathbb E[A^2]
+  + h^2 \operatorname{Var}(\lambda)\,(\mathbb E[A])^2 ,
+\]
+whose second term grows quadratically with the horizon. Two candidate
+explanations, neither tested:
+\begin{enumerate}[label=(\alph*)]
+\item \textbf{Shared rate uncertainty.} The rate drawn once per path
+  inflates V2's spread at long horizons through the $h^2$ term.
+\item \textbf{Balance-dependent behaviour.} Real balances may spread more
+  slowly than a random walk, for instance because spending responds to the
+  balance. B-EQ's historical windows would inherit this; V2's additive
+  simulation cannot represent it.
+\end{enumerate}
+B-EQ's slow growth may also reflect that a \R{c/lookback}-day lookback
+holds few non-overlapping \hC-day windows. The v2 plan tests both
+explanations (\texttt{paper/REVISION.md}).
