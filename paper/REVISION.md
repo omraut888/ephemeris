@@ -1146,3 +1146,44 @@ both aggregations with 2,000-resample account-bootstrap intervals.
    against a two-observation reset after fixing paycheck initialization);
    recalibrated shortfall probabilities (isotonic, cross-fitted on
    development) scored against CONST and SHRUNK on a fresh period.
+
+Added after the sixth referee report (round 9):
+
+8. **Rate uncertainty in V2's sparse branch.** V2 with the rate fixed at
+   its posterior mean, (n + 1/2)/D, against the frozen V2 with lambda
+   sampled once per path; everything else identical, same seeds. Tests
+   explanation (a) of the Discussion: the h^2 Var(lambda) (E[A])^2 term.
+9. **A balance-dependent spending variant.** V2's sparse branch with the
+   daily event rate (or the amount distribution) depending on the
+   simulated balance relative to the account's lookback mean; the form
+   and its single parameter fixed on development before scoring. Tests
+   explanation (b). Paired with item 1's mean-reverting model.
+10. **Across horizons, for items 8 and 9 against B-EQ and the frozen V2:**
+    dispersion growth (median 90% width at 7, 30 and 90 days, as ratios
+    to 7 days, both as a ratio of medians and as the median of per-account
+    ratios, beside sqrt(h) growth and the realized spread of item 1);
+    CRPS, both aggregations; lower-tail coverage (misses below the 90%
+    interval); and new-crossing shortfall probabilities (Brier against
+    CLIM, CONST and SHRUNK).
+11. **Shortfall information content.**
+    - Cross-fitted recalibration (isotonic, account-grouped folds on
+      development) scored against SHRUNK, not only CLIM.
+    - Precision-recall curves for new crossings, with average precision
+      and its account-bootstrap interval, against the references' curves.
+    - The calibration-resolution (Murphy) decomposition of each Brier
+      score: reliability, resolution, uncertainty.
+    - The incremental performance of each forecast over the
+      historical-risk reference: Brier skill against SHRUNK and the change
+      in log loss when the forecast is added to SHRUNK in a cross-fitted
+      logistic model, each with an account-bootstrap interval.
+12. **The distribution of account-level paired CRPS differences** (V2
+    against B-EQ, and against the strongest per-horizon alternative): the
+    median difference, the share of accounts each method wins, the
+    consistency of the winner across horizons (the cross-tab of 7-, 30-
+    and 90-day winners), and pre-forecast predictors of which method wins
+    (history length, event rate, detected streams, balance level and
+    volatility), fitted on development and evaluated once on held-out.
+13. **Replication on an independently sourced cohort**, with the rules,
+    thresholds, eligibility and analyses frozen and committed before any
+    access to outcomes (supersedes item 6's "if available" wording when a
+    cohort is found).
