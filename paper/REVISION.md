@@ -1210,3 +1210,41 @@ Added after the sixth referee report (round 9):
     thresholds, eligibility and analyses frozen and committed before any
     access to outcomes (supersedes item 6's "if available" wording when a
     cohort is found).
+
+Added after the seventh referee report (round 10). **Priorities for v2:
+items 15 (the variance attribution) and 18 (the block-bootstrap ladder).**
+
+14. **Per-origin R_h.** For each sparse-branch origin, R_h =
+    (h/D)(E[A])^2/E[A^2] from the window's own transaction moments (n, D
+    and the signed amounts actually passed to V2), at 7, 30 and 90 days;
+    its distribution over origins and accounts, and its relation to the
+    account's paired CRPS difference against B-EQ.
+15. **The variance-attribution experiment (priority).** On the same
+    origins and seeds, five arms of V2: (i) the frozen V2; (ii) the
+    spending rate fixed at its posterior mean (item 8); (iii) the paycheck
+    state held fixed during simulation (no random walk in m after the
+    origin); (iv) the initial paycheck uncertainty fixed (the
+    origin's paycheck variance set to a development-fixed constant,
+    rather than the filter's); (v) balance-dependent spending (item 9).
+    Each scored on CRPS (both aggregations), predictive variance and its
+    growth with h, coverage at 50/80/90/95% with one-sided misses, and
+    new-crossing Brier against CLIM, CONST and SHRUNK. Arms are compared
+    with (i) and with B-EQ under the paired account bootstrap.
+16. **Empirical dispersion curves.** The spread of realized cumulative
+    changes at every horizon from 1 to 90 days, stratified by lookback
+    length, activity (events per month), starting balance relative to
+    the lookback mean, and computed from overlapping against
+    non-overlapping windows; plotted against sqrt(h) and against V2's and
+    B-EQ's forecast spreads.
+17. **Autocovariance decomposition.** Var(sum of h daily net flows) =
+    h gamma(0) + 2 sum_{k=1}^{h-1} (h - k) gamma(k), per account from the
+    lookback; the share of the h-day variance contributed by the
+    autocovariance terms, to test for negative serial dependence (the
+    alternative to balance feedback as the source of sub-random-walk
+    growth).
+18. **The block-bootstrap ladder (priority).** One empirical model
+    family, from iterated to direct: resampled 1-day flows (iid days),
+    7-day blocks, 30-day blocks, and full horizon-length windows (B-EQ
+    itself), all from the same lookback, scored on the same origins with
+    the same metrics as item 15. Isolates direct against iterated
+    forecasting without the state-space model's other choices.
