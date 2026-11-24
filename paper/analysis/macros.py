@@ -96,7 +96,7 @@ def fmt(col, v):
         return f"{float(v):.4f}"
     if c.startswith("brier"):
         return f"{float(v):.3f}"
-    if c.startswith("bss"):
+    if c.startswith("bss") or c in ("best_lo", "best_hi"):
         return signed(v)
     if c.startswith("cov") or c.startswith("coverage") or c.endswith("share") \
             or c.startswith("recovered") or c in ("pit_outer_share",):
@@ -125,7 +125,8 @@ def table(tag, path, keys):
             if c in keys:
                 continue
             put(f"{base}/{c}", fmt(c, v))
-            if "skill" in c and v not in ("", None):
+            if ("skill" in c or c.startswith("bss") or c in ("best_lo", "best_hi")) \
+                    and v not in ("", None):
                 put(f"{base}/{c}@3", signed(v, 3))
     return rows
 
@@ -693,6 +694,13 @@ def exploratory():
             keyvalue(f"{tag}/s17/conc", s17 / "newcross-concentration.csv")
         if (s17 / "newcross-climatologies.csv").exists():
             table(f"{tag}/s17/clim", s17 / "newcross-climatologies.csv", ["h", "method"])
+        if (d / "s19-references/scores.csv").exists():
+            table(f"{tag}/s19", d / "s19-references/scores.csv", ["h", "method"])
+        if (d / "s19-references/fit.csv").exists():
+            for r in csv.DictReader(open(d / "s19-references/fit.csv")):
+                put(f"{tag}/s19fit/{r['h']}/prevalence", f"{100 * float(r['prevalence']):.2f}")
+                put(f"{tag}/s19fit/{r['h']}/w", r["w"])
+                put(f"{tag}/s19fit/{r['h']}/best_reference", r["best_reference"])
         if (d / "s18-labels/counts.csv").exists():
             table(f"{tag}/s18", d / "s18-labels/counts.csv", ["h"])
         if (d / "s16-dispersion/dispersion.csv").exists():
