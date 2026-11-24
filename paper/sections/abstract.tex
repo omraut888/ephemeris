@@ -30,8 +30,10 @@ remaining loss unresolved.
 
 \emph{Shortfalls (exploratory, secondary).} For new negative
 booked-balance crossings, the four unrecalibrated forecasts we tested all
-lost to the account's own historical frequency at every horizon, and all
-over-predict them.
+lost at every horizon to two simple references, a constant equal to
+the development prevalence and the account's own historical frequency
+shrunk toward it, and all over-predict the event. The constant alone has
+a lower Brier score than the unshrunk frequency.
 
 \emph{Calibration.} V2's \lC\% intervals meet their planned band. Its \lA\%
 intervals cover too much, so the planned calibration claim fails.

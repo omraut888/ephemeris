@@ -20,6 +20,16 @@
   starting at or above zero, at \hB\ days), so their Brier scores rest on
   few events. The thresholds were fixed in our written
   specification, not chosen by users.
+\item \textbf{Balance feedback (untested).} V2's sparse branch adds flows
+  without feedback from the balance, while B-EQ's historical windows may
+  inherit balance-dependent behaviour such as mean reversion; this is a
+  candidate explanation for the long-horizon loss that we have not tested.
+\item \textbf{Normalization.} The per-origin rescaling to a reference
+  monthly flow is part of the scoring objective, and we have not rescored
+  the forecasts in original CZK.
+\item \textbf{What the intervals cover.} Account-bootstrap intervals
+  describe variation across accounts within these data, not across
+  calendar periods or banking environments.
 \item \textbf{Estimands.} The planned skill is a mean of per-account ratios,
   which accounts with small reference CRPS can move a lot. We report the
   pooled ratio beside it. Over all accounts the signs agree and the
