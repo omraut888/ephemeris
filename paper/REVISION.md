@@ -1090,6 +1090,29 @@ section; dispersion growth as a hypothesis) and the v2 plan below.
 - Computed in `macros.py` (`derived()`), keys `d/wg/<method>/<h>` and
   `d/wg/rw/<h>`, `d/wg/lin/90`.
 
+# Round 10: the seventh referee report (one correction; arXiv v1)
+
+No new forecasts, no new scores and no guarded runs. One paragraph of
+§10 is corrected (S21), and the v2 plan is extended.
+
+## S21 A bound on the rate-uncertainty term (arithmetic only; fixed before computing)
+
+- **Model (V2's sparse branch, as implemented):** lambda ~ Gamma(n + 1/2,
+  rate = D), where D is the sparse window's length in days (the
+  `c/sparse-window` constant, 365, or less with a shorter history), and
+  the h-day discretionary sum has Var(S_h) = h E[lambda] E[A^2] +
+  h^2 Var(lambda) (E[A])^2. Since Var(lambda)/E[lambda] = 1/D, the ratio of
+  the quadratic to the linear term is R_h = (h/D)(E[A])^2/E[A^2] <= h/D.
+- **Quantities:** for D equal to the full window, the variance bound h/D
+  and the standard-deviation bound sqrt(1 + h/D) - 1, at 7, 30 and 90 days,
+  in percent to one decimal. Computed in `macros.py` (`derived()`) from
+  the window constant read from the engine, keys `d/rh/var/<h>` and
+  `d/rh/sd/<h>`.
+- **Scope stated with them:** the bound covers only the discretionary
+  component under the model's own assumptions, not V2's full quantile
+  widths (which also carry the balance, paycheck and bill terms); shorter
+  windows give larger bounds.
+
 # v2 (deferred; not part of v1): the plan for the journal version
 
 Fifth referee report (major revision at a specialist forecasting journal).
