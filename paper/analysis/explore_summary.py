@@ -1181,6 +1181,79 @@ def s18():
     show(rows)
 
 
+# ----------------------------------------------------------------- S19 ---
+
+S19_FIT = ROOT / "paper/results/exploratory/s19-references/fit.csv"
+
+
+def s19_rows(heldout):
+    """New crossings at threshold 0, per horizon: (y, account, {method: p})."""
+    methods = ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM"]
+    if heldout:
+        ev = list(csv.DictReader(open(EXP / "berka/events.csv")))
+        b0 = {(r["account"], r["origin"]): float(r["b0"])
+              for r in csv.DictReader(open(EXP / "startbal/startbal.csv"))}
+        keep = lambda r: r["threshold"] == "u0" and b0[(r["account"], r["origin"])] >= float(r["u"])  # noqa: E731
+    else:
+        ev = list(csv.DictReader(open(EXP / "shortfall/events.csv")))
+        keep = lambda r: r["threshold"] == "u0" and r["start_below"] == "0"  # noqa: E731
+    out = {}
+    for h in HS:
+        rows = [r for r in ev if r["h"] == h and keep(r)]
+        out[h] = (np.array([float(r["event"]) for r in rows]), np.array([r["account"] for r in rows]),
+                  {m: np.array([float(r[f"p_{m}"]) for r in rows]) for m in methods})
+    return out
+
+
+def s19():
+    """Constant and shrunk shortfall references (REVISION.md S19)."""
+    heldout = OUT.name == "exploratory-heldout"
+    out = OUT / "s19-references"
+    data = s19_rows(heldout)
+    brier = lambda p, y: float(np.mean((p - y) ** 2))  # noqa: E731
+    if not heldout:
+        # Fit on development only, written before any held-out score.
+        fit = [["h", "prevalence", "w", "best_reference"]]
+        for h in HS:
+            y, _, P = data[h]
+            pi = y.mean()
+            grid = [i / 20 for i in range(21)]
+            bs = [brier(w * P["CLIM"] + (1 - w) * pi, y) for w in grid]
+            best = min(bs)
+            w = max(g for g, b in zip(grid, bs) if b == best)
+            refs = {"CLIM": brier(P["CLIM"], y), "CONST": brier(np.full_like(y, pi), y),
+                    "SHRUNK": brier(w * P["CLIM"] + (1 - w) * pi, y)}
+            fit.append([h, repr(float(pi)), f"{w:.2f}", min(refs, key=refs.get)])
+        write(out / "fit.csv", fit)
+        show(fit)
+    fit = {r["h"]: r for r in csv.DictReader(open(S19_FIT))}
+    rng = np.random.default_rng(SEED)
+    res = [["h", "method", "origins", "accounts", "events", "prevalence", "mean_p", "brier",
+            "bss_vs_clim", "bss_lo", "bss_hi", "best_reference", "bss_vs_best", "best_lo", "best_hi"]]
+    for h in HS:
+        y, acct, P = data[h]
+        pi, w, bref = float(fit[h]["prevalence"]), float(fit[h]["w"]), fit[h]["best_reference"]
+        P = dict(P)
+        P["CONST"] = np.full_like(y, pi)
+        P["SHRUNK"] = w * P["CLIM"] + (1 - w) * pi
+        for m in ["V2", "CP-noKF", "B-EQp", "B-SRp", "CLIM", "CONST", "SHRUNK"]:
+            p = P[m]
+            row = [h, m, len(y), len(set(acct)), int(y.sum()), fmt(y.mean(), 5), fmt(p.mean(), 5),
+                   fmt(brier(p, y), 5)]
+            if m == "CLIM":
+                row += ["", "", ""]
+            else:
+                row += [fmt(x) for x in bss_boot(p, P["CLIM"], y, acct, rng)]
+            row.append(bref)
+            if m == bref:
+                row += ["", "", ""]
+            else:
+                row += [fmt(x) for x in bss_boot(p, P[bref], y, acct, rng)]
+            res.append(row)
+    write(out / "scores.csv", res)
+    show(res)
+
+
 # ----------------------------------------------------------------- S7 ----
 
 def s7():
@@ -1220,6 +1293,6 @@ if __name__ == "__main__":
     if args and args[0] == "--heldout":
         FROZEN, EXP, OUT = FROZEN_HELDOUT, B / "explore-heldout", ROOT / "paper/results/exploratory-heldout"
         args = args[1:]
-        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7", "s15", "s17"}, "held-out: S3, S5, S5c, S6, S7 only"
+        assert set(a.lower() for a in args) <= {"s3", "s5", "s5c", "s5split", "s6", "s7", "s15", "s17", "s19"}, "held-out: S3, S5, S5c, S6, S7 only"
     for a in args:
         globals()[a.lower()]()
