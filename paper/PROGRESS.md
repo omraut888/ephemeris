@@ -2,11 +2,31 @@
 
 ## Resume here (updated after every step)
 
-**Round 7 (fourth referee report, final v1 round) finished** (last fix: the §1 oracle result stated once). New
-annotated tag `v1.0.1-paper` ("Paper v1.0.1: arXiv submission") on the
-final commit; `v1.0-paper` untouched. Nothing pushed, nothing running.
-Before submitting: push the commits and the tag, then publish the GitHub
-release `v1.0.1-paper` so the URL in the availability statement resolves.
+**Round 8 (fifth referee report, arXiv v1 additions) finished.**
+`v1.0.1-paper` had not been pushed (`git ls-remote --tags origin` lists no
+tags), so it was deleted and recreated on the final commit with the same
+message; `v1.0-paper` untouched. Nothing pushed, nothing running. Before
+submitting: push the commits and the tag, then publish the GitHub release
+`v1.0.1-paper`.
+
+## Round 8 summary (2026-11-24)
+
+- **S19 (spec committed first; development fit committed before held-out
+  scoring):** CONST = development prevalence of new crossings (0.06%,
+  0.44%, 1.14%); SHRUNK = w·CLIM + (1−w)·CONST with w = 0.10, 0.40, 0.40
+  chosen on development. Held-out Brier skill against CLIM: CONST +0.19,
+  +0.03 (interval includes 0), +0.05; SHRUNK +0.20, +0.09, +0.14, all
+  intervals above 0. Referee's arithmetic confirmed: CONST 0.0101 vs CLIM
+  0.0107 at 90 days. Every forecast loses to SHRUNK with every interval
+  below zero (V2 −8.28, B-EQp −2.10 at 90 days).
+- **Table 5 and §7** rebuilt from S19 (one bootstrap stream; point
+  estimates equal the previous table), compared against SHRUNK, the
+  strongest reference; recalibration still a lead (compared with CLIM
+  only). Abstract, §1 and conclusion aligned.
+- **Limitations:** balance feedback (untested), normalization in the
+  scoring objective (no CZK rescoring), what the intervals cover.
+- **REVISION.md:** the v2 plan for the journal version.
+- **Build:** 34 pages, 0 warnings; main text pp. 1–13, appendix from p. 15.
 
 ## Round 7 summary (2026-11-22)
 
