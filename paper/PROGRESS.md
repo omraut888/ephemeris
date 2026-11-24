@@ -2,12 +2,28 @@
 
 ## Resume here (updated after every step)
 
-**Round 9 (sixth referee report, text additions) finished.**
+**Round 10 (seventh referee report: one correction, v2 plan) finished.**
 `v1.0.1-paper` was still unpushed (`git ls-remote --tags origin` lists no
 tags), so it was recreated on the final commit with the same message;
 `v1.0-paper` untouched. Nothing pushed, nothing running. Before
 submitting: push the commits and the tag, then publish the GitHub release
 `v1.0.1-paper`.
+
+## Round 10 summary (2026-11-24)
+
+- **S21 (spec committed first; arithmetic in macros.py):** with
+  lambda ~ Gamma(n + 1/2, rate = D), R_h <= h/D; for D = 365 the extra
+  discretionary variance is at most 1.9%, 8.2%, 24.7% at 7, 30, 90 days
+  (1.0%, 4.0%, 11.7% in SD), matching the referee's figures. §10 now
+  states the bound, its scope (discretionary component only, model
+  assumptions, shorter windows give larger bounds), that shared rate
+  uncertainty is unlikely to explain most of the gap, and four untested
+  candidates (a)–(d); (d) cites B-EQ's 75.8% vs V2's 89.3% held-out
+  90-day coverage on short histories.
+- **REVISION.md:** v2 plan items 14–18; priorities are 15 (variance
+  attribution) and 18 (block-bootstrap ladder).
+- **Build:** 35 pages, 0 warnings; main text pp. 1–13, appendix from p. 16
+  (one appendix float moved).
 
 ## Round 9 summary (2026-11-24)
 
