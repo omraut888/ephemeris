@@ -532,6 +532,14 @@ def derived():
     put("d/c1-ln-share", m.group(1)); put("d/c1-exp-share", m.group(2)); put("d/c1-draws", m.group(3))
     m = re.search(r"In case (\d+), one value", ident)
     put("d/c1-case", m.group(1))
+    # S20: width growth from the stored held-out median 90% widths
+    for m in ("V2", "B-EQ"):
+        w7 = float(ho[(m, "7")]["median_width90_czk"])
+        for h in ("30", "90"):
+            put(f"d/wg/{m}/{h}", f"{float(ho[(m, h)]['median_width90_czk']) / w7:.2f}")
+    for h in ("30", "90"):
+        put(f"d/wg/rw/{h}", f"{(int(h) / 7) ** 0.5:.2f}")
+    put("d/wg/lin/90", f"{90 / 7:.1f}")
 
 
 def keyvalue_raw(path):
