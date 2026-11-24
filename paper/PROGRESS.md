@@ -2,12 +2,28 @@
 
 ## Resume here (updated after every step)
 
-**Round 8 (fifth referee report, arXiv v1 additions) finished.**
-`v1.0.1-paper` had not been pushed (`git ls-remote --tags origin` lists no
-tags), so it was deleted and recreated on the final commit with the same
-message; `v1.0-paper` untouched. Nothing pushed, nothing running. Before
+**Round 9 (sixth referee report, text additions) finished.**
+`v1.0.1-paper` was still unpushed (`git ls-remote --tags origin` lists no
+tags), so it was recreated on the final commit with the same message;
+`v1.0-paper` untouched. Nothing pushed, nothing running. Before
 submitting: push the commits and the tag, then publish the GitHub release
 `v1.0.1-paper`.
+
+## Round 9 summary (2026-11-24)
+
+- **Citation verified** against Crossref: Marcellino, Stock and Watson
+  (2006), J. Econometrics 135(1–2): 499–526,
+  doi:10.1016/j.jeconom.2005.07.020. Added to refs.bib; a related-work
+  paragraph (direct vs iterated multistep) in §2.
+- **New §10 Discussion:** direct against iterated; dispersion growth as an
+  untested hypothesis. S20 (spec committed first; arithmetic on stored
+  held-out median 90% widths): width(90)/width(7) is 4.50 for V2 and 1.39
+  for B-EQ against sqrt(90/7) = 3.59 (30 days: 2.58, 1.05, 2.07). The
+  compound-Poisson variance decomposition and explanations (a) shared rate
+  uncertainty and (b) balance dependence, both labelled untested.
+- **REVISION.md:** v2 plan items 8–13.
+- **Build:** 34 pages, 0 warnings; main text pp. 1–13, appendix from p. 16.
+  Bundle `--check`: 47 files, 520K, 34 pages, 0 warnings.
 
 ## Round 8 summary (2026-11-24)
 
