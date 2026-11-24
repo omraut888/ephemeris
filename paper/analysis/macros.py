@@ -540,6 +540,11 @@ def derived():
     for h in ("30", "90"):
         put(f"d/wg/rw/{h}", f"{(int(h) / 7) ** 0.5:.2f}")
     put("d/wg/lin/90", f"{90 / 7:.1f}")
+    # S21: R_h <= h/D for V2's Gamma(n + 1/2, rate = D) rate, D the full sparse window
+    d = int(VALUES["c/sparse-window"])
+    for h in (7, 30, 90):
+        put(f"d/rh/var/{h}", f"{100 * h / d:.1f}")
+        put(f"d/rh/sd/{h}", f"{100 * ((1 + h / d) ** 0.5 - 1):.1f}")
 
 
 def keyvalue_raw(path):
